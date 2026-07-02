@@ -6,7 +6,7 @@
 //! sections, the arrows move within the flat list, and typing filters fuzzily
 //! while keeping the section headers of any section that still has a match.
 
-use std::io;
+use std::{cell::Cell, io};
 
 use crossterm::event::KeyCode;
 use ratatui::{
@@ -14,12 +14,13 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph},
+    widgets::Paragraph,
 };
 
 use super::{
     fuzzy,
     layout::centered_rect,
+    list,
     modal::ModalSignal,
     nav,
     overlay::{self, PopupFlow, popup},
@@ -39,6 +40,9 @@ struct Help {
     query: String,
     /// Index into the currently selectable (item) rows.
     cursor: usize,
+    /// Persistent list scroll offset so the view and scrollbar follow the
+    /// cursor across frames.
+    offset: Cell<usize>,
 }
 
 /// One rendered row: a section header or a selectable binding.
@@ -70,6 +74,7 @@ pub fn show<B: AsRef<str>>(
     let mut state = Help {
         query: String::new(),
         cursor: 0,
+        offset: Cell::new(0),
     };
     popup(
         tui,
@@ -222,14 +227,13 @@ fn render_body<B: AsRef<str>>(
 
     let header_style =
         style::fg(palette.accent_dim).add_modifier(Modifier::BOLD);
-    let entries: Vec<ListItem> = layout
+    let entries: Vec<Line<'static>> = layout
         .rows
         .iter()
         .map(|row| match row {
-            Row::Header(title) => ListItem::new(Line::from(Span::styled(
-                title.to_uppercase(),
-                header_style,
-            ))),
+            Row::Header(title) => {
+                Line::from(Span::styled(title.to_uppercase(), header_style))
+            }
             Row::Item { key, description } => {
                 let mut spans = vec![Span::styled(
                     format!("  {key:<12}"),
@@ -241,19 +245,20 @@ fn render_body<B: AsRef<str>>(
                     style::dim(),
                     palette,
                 ));
-                ListItem::new(Line::from(spans))
+                Line::from(spans)
             }
         })
         .collect();
 
-    let mut list_state = ListState::default();
-    if !layout.selectable.is_empty() {
-        let cursor = state.cursor.min(layout.selectable.len() - 1);
-        list_state.select(Some(layout.selectable[cursor]));
-    }
-    let list =
-        List::new(entries).highlight_style(style::bg(palette.selection_bg));
-    frame.render_stateful_widget(list, rows[1], &mut list_state);
+    // Delegate to the shared list widget so the cursor highlight, scroll and
+    // scrollbar-on-overflow are consistent with every other list. The selected
+    // row is the current item's flat row index; headers are never selected.
+    let selected = layout
+        .selectable
+        .get(state.cursor.min(layout.selectable.len().saturating_sub(1)))
+        .copied()
+        .unwrap_or(0);
+    list::render(frame, rows[1], skin, entries, selected, &state.offset);
 
     let hint = footer_hint(skin, rows[2].width as usize);
     frame.render_widget(Paragraph::new(hint), rows[2]);
@@ -318,6 +323,7 @@ mod tests {
         let mut state = Help {
             query: String::new(),
             cursor: 0,
+            offset: Cell::new(0),
         };
         // From the first section, Tab moves to the Tasks section start (index 2
         // in the selectable list).

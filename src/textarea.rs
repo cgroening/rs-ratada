@@ -15,7 +15,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use super::{chrome, clipboard, input::TextCursor, style};
+use super::{chrome, clipboard, input::TextCursor, scroll, style};
 use crate::theme::Skin;
 
 /// A wrapped, editable multi-line text buffer.
@@ -238,6 +238,8 @@ impl TextArea {
             Paragraph::new(lines).style(style::bg(base_bg)),
             inner,
         );
+        // A scrollbar on the right whenever the wrapped text overflows.
+        scroll::render_scrollbar(frame, inner, rows.len(), scroll, height);
     }
 
     /// The automatic badge text: character count, or `n/max` with a limit.

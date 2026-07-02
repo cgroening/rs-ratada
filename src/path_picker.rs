@@ -7,6 +7,7 @@
 //! `allow_files`), `Esc` cancels.
 
 use std::{
+    cell::Cell,
     io,
     path::{Path, PathBuf},
 };
@@ -14,7 +15,7 @@ use std::{
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Constraint, Direction, Layout, Rect},
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -23,6 +24,7 @@ use super::{
     footer,
     input::InputField,
     layout::centered_rect,
+    list,
     modal::ModalSignal,
     nav,
     overlay::{self, PopupFlow, popup},
@@ -46,6 +48,7 @@ struct State {
     visible: Vec<usize>,
     filter: InputField,
     cursor: usize,
+    offset: Cell<usize>,
 }
 
 impl State {
@@ -59,6 +62,7 @@ impl State {
             visible: Vec::new(),
             filter: InputField::default(),
             cursor: 0,
+            offset: Cell::new(0),
         };
         state.reload();
         state
@@ -187,46 +191,72 @@ pub fn path_picker(
 fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
     let palette = &skin.palette;
     let inner_width = inner.width as usize;
-    let mut lines: Vec<Line> = Vec::new();
-    lines.push(Line::from(Span::styled(
-        truncate(&state.dir.display().to_string(), inner_width),
-        style::dim(),
-    )));
-    lines.push(Line::from(vec![
-        Span::styled("filter ", style::dim()),
-        Span::raw(state.filter.value().to_string()),
-    ]));
 
-    let rows = inner.height.saturating_sub(3) as usize;
-    for (row, &index) in state.visible.iter().enumerate().take(rows) {
-        let entry = &state.entries[index];
-        let marker = if entry.is_dir { "/" } else { " " };
-        let text = format!("{marker} {}", entry.name);
-        let line = Line::from(truncate(&text, inner_width));
-        lines.push(if row == state.cursor {
-            line.style(style::bg(palette.selection_bg))
-        } else if entry.is_dir {
-            line.style(style::fg(palette.accent))
-        } else {
-            line
-        });
-    }
+    // Header (current dir), filter line, the scrollable entry list, footer.
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
 
-    lines.push(
-        footer::lines(
-            &[
-                ("\u{2190}\u{2192}", "browse"),
-                ("enter", "pick"),
-                ("ctrl+h", "hidden"),
-            ],
-            palette.accent_dim,
-            inner_width,
-        )
-        .into_iter()
-        .next()
-        .unwrap_or_default(),
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            truncate(&state.dir.display().to_string(), inner_width),
+            style::dim(),
+        ))),
+        rows[0],
     );
-    frame.render_widget(Paragraph::new(lines), inner);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("filter ", style::dim()),
+            Span::raw(state.filter.value().to_string()),
+        ])),
+        rows[1],
+    );
+
+    // The list widget owns the cursor highlight, scroll-to-cursor and the
+    // scrollbar on overflow; directories keep their accent color when not
+    // under the cursor.
+    let entries: Vec<Line<'static>> = state
+        .visible
+        .iter()
+        .map(|&index| {
+            let entry = &state.entries[index];
+            let marker = if entry.is_dir { "/" } else { " " };
+            let line = Line::from(truncate(
+                &format!("{marker} {}", entry.name),
+                inner_width,
+            ));
+            if entry.is_dir {
+                line.style(style::fg(palette.accent))
+            } else {
+                line
+            }
+        })
+        .collect();
+    list::render(frame, rows[2], skin, entries, state.cursor, &state.offset);
+
+    frame.render_widget(
+        Paragraph::new(
+            footer::lines(
+                &[
+                    ("\u{2190}\u{2192}", "browse"),
+                    ("enter", "pick"),
+                    ("ctrl+h", "hidden"),
+                ],
+                palette.accent_dim,
+                inner_width,
+            )
+            .into_iter()
+            .next()
+            .unwrap_or_default(),
+        ),
+        rows[3],
+    );
 }
 
 /// Returns `start` if it exists, else its nearest existing ancestor, else the

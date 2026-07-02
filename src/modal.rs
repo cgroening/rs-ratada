@@ -25,7 +25,7 @@ use super::{
     layout::centered_rect,
     nav,
     overlay::{self, PopupFlow, popup},
-    style,
+    scroll, style,
     terminal::Tui,
 };
 use crate::theme::{Palette, Skin};
@@ -470,11 +470,7 @@ fn render_picker(
             ListItem::new(Line::from(format!("{prefix}{label}")))
         })
         .collect();
-    frame.render_stateful_widget(
-        picker_list(entries, skin),
-        inner,
-        &mut picker_state(cursor),
-    );
+    render_picker_list(frame, inner, entries, items.len(), cursor, skin);
 }
 
 fn render_styled_picker(
@@ -498,10 +494,27 @@ fn render_styled_picker(
             ]))
         })
         .collect();
-    frame.render_stateful_widget(
-        picker_list(entries, skin),
+    render_picker_list(frame, inner, entries, items.len(), cursor, skin);
+}
+
+/// Renders a picker's list into `inner` with the cursor highlighted, then a
+/// scrollbar on the right whenever the entries overflow the visible rows.
+fn render_picker_list(
+    frame: &mut Frame,
+    inner: Rect,
+    entries: Vec<ListItem<'_>>,
+    total: usize,
+    cursor: usize,
+    skin: &Skin,
+) {
+    let mut state = picker_state(cursor);
+    frame.render_stateful_widget(picker_list(entries, skin), inner, &mut state);
+    scroll::render_scrollbar(
+        frame,
         inner,
-        &mut picker_state(cursor),
+        total,
+        state.offset(),
+        inner.height as usize,
     );
 }
 
