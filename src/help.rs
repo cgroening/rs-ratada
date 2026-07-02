@@ -1,7 +1,10 @@
-//! Scrollable, fuzzy-searchable help overlay listing all key bindings.
+//! Scrollable, fuzzy-searchable help overlay listing key bindings in sections.
 //!
 //! A thin wrapper over [`overlay::popup`]: the dimmed backdrop, box and loop
-//! come from there; this module only owns the search state and the body layout.
+//! come from there; this module owns the search state and the sectioned body.
+//! Bindings are grouped into [`HelpSection`]s; `Tab`/`BackTab` jump between
+//! sections, the arrows move within the flat list, and typing filters fuzzily
+//! while keeping the section headers of any section that still has a match.
 
 use std::io;
 
@@ -25,20 +28,43 @@ use super::{
 };
 use crate::theme::Skin;
 
+/// A titled group of key bindings shown under one header in the overlay.
+pub struct HelpSection<'a, B: AsRef<str>> {
+    pub title: &'a str,
+    pub bindings: &'a [(B, B)],
+}
+
 /// The search state of the help overlay.
 struct Help {
     query: String,
+    /// Index into the currently selectable (item) rows.
     cursor: usize,
+}
+
+/// One rendered row: a section header or a selectable binding.
+enum Row<'a> {
+    Header(&'a str),
+    Item { key: &'a str, description: &'a str },
+}
+
+/// The rows to render plus the navigation index maps for the current query.
+struct RowLayout<'a> {
+    rows: Vec<Row<'a>>,
+    /// Row index of each selectable item, in order.
+    selectable: Vec<usize>,
+    /// Position within `selectable` of each visible section's first item.
+    section_starts: Vec<usize>,
 }
 
 /// Shows the help overlay until the user closes it.
 ///
-/// A query filters the bindings fuzzily; the arrow keys move the selection.
-/// `Esc` or `?` close the overlay.
+/// A query filters the bindings fuzzily (keeping the header of every section
+/// that still matches); the arrow keys move the selection, `Tab`/`BackTab` jump
+/// to the next/previous section, and `Esc` or `?` close the overlay.
 pub fn show<B: AsRef<str>>(
     tui: &mut Tui,
     skin: &Skin,
-    bindings: &[(B, B)],
+    sections: &[HelpSection<'_, B>],
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<()>> {
     let mut state = Help {
@@ -58,18 +84,28 @@ pub fn show<B: AsRef<str>>(
         |frame, _| render_bg(frame),
         |frame, rect, state: &Help| {
             let inner = overlay::framed(frame, rect, skin, "Help");
-            render_body(frame, inner, skin, bindings, state);
+            render_body(frame, inner, skin, sections, state);
         },
         |state, key| match key.code {
             KeyCode::Esc | KeyCode::Char('?') => PopupFlow::Done(()),
             KeyCode::Up => {
-                let len = filter(bindings, &state.query).len();
-                state.cursor = nav::cycle(state.cursor, len, -1);
+                let count =
+                    layout_rows(sections, &state.query).selectable.len();
+                state.cursor = nav::cycle(state.cursor, count, -1);
                 PopupFlow::Continue
             }
             KeyCode::Down => {
-                let len = filter(bindings, &state.query).len();
-                state.cursor = nav::cycle(state.cursor, len, 1);
+                let count =
+                    layout_rows(sections, &state.query).selectable.len();
+                state.cursor = nav::cycle(state.cursor, count, 1);
+                PopupFlow::Continue
+            }
+            KeyCode::Tab => {
+                jump_section(state, sections, 1);
+                PopupFlow::Continue
+            }
+            KeyCode::BackTab => {
+                jump_section(state, sections, -1);
                 PopupFlow::Continue
             }
             KeyCode::Backspace => {
@@ -87,35 +123,91 @@ pub fn show<B: AsRef<str>>(
     )
 }
 
-fn filter<B: AsRef<str>>(bindings: &[(B, B)], query: &str) -> Vec<usize> {
-    if query.trim().is_empty() {
-        return (0..bindings.len()).collect();
+/// Moves the cursor to the first item of the next (`+1`) or previous (`-1`)
+/// visible section, wrapping around.
+fn jump_section<B: AsRef<str>>(
+    state: &mut Help,
+    sections: &[HelpSection<'_, B>],
+    direction: isize,
+) {
+    let starts = layout_rows(sections, &state.query).section_starts;
+    if starts.is_empty() {
+        return;
     }
-    let mut scored: Vec<(u32, usize)> = bindings
+    // The section the cursor is currently in: the last start at or before it.
+    let current = starts
         .iter()
-        .enumerate()
-        .filter_map(|(index, (key, description))| {
-            let haystack = format!("{} {}", key.as_ref(), description.as_ref());
-            fuzzy::score(&haystack, query).map(|score| (score, index))
-        })
-        .collect();
-    scored.sort_by(|left, right| right.0.cmp(&left.0));
-    scored.into_iter().map(|(_, index)| index).collect()
+        .rposition(|&start| start <= state.cursor)
+        .unwrap_or(0);
+    let next = nav::cycle(current, starts.len(), direction);
+    state.cursor = starts[next];
+}
+
+/// Builds the rows and navigation index maps for `sections` filtered by `query`.
+/// A section is included only if it keeps at least one matching binding; the
+/// bindings stay in their original order (no score re-sorting).
+fn layout_rows<'a, B: AsRef<str>>(
+    sections: &'a [HelpSection<'a, B>],
+    query: &str,
+) -> RowLayout<'a> {
+    let query = query.trim();
+    let mut rows: Vec<Row<'a>> = Vec::new();
+    let mut selectable: Vec<usize> = Vec::new();
+    let mut section_starts: Vec<usize> = Vec::new();
+
+    for section in sections {
+        let matches: Vec<&(B, B)> = section
+            .bindings
+            .iter()
+            .filter(|(key, description)| {
+                is_match(key.as_ref(), description.as_ref(), query)
+            })
+            .collect();
+        if matches.is_empty() {
+            continue;
+        }
+        section_starts.push(selectable.len());
+        rows.push(Row::Header(section.title));
+        for (key, description) in matches {
+            selectable.push(rows.len());
+            rows.push(Row::Item {
+                key: key.as_ref(),
+                description: description.as_ref(),
+            });
+        }
+    }
+    RowLayout {
+        rows,
+        selectable,
+        section_starts,
+    }
+}
+
+/// Whether a binding matches `query` (everything matches an empty query).
+fn is_match(key: &str, description: &str, query: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    fuzzy::score(&format!("{key} {description}"), query).is_some()
 }
 
 fn render_body<B: AsRef<str>>(
     frame: &mut Frame,
     inner: Rect,
     skin: &Skin,
-    bindings: &[(B, B)],
+    sections: &[HelpSection<'_, B>],
     state: &Help,
 ) {
     let palette = &skin.palette;
-    let filtered = filter(bindings, &state.query);
+    let layout = layout_rows(sections, &state.query);
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(1)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
         .split(inner);
 
     let search = Line::from(vec![
@@ -128,30 +220,114 @@ fn render_body<B: AsRef<str>>(
     ]);
     frame.render_widget(Paragraph::new(search), rows[0]);
 
-    let entries: Vec<ListItem> = filtered
+    let header_style =
+        style::fg(palette.accent_dim).add_modifier(Modifier::BOLD);
+    let entries: Vec<ListItem> = layout
+        .rows
         .iter()
-        .map(|&index| {
-            let key = bindings[index].0.as_ref();
-            let description = bindings[index].1.as_ref();
-            let mut spans = vec![Span::styled(
-                format!("{key:<14}"),
-                style::fg(palette.accent).add_modifier(Modifier::BOLD),
-            )];
-            spans.extend(fuzzy::highlight(
-                description,
-                &state.query,
-                style::dim(),
-                palette,
-            ));
-            ListItem::new(Line::from(spans))
+        .map(|row| match row {
+            Row::Header(title) => ListItem::new(Line::from(Span::styled(
+                title.to_uppercase(),
+                header_style,
+            ))),
+            Row::Item { key, description } => {
+                let mut spans = vec![Span::styled(
+                    format!("  {key:<12}"),
+                    style::fg(palette.accent).add_modifier(Modifier::BOLD),
+                )];
+                spans.extend(fuzzy::highlight(
+                    description,
+                    &state.query,
+                    style::dim(),
+                    palette,
+                ));
+                ListItem::new(Line::from(spans))
+            }
         })
         .collect();
+
     let mut list_state = ListState::default();
-    if !filtered.is_empty() {
-        let cursor = state.cursor.min(filtered.len() - 1);
-        list_state.select(Some(cursor));
+    if !layout.selectable.is_empty() {
+        let cursor = state.cursor.min(layout.selectable.len() - 1);
+        list_state.select(Some(layout.selectable[cursor]));
     }
     let list =
         List::new(entries).highlight_style(style::bg(palette.selection_bg));
     frame.render_stateful_widget(list, rows[1], &mut list_state);
+
+    let hint = footer_hint(skin, rows[2].width as usize);
+    frame.render_widget(Paragraph::new(hint), rows[2]);
+}
+
+/// The footer hint line for the overlay.
+fn footer_hint(skin: &Skin, width: usize) -> Line<'static> {
+    super::footer::lines(
+        &[
+            ("\u{2191}\u{2193}", "move"),
+            ("tab", "section"),
+            ("esc", "close"),
+        ],
+        skin.palette.accent_dim,
+        width,
+    )
+    .into_iter()
+    .next()
+    .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sections() -> Vec<HelpSection<'static, &'static str>> {
+        vec![
+            HelpSection {
+                title: "Navigation",
+                bindings: &[("k", "up"), ("j", "down")],
+            },
+            HelpSection {
+                title: "Tasks",
+                bindings: &[("a", "add task"), ("d", "delete")],
+            },
+        ]
+    }
+
+    #[test]
+    fn empty_query_keeps_every_section_and_item() {
+        let secs = sections();
+        let layout = layout_rows(&secs, "");
+        // 2 headers + 4 items = 6 rows; 4 selectable; 2 section starts.
+        assert_eq!(layout.rows.len(), 6);
+        assert_eq!(layout.selectable.len(), 4);
+        assert_eq!(layout.section_starts, vec![0, 2]);
+    }
+
+    #[test]
+    fn query_filters_items_and_drops_empty_sections() {
+        let secs = sections();
+        let layout = layout_rows(&secs, "add");
+        // Only the Tasks section keeps a match ("add task").
+        assert_eq!(layout.selectable.len(), 1);
+        assert_eq!(layout.section_starts, vec![0]);
+        assert!(matches!(layout.rows[0], Row::Header("Tasks")));
+    }
+
+    #[test]
+    fn section_jump_lands_on_the_first_item_of_the_target() {
+        let secs = sections();
+        let mut state = Help {
+            query: String::new(),
+            cursor: 0,
+        };
+        // From the first section, Tab moves to the Tasks section start (index 2
+        // in the selectable list).
+        jump_section(&mut state, &secs, 1);
+        assert_eq!(state.cursor, 2);
+        // Wraps back to the first section.
+        jump_section(&mut state, &secs, 1);
+        assert_eq!(state.cursor, 0);
+        // BackTab from the first section wraps to the last.
+        jump_section(&mut state, &secs, -1);
+        assert_eq!(state.cursor, 2);
+    }
 }
