@@ -21,7 +21,7 @@ use ratatui::{
 };
 
 use super::{
-    footer,
+    footer, fuzzy,
     input::InputField,
     layout::centered_rect,
     list,
@@ -85,12 +85,15 @@ impl State {
     }
 
     fn refilter(&mut self) {
-        let needle = self.filter.value().to_lowercase();
+        let query = self.filter.value();
         self.visible = self
             .entries
             .iter()
             .enumerate()
-            .filter(|(_, entry)| entry.name.to_lowercase().contains(&needle))
+            .filter(|(_, entry)| {
+                query.trim().is_empty()
+                    || fuzzy::score(&entry.name, query).is_some()
+            })
             .map(|(index, _)| index)
             .collect();
         self.cursor = 0;

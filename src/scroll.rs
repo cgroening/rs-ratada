@@ -17,7 +17,9 @@ pub fn render_scrollbar(
     offset: usize,
     viewport: usize,
 ) {
-    if total <= viewport {
+    // An empty area (e.g. a boxed widget squeezed into a tiny viewport) has no
+    // room for a track; ratatui's scrollbar panics on it, so skip it.
+    if area.width == 0 || area.height == 0 || total <= viewport {
         return;
     }
     // ratatui only reports the bottom once position == content_length - 1, so

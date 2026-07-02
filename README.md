@@ -27,6 +27,51 @@ layout mode) that maps onto ratatui styles.
 ratada = "0.0.1"
 ```
 
+Implement the `Screen` trait and hand it to `run`, which owns the draw/input
+loop inside a raw-mode `Tui` guard. The `prelude` re-exports the driver
+essentials:
+
+```rust,no_run
+use ratada::prelude::*;
+use ratatui::{Frame, text::Line};
+use crossterm::event::{KeyCode, KeyEvent};
+
+struct App {
+    count: u32,
+}
+
+impl Screen for App {
+    type Error = std::io::Error;
+
+    fn render(&self, frame: &mut Frame) {
+        frame.render_widget(
+            Line::from(format!("count: {}  (space +1, q quit)", self.count)),
+            frame.area(),
+        );
+    }
+
+    fn handle_key(&mut self, key: KeyEvent, _tui: &mut Tui) -> std::io::Result<Flow> {
+        match key.code {
+            KeyCode::Char('q') => Ok(Flow::Quit),
+            KeyCode::Char(' ') => {
+                self.count += 1;
+                Ok(Flow::Continue)
+            }
+            _ => Ok(Flow::Continue),
+        }
+    }
+}
+
+fn main() -> std::io::Result<()> {
+    let mut tui = Tui::new()?;
+    run(&mut tui, &mut App { count: 0 })
+}
+```
+
+Widgets that support the opt-in boxed style take a `BoxDecor` (caption in the
+top border, an automatic or fixed badge bottom-right), e.g.
+`InputField::new("").max_len(40).boxed(BoxDecor::new().caption("Name"))`.
+
 ## License
 
 MIT

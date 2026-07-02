@@ -348,6 +348,20 @@ pub struct Table {
 
 impl Table {
     /// Builds a table over `columns` and `rows`. All rows are initially shown.
+    ///
+    /// # Examples
+    /// ```
+    /// use ratada::table::{Column, Row, Table};
+    ///
+    /// let table = Table::new(
+    ///     vec![Column::text("Name").widths(6, 20), Column::number("Age")],
+    ///     vec![
+    ///         Row::new(vec!["Ada".into(), "36".into()]),
+    ///         Row::new(vec!["Linus".into(), "54".into()]),
+    ///     ],
+    /// );
+    /// assert_eq!(table.selected_rows(), Vec::<usize>::new());
+    /// ```
     pub fn new(columns: Vec<Column>, rows: Vec<Row>) -> Self {
         let view = (0..rows.len()).collect();
         Self {
@@ -387,6 +401,15 @@ impl Table {
     pub fn boxed_always(mut self, decor: chrome::BoxDecor) -> Self {
         self.decor = Some(decor);
         self.force_box = true;
+        self
+    }
+
+    /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
+    /// decoration even in `Fancy` mode.
+    #[must_use]
+    pub fn minimal(mut self) -> Self {
+        self.decor = None;
+        self.force_box = false;
         self
     }
 

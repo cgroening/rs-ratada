@@ -33,6 +33,8 @@ pub enum AcOutcome {
 pub struct Autocomplete {
     candidates: Vec<String>,
     matches: Vec<usize>,
+    /// How many further matches exist beyond the [`MAX_SUGGESTIONS`] shown.
+    overflow: usize,
     selected: Option<usize>,
     dismissed: bool,
     empty_query: bool,
@@ -45,6 +47,7 @@ impl Autocomplete {
         Self {
             candidates,
             matches: Vec::new(),
+            overflow: 0,
             selected: None,
             dismissed: true,
             empty_query: true,
@@ -58,14 +61,16 @@ impl Autocomplete {
         self.empty_query = query.trim().is_empty();
         let needle = query.trim().to_lowercase();
         self.matches.clear();
+        self.overflow = 0;
         if !self.empty_query {
             for (index, candidate) in self.candidates.iter().enumerate() {
                 let lower = candidate.to_lowercase();
                 if lower.contains(&needle) && lower != needle {
-                    self.matches.push(index);
-                }
-                if self.matches.len() == MAX_SUGGESTIONS {
-                    break;
+                    if self.matches.len() < MAX_SUGGESTIONS {
+                        self.matches.push(index);
+                    } else {
+                        self.overflow += 1;
+                    }
                 }
             }
         }
@@ -125,7 +130,8 @@ impl Autocomplete {
             return Vec::new();
         }
         let pad = " ".repeat(indent);
-        self.matches
+        let mut lines: Vec<Line<'static>> = self
+            .matches
             .iter()
             .enumerate()
             .map(|(row, &candidate)| {
@@ -139,7 +145,14 @@ impl Autocomplete {
                     Span::styled(self.candidates[candidate].clone(), row_style),
                 ])
             })
-            .collect()
+            .collect();
+        if self.overflow > 0 {
+            lines.push(Line::from(vec![
+                Span::raw(pad),
+                Span::styled(format!("+{} more", self.overflow), style::dim()),
+            ]));
+        }
+        lines
     }
 
     fn move_selection(&mut self, delta: isize) {
@@ -206,6 +219,14 @@ mod tests {
         let mut ac = Autocomplete::new(many);
         ac.refresh("store");
         assert_eq!(ac.matches.len(), MAX_SUGGESTIONS);
+    }
+
+    #[test]
+    fn overflow_counts_matches_beyond_the_cap() {
+        let many: Vec<String> = (0..20).map(|n| format!("Store {n}")).collect();
+        let mut ac = Autocomplete::new(many);
+        ac.refresh("store");
+        assert_eq!(ac.overflow, 20 - MAX_SUGGESTIONS);
     }
 
     #[test]

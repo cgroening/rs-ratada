@@ -88,6 +88,15 @@ impl TreeView {
         self
     }
 
+    /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
+    /// decoration even in `Fancy` mode.
+    #[must_use]
+    pub fn minimal(mut self) -> Self {
+        self.decor = None;
+        self.force_box = false;
+        self
+    }
+
     /// The label of the node under the cursor, if any.
     pub fn selected_label(&self) -> Option<String> {
         self.flatten()

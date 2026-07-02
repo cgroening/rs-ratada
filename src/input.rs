@@ -14,6 +14,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::Paragraph,
 };
+use unicode_width::UnicodeWidthChar;
 
 use super::{chrome, clipboard, style};
 use crate::theme::{Palette, Skin};
@@ -59,6 +60,17 @@ pub struct InputField {
 
 impl InputField {
     /// Creates a field pre-filled with `initial`, caret at the end.
+    ///
+    /// # Examples
+    /// ```
+    /// use ratada::chrome::BoxDecor;
+    /// use ratada::input::InputField;
+    ///
+    /// let field = InputField::new("hello")
+    ///     .max_len(20)
+    ///     .boxed(BoxDecor::new().caption("Name"));
+    /// assert_eq!(field.value(), "hello");
+    /// ```
     pub fn new(initial: &str) -> Self {
         Self {
             text: initial.to_string(),
@@ -88,6 +100,15 @@ impl InputField {
     pub fn boxed_always(mut self, decor: chrome::BoxDecor) -> Self {
         self.decor = Some(decor);
         self.force_box = true;
+        self
+    }
+
+    /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
+    /// decoration even in `Fancy` mode.
+    #[must_use]
+    pub fn minimal(mut self) -> Self {
+        self.decor = None;
+        self.force_box = false;
         self
     }
 
@@ -237,7 +258,6 @@ pub fn render_line(
     let len = chars.len();
     let pos = cursor.pos.min(len);
     let width = width.max(1);
-    let start = if pos >= width { pos + 1 - width } else { 0 };
     let selection = cursor.selection();
     let base_bg = if focused {
         palette.input_bg_active
@@ -250,9 +270,29 @@ pub fn render_line(
         .fg(Color::Black);
     let selection_style = style::bg(palette.selection_bg);
 
+    // Display columns before each char index, so scrolling and the visible
+    // window are measured in columns (wide glyphs count as two), not chars.
+    let widths: Vec<usize> =
+        chars.iter().map(|ch| ch.width().unwrap_or(0)).collect();
+    let mut column_at = vec![0usize; len + 1];
+    for index in 0..len {
+        column_at[index + 1] = column_at[index] + widths[index];
+    }
+    let caret_column = column_at[pos];
+    // Scroll so the caret column stays inside the last `width` columns.
+    let window = caret_column.saturating_sub(width - 1);
+    let start = (0..=len)
+        .find(|&index| column_at[index] >= window)
+        .unwrap_or(len);
+
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut used = 0usize;
-    for (index, ch) in chars.iter().enumerate().skip(start).take(width) {
+    let mut index = start;
+    while index < len {
+        let char_width = widths[index];
+        if used + char_width > width {
+            break;
+        }
         let mut style = base;
         if let Some((from, to)) = selection
             && index >= from
@@ -263,8 +303,9 @@ pub fn render_line(
         if focused && index == pos {
             style = cursor_style;
         }
-        spans.push(Span::styled(ch.to_string(), style));
-        used += 1;
+        spans.push(Span::styled(chars[index].to_string(), style));
+        used += char_width;
+        index += 1;
     }
     if focused && pos >= len && used < width {
         spans.push(Span::styled(" ".to_string(), cursor_style));
@@ -414,5 +455,26 @@ mod tests {
         // The fourth character is rejected.
         field.handle_key(press(KeyCode::Char('d')));
         assert_eq!(field.value(), "abc");
+    }
+
+    #[test]
+    fn render_line_windows_by_display_width_for_wide_chars() {
+        use unicode_width::UnicodeWidthStr;
+
+        use crate::theme::{ColorOverrides, ThemeRegistry};
+
+        let palette = Palette::resolve(
+            ThemeRegistry::builtin().resolve("default"),
+            &ColorOverrides::default(),
+        );
+        // Four width-2 glyphs (8 columns) into a 5-column field.
+        let text = "世界世界";
+        let cursor = TextCursor::at_end(text);
+        let line = render_line(text, &cursor, &palette, 5, true);
+        // The rendered line is exactly `width` columns: wide glyphs never
+        // overflow the field and the remainder is padded.
+        let columns: usize =
+            line.spans.iter().map(|span| span.content.width()).sum();
+        assert_eq!(columns, 5);
     }
 }

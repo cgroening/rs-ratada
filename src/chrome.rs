@@ -105,6 +105,14 @@ pub struct BoxDecor {
 
 impl BoxDecor {
     /// An empty decoration: no caption, automatic badge.
+    ///
+    /// # Examples
+    /// ```
+    /// use ratada::chrome::BoxDecor;
+    ///
+    /// // Caption in the top border; a fixed bottom-right badge.
+    /// let decor = BoxDecor::new().caption("Notes").badge("draft");
+    /// ```
     pub fn new() -> Self {
         Self::default()
     }

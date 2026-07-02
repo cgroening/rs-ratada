@@ -14,6 +14,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::Paragraph,
 };
+use unicode_width::UnicodeWidthChar;
 
 use super::{chrome, clipboard, input::TextCursor, scroll, style};
 use crate::theme::Skin;
@@ -31,6 +32,15 @@ pub struct TextArea {
 }
 
 impl TextArea {
+    /// Creates a multi-line editor pre-filled with `initial`.
+    ///
+    /// # Examples
+    /// ```
+    /// use ratada::textarea::TextArea;
+    ///
+    /// let area = TextArea::new("line 1\nline 2").max_len(200);
+    /// assert_eq!(area.text(), "line 1\nline 2");
+    /// ```
     pub fn new(initial: &str) -> Self {
         Self {
             text: initial.to_string(),
@@ -61,6 +71,15 @@ impl TextArea {
     pub fn boxed_always(mut self, decor: chrome::BoxDecor) -> Self {
         self.decor = Some(decor);
         self.force_box = true;
+        self
+    }
+
+    /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
+    /// decoration even in `Fancy` mode.
+    #[must_use]
+    pub fn minimal(mut self) -> Self {
+        self.decor = None;
+        self.force_box = false;
         self
     }
 
@@ -317,8 +336,10 @@ impl TextArea {
     }
 }
 
-/// Splits `chars` into display rows of at most `width` columns, breaking on
-/// newlines (which are not included in any row).
+/// Splits `chars` into display rows of at most `width` columns (measured by
+/// [`UnicodeWidthChar`], so wide glyphs count as two), breaking on newlines
+/// (which are not included in any row). A single glyph wider than `width` still
+/// gets its own row, so the loop always makes progress.
 fn wrap(chars: &[char], width: usize) -> Vec<(usize, usize)> {
     let width = width.max(1);
     let mut rows = Vec::new();
@@ -330,7 +351,16 @@ fn wrap(chars: &[char], width: usize) -> Vec<(usize, usize)> {
             .map_or(chars.len(), |offset| seg_start + offset);
         let mut start = seg_start;
         loop {
-            let end = (start + width).min(seg_end);
+            let mut end = start;
+            let mut used = 0usize;
+            while end < seg_end {
+                let char_width = chars[end].width().unwrap_or(0);
+                if end > start && used + char_width > width {
+                    break;
+                }
+                used += char_width;
+                end += 1;
+            }
             rows.push((start, end));
             if end >= seg_end {
                 break;
@@ -399,6 +429,14 @@ mod tests {
     #[test]
     fn empty_buffer_has_one_row() {
         assert_eq!(wrap(&[], 4), vec![(0, 0)]);
+    }
+
+    #[test]
+    fn wrap_measures_display_width_of_wide_chars() {
+        // '世'/'界' are width-2; at width 3 only one wide glyph fits per row,
+        // then the narrow 'a' joins the second row.
+        let chars: Vec<char> = "世界a".chars().collect();
+        assert_eq!(wrap(&chars, 3), vec![(0, 1), (1, 3)]);
     }
 
     #[test]
