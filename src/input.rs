@@ -167,7 +167,7 @@ impl InputField {
 
 /// Applies one editing key to `text`/`cursor`, respecting an optional
 /// `max_len`. Returns whether it was consumed.
-pub fn apply_edit_key(
+pub(crate) fn apply_edit_key(
     text: &mut String,
     cursor: &mut TextCursor,
     key: KeyEvent,
@@ -247,7 +247,7 @@ pub fn apply_edit_key(
 /// visible, filled with the input background (active tint when `focused`), with
 /// a block caret (only when `focused`) and selection highlight. The line is
 /// padded to `width` so the field reads as a solid background strip.
-pub fn render_line(
+pub(crate) fn render_line(
     text: &str,
     cursor: &TextCursor,
     palette: &Palette,

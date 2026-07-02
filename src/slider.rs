@@ -82,7 +82,7 @@ pub fn slider(
 }
 
 /// Moves `value` by `delta`, clamped to `min..=max`.
-pub fn step_value(value: i64, delta: i64, min: i64, max: i64) -> i64 {
+pub(crate) fn step_value(value: i64, delta: i64, min: i64, max: i64) -> i64 {
     value.saturating_add(delta).clamp(min, max)
 }
 

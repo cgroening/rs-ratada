@@ -28,7 +28,7 @@ use crate::theme::Skin;
 
 /// The darkening applied to the screen behind a popup (`0.0` = black,
 /// `1.0` = unchanged).
-pub const SCRIM_FACTOR: f32 = 0.4;
+pub(crate) const SCRIM_FACTOR: f32 = 0.4;
 
 /// What a popup key handler decides after each key.
 pub enum PopupFlow<T> {

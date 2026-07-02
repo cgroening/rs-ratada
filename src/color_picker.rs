@@ -101,7 +101,7 @@ pub fn color_picker(
 }
 
 /// Moves a channel by `delta`, saturating at `0..=255`.
-pub fn adjust(channel: u8, delta: i32) -> u8 {
+pub(crate) fn adjust(channel: u8, delta: i32) -> u8 {
     (i32::from(channel) + delta).clamp(0, 255) as u8
 }
 

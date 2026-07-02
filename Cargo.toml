@@ -2,12 +2,16 @@
 name = "ratada"
 version = "0.0.1"
 edition = "2024"
+# Uses `let`-chains, stabilized in Rust 1.88.
+rust-version = "1.88"
 description = "A ratatui widget toolkit: driver, modals, forms, pickers, theming"
 license = "MIT"
 repository = "https://github.com/cgroening/rs-ratada"
 readme = "README.md"
 keywords = ["tui", "ratatui", "widgets", "terminal", "toolkit"]
 categories = ["command-line-interface"]
+# Ship only the crate itself; contributor docs live in the repository.
+include = ["src/**/*.rs", "README.md", "LICENSE"]
 
 [dependencies]
 # https://crates.io/crates/ratatui

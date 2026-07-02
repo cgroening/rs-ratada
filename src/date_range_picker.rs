@@ -108,7 +108,7 @@ pub fn date_range_picker(
 }
 
 /// Orders two dates into `(earlier, later)`.
-pub fn ordered(a: NaiveDate, b: NaiveDate) -> (NaiveDate, NaiveDate) {
+pub(crate) fn ordered(a: NaiveDate, b: NaiveDate) -> (NaiveDate, NaiveDate) {
     if a <= b { (a, b) } else { (b, a) }
 }
 

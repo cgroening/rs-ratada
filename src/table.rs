@@ -39,7 +39,10 @@ const GUTTER: usize = 2;
 
 /// Distributes `avail` columns across `(min, target)` specs: each column gets
 /// at least `min`; the rest is shared round-robin up to `target`.
-pub fn allocate_columns(specs: &[(usize, usize)], avail: usize) -> Vec<usize> {
+pub(crate) fn allocate_columns(
+    specs: &[(usize, usize)],
+    avail: usize,
+) -> Vec<usize> {
     let mut widths: Vec<usize> = specs.iter().map(|&(min, _)| min).collect();
     let separators = SEPARATOR.width() * specs.len().saturating_sub(1);
     let used: usize = widths.iter().sum::<usize>() + separators;
@@ -217,7 +220,7 @@ impl Row {
 }
 
 /// Wraps `text` to `width` display columns, breaking between characters.
-pub fn wrap_cell(text: &str, width: usize) -> Vec<String> {
+pub(crate) fn wrap_cell(text: &str, width: usize) -> Vec<String> {
     if width == 0 {
         return vec![String::new()];
     }
@@ -256,15 +259,16 @@ fn compare_cells(kind: ColumnKind, a: &str, b: &str) -> Ordering {
     }
 }
 
-/// Returns row indices sorted by `col` in direction `dir` (stable).
-pub fn sort_indices(
+/// Stably sorts `indices` (row indices into `rows`) by `col` in direction
+/// `dir`, using the column's [`ColumnKind`] for type-aware comparison.
+pub(crate) fn sort_indices(
     rows: &[Row],
     columns: &[Column],
+    mut indices: Vec<usize>,
     col: usize,
     dir: SortDir,
 ) -> Vec<usize> {
     let kind = columns.get(col).map_or(ColumnKind::Text, |c| c.kind);
-    let mut indices: Vec<usize> = (0..rows.len()).collect();
     indices.sort_by(|&a, &b| {
         let order = compare_cells(kind, rows[a].cell(col), rows[b].cell(col));
         match dir {
@@ -277,7 +281,7 @@ pub fn sort_indices(
 
 /// Returns row indices matching `query` fuzzily; empty query keeps all rows in
 /// order, otherwise results are best-score first.
-pub fn filter_indices(
+pub(crate) fn filter_indices(
     rows: &[Row],
     query: &str,
     scope: FilterScope,
@@ -303,7 +307,7 @@ pub fn filter_indices(
 
 /// The top row offset that keeps `cursor` visible given per-row `heights` and
 /// the viewport height `area_h`, starting from `prev`.
-pub fn visible_offset(
+pub(crate) fn visible_offset(
     heights: &[u16],
     cursor: usize,
     area_h: u16,
@@ -657,19 +661,7 @@ impl Table {
             self.active_col,
         );
         if let Some((col, dir)) = self.sort {
-            let kind =
-                self.columns.get(col).map_or(ColumnKind::Text, |c| c.kind);
-            view.sort_by(|&a, &b| {
-                let order = compare_cells(
-                    kind,
-                    self.rows[a].cell(col),
-                    self.rows[b].cell(col),
-                );
-                match dir {
-                    SortDir::Asc => order,
-                    SortDir::Desc => order.reverse(),
-                }
-            });
+            view = sort_indices(&self.rows, &self.columns, view, col, dir);
         }
         self.view = view;
         self.cursor = keep
@@ -1086,18 +1078,25 @@ mod tests {
         assert_eq!(allocate_columns(&[(3, 10), (3, 10)], 20), vec![9, 9]);
     }
 
+    fn all_indices() -> Vec<usize> {
+        (0..rows().len()).collect()
+    }
+
     #[test]
     fn number_column_sorts_numerically() {
-        let order = sort_indices(&rows(), &columns(), 1, SortDir::Asc);
+        let order =
+            sort_indices(&rows(), &columns(), all_indices(), 1, SortDir::Asc);
         // 9, 10, 100 -> rows 0, 1, 2 (not lexicographic 10,100,9).
         assert_eq!(order, vec![0, 1, 2]);
     }
 
     #[test]
     fn text_column_sorts_lexicographically_and_desc_reverses() {
-        let asc = sort_indices(&rows(), &columns(), 0, SortDir::Asc);
+        let asc =
+            sort_indices(&rows(), &columns(), all_indices(), 0, SortDir::Asc);
         assert_eq!(asc, vec![1, 0, 2]); // alpha, beta, gamma
-        let desc = sort_indices(&rows(), &columns(), 0, SortDir::Desc);
+        let desc =
+            sort_indices(&rows(), &columns(), all_indices(), 0, SortDir::Desc);
         assert_eq!(desc, vec![2, 0, 1]);
     }
 

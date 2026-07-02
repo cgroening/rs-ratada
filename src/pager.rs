@@ -155,7 +155,7 @@ pub fn pager(
 
 /// The line indices that contain `query`, case-insensitively. An empty query
 /// matches nothing.
-pub fn search_matches(lines: &[String], query: &str) -> Vec<usize> {
+pub(crate) fn search_matches(lines: &[String], query: &str) -> Vec<usize> {
     if query.is_empty() {
         return Vec::new();
     }
