@@ -10,12 +10,12 @@ const ACCENT_DIM_FACTOR: f32 = 0.75;
 /// Brightness factor for the dark accent (a deep variant of the accent).
 const ACCENT_DARK_FACTOR: f32 = 0.25;
 /// How far the resting input background is lightened from the theme background.
-/// Chosen distinct from `selection_bg` and the `surface*` steps so a text field
-/// reads as its own inset area.
-const INPUT_BG_FACTOR: f32 = 0.10;
+/// Chosen to clearly stand out from the body background (and from `selection_bg`
+/// and the `surface*` steps) so a text field reads as its own inset area.
+const INPUT_BG_FACTOR: f32 = 0.22;
 /// How far the active (focused/edit-mode) input background is lightened; a
 /// clearer step up from the resting fill to signal editing.
-const INPUT_BG_ACTIVE_FACTOR: f32 = 0.20;
+const INPUT_BG_ACTIVE_FACTOR: f32 = 0.30;
 
 /// Optional per-color overrides layered over a theme's base colors. An empty
 /// string leaves the theme color untouched; a parseable value replaces it.
@@ -172,8 +172,14 @@ mod tests {
     #[test]
     fn input_backgrounds_are_derived_from_the_background() {
         let palette = Palette::resolve(nord(), &ColorOverrides::default());
-        assert_eq!(palette.input_bg, lighten(nord().background, 0.10));
-        assert_eq!(palette.input_bg_active, lighten(nord().background, 0.20),);
+        assert_eq!(
+            palette.input_bg,
+            lighten(nord().background, INPUT_BG_FACTOR),
+        );
+        assert_eq!(
+            palette.input_bg_active,
+            lighten(nord().background, INPUT_BG_ACTIVE_FACTOR),
+        );
         // The active fill is lighter than the resting one.
         assert_ne!(palette.input_bg, palette.input_bg_active);
     }
