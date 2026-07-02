@@ -1,0 +1,6 @@
+# Style guide §2.1 caps lines at 80 columns for source files; this overrides
+# rustfmt's default of 100. The import settings (§7.1) need a nightly rustfmt
+# to take effect and are ignored with a warning on stable.
+max_width = 80
+group_imports = "StdExternalCrate"
+imports_granularity = "Crate"
