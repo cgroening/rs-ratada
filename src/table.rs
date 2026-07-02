@@ -684,7 +684,12 @@ impl Table {
             if used + height > body.height {
                 break;
             }
-            lines.extend(self.row_lines(view_idx, &widths, skin));
+            lines.extend(self.row_lines(
+                view_idx,
+                &widths,
+                body.width as usize,
+                skin,
+            ));
             used += height;
             count += 1;
         }
@@ -757,11 +762,13 @@ impl Table {
         &self,
         view_idx: usize,
         widths: &[usize],
+        line_width: usize,
         skin: &Skin,
     ) -> Vec<Line<'static>> {
         let orig = self.view[view_idx];
         let row = &self.rows[orig];
         let is_cursor = view_idx == self.cursor;
+        let row_bg = self.row_highlight(orig, is_cursor, skin);
         let sublines: Vec<Vec<String>> = self
             .columns
             .iter()
@@ -776,13 +783,24 @@ impl Table {
             .collect();
         let height = sublines.iter().map(Vec::len).max().unwrap_or(1).max(1);
 
+        // Content width already laid out before the trailing fill: gutter plus
+        // every column and the separators between them.
+        let separators = SEPARATOR.width() * widths.len().saturating_sub(1);
+        let content_width = GUTTER + widths.iter().sum::<usize>() + separators;
+
         (0..height)
             .map(|line_no| {
-                let mut spans: Vec<Span> =
-                    vec![self.gutter_span(orig, line_no, skin)];
+                let mut gutter = self.gutter_span(orig, line_no, skin);
+                if let Some(bg) = row_bg {
+                    gutter.style = gutter.style.patch(bg);
+                }
+                let mut spans: Vec<Span> = vec![gutter];
                 for (col, &width) in widths.iter().enumerate() {
                     if col > 0 {
-                        spans.push(Span::raw(SEPARATOR));
+                        spans.push(Span::styled(
+                            SEPARATOR,
+                            row_bg.unwrap_or_default(),
+                        ));
                     }
                     let text =
                         sublines[col].get(line_no).cloned().unwrap_or_default();
@@ -792,9 +810,39 @@ impl Table {
                         style,
                     ));
                 }
+                // Extend the highlight bar to the right edge so it reads as one
+                // continuous row rather than per-cell patches.
+                if let Some(bg) = row_bg {
+                    let trailing = line_width.saturating_sub(content_width);
+                    if trailing > 0 {
+                        spans.push(Span::styled(" ".repeat(trailing), bg));
+                    }
+                }
                 Line::from(spans)
             })
             .collect()
+    }
+
+    /// The full-width background for a row's highlight bar, or `None` when the
+    /// row is neither the cursor nor selected. Mirrors the background that
+    /// [`Self::cell_style`] applies per cell so the bar reads as one strip;
+    /// only meaningful in [`SelectMode::Row`] (cell mode highlights per cell).
+    fn row_highlight(
+        &self,
+        orig: usize,
+        is_cursor: bool,
+        skin: &Skin,
+    ) -> Option<Style> {
+        if self.mode != SelectMode::Row {
+            return None;
+        }
+        if is_cursor {
+            return Some(cursor_highlight(skin));
+        }
+        if self.selected_rows.contains(&orig) {
+            return Some(style::bg(skin.palette.selection_bg));
+        }
+        None
     }
 
     /// The 2-cell left gutter: a check marker for selected rows (row mode).
