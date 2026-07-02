@@ -2,7 +2,8 @@
 //!
 //! Browses directories: `Up`/`Down` move (cyclic), `Right` descends into a
 //! folder, `Left`/`Backspace` (empty filter) ascends, typing filters the
-//! entries, `Enter` selects the highlighted entry (a folder, or a file when
+//! entries, `Ctrl+H` toggles hidden (dot-prefixed) entries (hidden by default),
+//! `Enter` selects the highlighted entry (a folder, or a file when
 //! `allow_files`), `Esc` cancels.
 
 use std::{
@@ -10,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -40,6 +41,7 @@ struct Entry {
 struct State {
     dir: PathBuf,
     allow_files: bool,
+    show_hidden: bool,
     entries: Vec<Entry>,
     visible: Vec<usize>,
     filter: InputField,
@@ -52,6 +54,7 @@ impl State {
         let mut state = Self {
             dir,
             allow_files,
+            show_hidden: false,
             entries: Vec::new(),
             visible: Vec::new(),
             filter: InputField::default(),
@@ -62,8 +65,18 @@ impl State {
     }
 
     fn reload(&mut self) {
-        self.entries = read_entries(&self.dir, self.allow_files);
+        self.entries =
+            read_entries(&self.dir, self.allow_files, self.show_hidden);
         self.filter = InputField::default();
+        self.refilter();
+    }
+
+    /// Toggles hidden (dot-prefixed) entries, keeping the current directory and
+    /// filter, then re-reads the directory.
+    fn toggle_hidden(&mut self) {
+        self.show_hidden = !self.show_hidden;
+        self.entries =
+            read_entries(&self.dir, self.allow_files, self.show_hidden);
         self.refilter();
     }
 
@@ -149,6 +162,12 @@ pub fn path_picker(
                 state.ascend();
                 PopupFlow::Continue
             }
+            KeyCode::Char('h')
+                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                state.toggle_hidden();
+                PopupFlow::Continue
+            }
             KeyCode::Enter => match state.selected() {
                 Some(entry) if entry.is_dir || allow_files => {
                     PopupFlow::Done(entry.path.clone())
@@ -195,7 +214,11 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
 
     lines.push(
         footer::lines(
-            &[("\u{2190}\u{2192}", "browse"), ("enter", "pick")],
+            &[
+                ("\u{2190}\u{2192}", "browse"),
+                ("enter", "pick"),
+                ("ctrl+h", "hidden"),
+            ],
             palette.accent_dim,
             inner_width,
         )
@@ -219,7 +242,11 @@ fn first_existing(start: &Path) -> PathBuf {
     PathBuf::from(".")
 }
 
-fn read_entries(dir: &Path, allow_files: bool) -> Vec<Entry> {
+fn read_entries(
+    dir: &Path,
+    allow_files: bool,
+    show_hidden: bool,
+) -> Vec<Entry> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -232,6 +259,9 @@ fn read_entries(dir: &Path, allow_files: bool) -> Vec<Entry> {
                 return None;
             }
             let name = item.file_name().to_string_lossy().into_owned();
+            if !show_hidden && is_hidden(&name) {
+                return None;
+            }
             Some(Entry { name, path, is_dir })
         })
         .collect();
@@ -241,4 +271,22 @@ fn read_entries(dir: &Path, allow_files: bool) -> Vec<Entry> {
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     entries
+}
+
+/// Whether an entry name is hidden (dot-prefixed, the Unix convention).
+fn is_hidden(name: &str) -> bool {
+    name.starts_with('.')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_hidden;
+
+    #[test]
+    fn dot_prefixed_names_are_hidden() {
+        assert!(is_hidden(".git"));
+        assert!(is_hidden(".config"));
+        assert!(!is_hidden("src"));
+        assert!(!is_hidden("Cargo.toml"));
+    }
 }
