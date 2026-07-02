@@ -6,7 +6,7 @@ use ratatui::{
     Frame, layout::Rect, style::Modifier, text::Line, widgets::Paragraph,
 };
 
-use super::{nav, scroll, style};
+use super::{chrome, nav, scroll, style};
 use crate::theme::Skin;
 
 /// Renders `rows` in `area`, highlighting the `selected` row and scrolling to
@@ -54,4 +54,25 @@ pub fn render(
 
     frame.render_widget(Paragraph::new(visible), area);
     scroll::render_scrollbar(frame, area, total, visible_offset, viewport);
+}
+
+/// Like [`render`], but wrapped in a rounded box (see [`chrome::BoxDecor`]) when
+/// in `Fancy` mode or when `force` is set. The badge defaults to the row count.
+#[allow(clippy::too_many_arguments)]
+pub fn render_boxed(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    rows: Vec<Line<'static>>,
+    selected: usize,
+    offset: &Cell<usize>,
+    decor: &chrome::BoxDecor,
+    force: bool,
+) {
+    let inner = if force || skin.is_fancy() {
+        chrome::framed_decor(frame, area, skin, decor, &rows.len().to_string())
+    } else {
+        area
+    };
+    render(frame, inner, skin, rows, selected, offset);
 }

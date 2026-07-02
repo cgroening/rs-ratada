@@ -89,7 +89,12 @@ pub fn input(
             KeyCode::Enter => PopupFlow::Done(field.text.clone()),
             KeyCode::Esc => PopupFlow::Cancelled,
             _ => {
-                input::apply_edit_key(&mut field.text, &mut field.cursor, key);
+                input::apply_edit_key(
+                    &mut field.text,
+                    &mut field.cursor,
+                    key,
+                    None,
+                );
                 PopupFlow::Continue
             }
         },
@@ -426,7 +431,7 @@ fn render_input(
 ) {
     let inner = overlay::framed(frame, rect, skin, title);
     let width = inner.width as usize;
-    let line = input::render_line(text, cursor, &skin.palette, width);
+    let line = input::render_line(text, cursor, &skin.palette, width, true);
     let lines = vec![
         line,
         Line::from(""),

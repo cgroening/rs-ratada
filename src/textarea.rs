@@ -15,8 +15,8 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use super::{clipboard, input::TextCursor, style};
-use crate::theme::Palette;
+use super::{chrome, clipboard, input::TextCursor, style};
+use crate::theme::Skin;
 
 /// A wrapped, editable multi-line text buffer.
 #[derive(Default)]
@@ -25,6 +25,9 @@ pub struct TextArea {
     cursor: TextCursor,
     width: Cell<usize>,
     scroll: Cell<usize>,
+    max_len: Option<usize>,
+    decor: Option<chrome::BoxDecor>,
+    force_box: bool,
 }
 
 impl TextArea {
@@ -34,7 +37,31 @@ impl TextArea {
             cursor: TextCursor::at_end(initial),
             width: Cell::new(1),
             scroll: Cell::new(0),
+            ..Self::default()
         }
+    }
+
+    /// Limits the buffer to `max` characters (enforced on typing and paste) and
+    /// feeds the badge in the boxed variant.
+    #[must_use]
+    pub fn max_len(mut self, max: usize) -> Self {
+        self.max_len = Some(max);
+        self
+    }
+
+    /// Draws the area inside a rounded box in `Fancy` mode, plain otherwise.
+    #[must_use]
+    pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
+        self.decor = Some(decor);
+        self
+    }
+
+    /// Like [`Self::boxed`] but always draws the box, regardless of the mode.
+    #[must_use]
+    pub fn boxed_always(mut self, decor: chrome::BoxDecor) -> Self {
+        self.decor = Some(decor);
+        self.force_box = true;
+        self
     }
 
     pub fn text(&self) -> &str {
@@ -136,17 +163,32 @@ impl TextArea {
         consumed
     }
 
-    /// Renders the buffer into `area`, scrolling so the caret stays visible.
-    /// A block caret is shown only when `focused`.
+    /// Renders the buffer into `area`, scrolling so the caret stays visible and
+    /// filling the field with the input background (active tint when `focused`).
+    /// A block caret is shown only when `focused`. Wrapped in a box when
+    /// decorated and in `Fancy` mode (or forced via [`Self::boxed_always`]).
     pub fn render(
         &self,
         frame: &mut Frame,
         area: Rect,
-        palette: &Palette,
+        skin: &Skin,
         focused: bool,
     ) {
-        let width = area.width.max(1) as usize;
-        let height = area.height.max(1) as usize;
+        let inner = match &self.decor {
+            Some(decor) if self.force_box || skin.is_fancy() => {
+                chrome::framed_decor(frame, area, skin, decor, &self.badge())
+            }
+            _ => area,
+        };
+        let palette = &skin.palette;
+        let base_bg = if focused {
+            palette.input_bg_active
+        } else {
+            palette.input_bg
+        };
+
+        let width = inner.width.max(1) as usize;
+        let height = inner.height.max(1) as usize;
         self.width.set(width);
         let chars: Vec<char> = self.text.chars().collect();
         let rows = wrap(&chars, width);
@@ -190,7 +232,21 @@ impl TextArea {
             })
             .collect();
 
-        frame.render_widget(Paragraph::new(lines), area);
+        // The paragraph's base style fills the whole field (including blank
+        // rows) with the input background; spans override per cell.
+        frame.render_widget(
+            Paragraph::new(lines).style(style::bg(base_bg)),
+            inner,
+        );
+    }
+
+    /// The automatic badge text: character count, or `n/max` with a limit.
+    fn badge(&self) -> String {
+        let count = self.text.chars().count();
+        match self.max_len {
+            Some(max) => format!("{count}/{max}"),
+            None => count.to_string(),
+        }
     }
 
     fn move_to(&mut self, pos: usize, extend: bool) {
@@ -204,6 +260,9 @@ impl TextArea {
 
     fn insert(&mut self, chars: &mut Vec<char>, ch: char) {
         self.delete_selection(chars);
+        if self.max_len.is_some_and(|max| chars.len() >= max) {
+            return;
+        }
         chars.insert(self.cursor.pos, ch);
         self.cursor.pos += 1;
         self.cursor.anchor = None;
@@ -232,6 +291,9 @@ impl TextArea {
         };
         self.delete_selection(chars);
         for ch in text.chars().filter(|ch| *ch == '\n' || !ch.is_control()) {
+            if self.max_len.is_some_and(|max| chars.len() >= max) {
+                break;
+            }
             chars.insert(self.cursor.pos, ch);
             self.cursor.pos += 1;
         }
@@ -348,5 +410,14 @@ mod tests {
         let mut area = TextArea::new("ab");
         area.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert_eq!(area.text(), "ab\n");
+    }
+
+    #[test]
+    fn max_len_blocks_typing_past_the_limit() {
+        let mut area = TextArea::new("ab").max_len(3);
+        area.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+        assert_eq!(area.text(), "abc");
+        area.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+        assert_eq!(area.text(), "abc");
     }
 }

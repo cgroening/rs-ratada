@@ -8,7 +8,7 @@ use std::{cell::Cell, collections::HashSet};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{Frame, layout::Rect, text::Line};
 
-use super::{list, nav};
+use super::{chrome, list, nav};
 use crate::theme::{GlyphVariant, Skin};
 
 /// A node in a tree: a label plus zero or more children.
@@ -55,6 +55,8 @@ pub struct TreeView {
     expanded: HashSet<usize>,
     cursor: usize,
     offset: Cell<usize>,
+    decor: Option<chrome::BoxDecor>,
+    force_box: bool,
 }
 
 impl TreeView {
@@ -65,7 +67,25 @@ impl TreeView {
             expanded: HashSet::new(),
             cursor: 0,
             offset: Cell::new(0),
+            decor: None,
+            force_box: false,
         }
+    }
+
+    /// Draws the tree inside a rounded box in `Fancy` mode, plain otherwise.
+    /// The badge defaults to the number of visible rows.
+    #[must_use]
+    pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
+        self.decor = Some(decor);
+        self
+    }
+
+    /// Like [`Self::boxed`] but always draws the box, regardless of the mode.
+    #[must_use]
+    pub fn boxed_always(mut self, decor: chrome::BoxDecor) -> Self {
+        self.decor = Some(decor);
+        self.force_box = true;
+        self
     }
 
     /// The label of the node under the cursor, if any.
@@ -183,7 +203,28 @@ impl TreeView {
                 Line::from(format!("{indent}{marker} {}", node.label))
             })
             .collect();
-        list::render(frame, area, skin, lines, self.cursor, &self.offset);
+        match &self.decor {
+            Some(decor) => list::render_boxed(
+                frame,
+                area,
+                skin,
+                lines,
+                self.cursor,
+                &self.offset,
+                decor,
+                self.force_box,
+            ),
+            None => {
+                list::render(
+                    frame,
+                    area,
+                    skin,
+                    lines,
+                    self.cursor,
+                    &self.offset,
+                );
+            }
+        }
     }
 }
 

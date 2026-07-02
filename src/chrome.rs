@@ -6,8 +6,10 @@
 //! is a no-op frame, so content fills the area exactly as before.
 
 use ratatui::{
+    Frame,
+    layout::Rect,
     style::Modifier,
-    text::Span,
+    text::{Line, Span},
     widgets::{Block, BorderType, Borders, Padding},
 };
 
@@ -78,4 +80,97 @@ fn title_span(skin: &Skin, title: &str) -> Span<'static> {
         format!("\u{2500} {} ", title.trim()),
         style::fg(skin.palette.accent).add_modifier(Modifier::BOLD),
     )
+}
+
+/// The bottom-right badge shown inside a boxed widget's border.
+#[derive(Debug, Clone, Default)]
+pub enum Badge {
+    /// The widget's own automatic count (characters, entries, rows).
+    #[default]
+    Auto,
+    /// A caller-supplied label, overriding the automatic one.
+    Text(String),
+    /// No badge at all.
+    Hidden,
+}
+
+/// Optional decoration for a boxed widget: a caption in the top border and a
+/// badge in the bottom-right border. Shared by every boxable widget through
+/// [`framed_decor`] so the look stays consistent (SSOT).
+#[derive(Debug, Clone, Default)]
+pub struct BoxDecor {
+    pub caption: Option<String>,
+    pub badge: Badge,
+}
+
+impl BoxDecor {
+    /// An empty decoration: no caption, automatic badge.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the caption shown in the top border.
+    #[must_use]
+    pub fn caption(mut self, caption: impl Into<String>) -> Self {
+        self.caption = Some(caption.into());
+        self
+    }
+
+    /// Overrides the bottom-right badge with a fixed label.
+    #[must_use]
+    pub fn badge(mut self, text: impl Into<String>) -> Self {
+        self.badge = Badge::Text(text.into());
+        self
+    }
+
+    /// Hides the bottom-right badge.
+    #[must_use]
+    pub fn no_badge(mut self) -> Self {
+        self.badge = Badge::Hidden;
+        self
+    }
+
+    /// The badge label to show given the widget's automatic value, or `None`
+    /// when hidden (or when `Auto` and the automatic value is empty).
+    fn badge_text<'a>(&'a self, auto: &'a str) -> Option<&'a str> {
+        match &self.badge {
+            Badge::Auto => (!auto.is_empty()).then_some(auto),
+            Badge::Text(text) => Some(text.as_str()),
+            Badge::Hidden => None,
+        }
+    }
+}
+
+/// Renders a rounded accent box with `decor`'s caption inset in the top border
+/// and its badge in the bottom-right border, then returns the inner content
+/// area. The single framing seam for boxable widgets; `auto_badge` is the
+/// widget's own count, used only when the badge is [`Badge::Auto`].
+pub fn framed_decor(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    decor: &BoxDecor,
+    auto_badge: &str,
+) -> Rect {
+    let mut block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(style::fg(skin.palette.accent))
+        .padding(Padding::horizontal(1));
+    if let Some(caption) = &decor.caption {
+        block = block.title(title_span(skin, caption));
+    }
+    if let Some(badge) = decor.badge_text(auto_badge) {
+        block =
+            block.title_bottom(Line::from(badge_span(badge)).right_aligned());
+    }
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    inner
+}
+
+/// The bottom-right badge span: a dim, padded label reading as part of the
+/// bottom border (`─ 12/80 ─╯`).
+fn badge_span(text: &str) -> Span<'static> {
+    Span::styled(format!("\u{2500} {} ", text.trim()), style::dim())
 }

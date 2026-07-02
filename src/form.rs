@@ -27,7 +27,7 @@ use super::{
     terminal::{Tui, TuiEvent},
     textarea::TextArea,
 };
-use crate::theme::{Palette, Skin};
+use crate::theme::Skin;
 
 const MULTILINE_ROWS: u16 = 4;
 const LABEL_WIDTH: u16 = 14;
@@ -213,7 +213,7 @@ impl Form {
             tui.draw(|frame| {
                 render_bg(frame);
                 overlay::dim(frame, overlay::SCRIM_FACTOR);
-                self.render(frame, &skin.palette);
+                self.render(frame, skin);
             })?;
             match tui.read_event()? {
                 TuiEvent::Quit => return Ok(FormOutcome::Quit),
@@ -299,14 +299,13 @@ impl Form {
         };
         let signal = {
             let form: &Form = self;
-            let palette = &skin.palette;
             date_picker::date_picker(
                 tui,
                 skin,
                 " Date ",
                 current,
                 true,
-                |frame| form.render(frame, palette),
+                |frame| form.render(frame, skin),
             )?
         };
         match signal {
@@ -339,7 +338,8 @@ impl Form {
         Ok(())
     }
 
-    fn render(&self, frame: &mut Frame, palette: &Palette) {
+    fn render(&self, frame: &mut Frame, skin: &Skin) {
+        let palette = &skin.palette;
         let outer = frame.area();
         let body: u16 = self.fields.iter().map(Field::height).sum();
         let width = (outer.width * 2 / 3).clamp(40, outer.width);
@@ -371,7 +371,7 @@ impl Form {
             .split(inner);
 
         for (index, field) in self.fields.iter().enumerate() {
-            self.render_field(frame, rects[index], palette, index, field);
+            self.render_field(frame, rects[index], skin, index, field);
         }
         if let Some(footer_rect) = rects.last() {
             let hints = footer::lines(
@@ -387,10 +387,11 @@ impl Form {
         &self,
         frame: &mut Frame,
         rect: Rect,
-        palette: &Palette,
+        skin: &Skin,
         index: usize,
         field: &Field,
     ) {
+        let palette = &skin.palette;
         let focused = index == self.focus;
         if focused {
             frame.render_widget(
@@ -414,7 +415,7 @@ impl Form {
                 Paragraph::new(Line::from(Span::styled(label, style::dim()))),
                 rows[0],
             );
-            area.render(frame, rows[1], palette, focused);
+            area.render(frame, rows[1], skin, focused);
             return;
         }
 
@@ -429,11 +430,7 @@ impl Form {
         let value_width = columns[1].width as usize;
         let value: Line = match &field.state {
             FieldState::Text { input, .. } => {
-                if focused {
-                    input.render(palette, value_width)
-                } else {
-                    Line::from(input.value().to_string())
-                }
+                input.render_line(palette, value_width, focused)
             }
             FieldState::Bool { value, .. } => {
                 Line::from(if *value { "[x]" } else { "[ ]" })

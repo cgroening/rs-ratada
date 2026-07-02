@@ -22,7 +22,7 @@ use ratatui::{
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::{
-    fuzzy,
+    chrome, fuzzy,
     layout::centered_rect,
     modal::ModalSignal,
     nav,
@@ -342,6 +342,8 @@ pub struct Table {
     viewport: Cell<usize>,
     header_style: Style,
     show_status: bool,
+    decor: Option<chrome::BoxDecor>,
+    force_box: bool,
 }
 
 impl Table {
@@ -366,7 +368,26 @@ impl Table {
             viewport: Cell::new(1),
             header_style: style::dim().add_modifier(Modifier::BOLD),
             show_status: true,
+            decor: None,
+            force_box: false,
         }
+    }
+
+    /// Draws the table inside a rounded box in `Fancy` mode, plain otherwise;
+    /// the caption sits in the top border and the row-count badge bottom-right.
+    /// The inner status/filter line is kept.
+    #[must_use]
+    pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
+        self.decor = Some(decor);
+        self
+    }
+
+    /// Like [`Self::boxed`] but always draws the box, regardless of the mode.
+    #[must_use]
+    pub fn boxed_always(mut self, decor: chrome::BoxDecor) -> Self {
+        self.decor = Some(decor);
+        self.force_box = true;
+        self
     }
 
     #[must_use]
@@ -643,6 +664,18 @@ impl Table {
     /// Renders the table: header, multi-line body with selection/cursor styling,
     /// scrollbar and an optional status/filter line.
     pub fn render(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
+        let area = match &self.decor {
+            Some(decor) if self.force_box || skin.is_fancy() => {
+                chrome::framed_decor(
+                    frame,
+                    area,
+                    skin,
+                    decor,
+                    &self.view.len().to_string(),
+                )
+            }
+            _ => area,
+        };
         let bottom = u16::from(self.filtering || self.show_status);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
