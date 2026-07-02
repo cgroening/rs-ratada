@@ -72,6 +72,14 @@ Widgets that support the opt-in boxed style take a `BoxDecor` (caption in the
 top border, an automatic or fixed badge bottom-right), e.g.
 `InputField::new("").max_len(40).boxed(BoxDecor::new().caption("Name"))`.
 
+## Documentation
+
+- [`API.md`](API.md) — a compact index of the public surface (rustdoc via
+  `cargo doc --open` is the authoritative reference).
+- [`DEVELOPMENT.md`](DEVELOPMENT.md) — module layout, conventions and how to add
+  a widget.
+- [`CLAUDE.md`](CLAUDE.md) — the binding style guide.
+
 ## License
 
 MIT
