@@ -21,6 +21,7 @@ pub fn resolve_editor() -> String {
 /// newlines trimmed), or `None` when the editor could not be run.
 ///
 /// # Errors
+///
 /// Returns an I/O error if the temp file or terminal cannot be handled.
 pub fn edit_in_editor(
     tui: &mut Tui,

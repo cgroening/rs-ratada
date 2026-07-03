@@ -62,6 +62,7 @@ impl InputField {
     /// Creates a field pre-filled with `initial`, caret at the end.
     ///
     /// # Examples
+    ///
     /// ```
     /// use ratada::chrome::BoxDecor;
     /// use ratada::input::InputField;

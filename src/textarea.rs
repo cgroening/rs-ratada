@@ -35,6 +35,7 @@ impl TextArea {
     /// Creates a multi-line editor pre-filled with `initial`.
     ///
     /// # Examples
+    ///
     /// ```
     /// use ratada::textarea::TextArea;
     ///

@@ -199,6 +199,7 @@ impl Form {
     /// Runs the form until the user saves, cancels or quits.
     ///
     /// # Errors
+    ///
     /// Propagates terminal I/O errors.
     pub fn run(
         &mut self,

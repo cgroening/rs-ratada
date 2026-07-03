@@ -107,6 +107,7 @@ impl BoxDecor {
     /// An empty decoration: no caption, automatic badge.
     ///
     /// # Examples
+    ///
     /// ```
     /// use ratada::chrome::BoxDecor;
     ///

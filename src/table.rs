@@ -354,6 +354,7 @@ impl Table {
     /// Builds a table over `columns` and `rows`. All rows are initially shown.
     ///
     /// # Examples
+    ///
     /// ```
     /// use ratada::table::{Column, Row, Table};
     ///

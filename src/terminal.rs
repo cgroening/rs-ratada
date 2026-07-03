@@ -47,6 +47,7 @@ impl Tui {
     /// Enters raw mode and the alternate screen with no lifecycle hooks.
     ///
     /// # Errors
+    ///
     /// Returns an I/O error if the terminal cannot be reconfigured.
     pub fn new() -> io::Result<Self> {
         Self::with_hooks(|| {}, || {})
@@ -56,6 +57,7 @@ impl Tui {
     /// screen and `on_leave` whenever it releases it (drop and `suspend`).
     ///
     /// # Errors
+    ///
     /// Returns an I/O error if the terminal cannot be reconfigured.
     pub fn with_hooks(
         on_enter: impl Fn() + 'static,

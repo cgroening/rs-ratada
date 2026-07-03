@@ -43,6 +43,7 @@ pub trait Screen {
 /// [`Screen::tick`] so animated widgets keep moving.
 ///
 /// # Errors
+///
 /// Propagates any error from drawing, reading input or the screen's handler.
 pub fn run<S: Screen>(tui: &mut Tui, screen: &mut S) -> Result<(), S::Error> {
     loop {
