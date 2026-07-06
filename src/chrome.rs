@@ -8,7 +8,7 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Modifier,
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Padding},
 };
@@ -63,23 +63,31 @@ pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
     block
 }
 
-/// An inset title that reads as part of the top border (`╭─ Title ───`). Bold in
-/// `Boxed` mode; the accent color in either.
-fn modal_title(skin: &Skin, title: &str) -> Span<'static> {
-    let mut style = style::fg(skin.palette.accent);
+/// An inset title that reads as part of the top border (`╭─ Title ───`): the
+/// connecting dash keeps the border color so the frame stays uniform, and the
+/// label is accented (bold in `Boxed` mode).
+fn modal_title(skin: &Skin, title: &str) -> Line<'static> {
+    let mut label = style::accent(&skin.palette);
     if skin.is_boxed() {
-        style = style.add_modifier(Modifier::BOLD);
+        label = label.add_modifier(Modifier::BOLD);
     }
-    Span::styled(format!("\u{2500} {} ", title.trim()), style)
+    title_line(skin, title, label)
 }
 
-/// An inset title that reads as part of the top border (`╭─ Title ───`); bold
-/// in the accent color.
-fn title_span(skin: &Skin, title: &str) -> Span<'static> {
-    Span::styled(
-        format!("\u{2500} {} ", title.trim()),
-        style::fg(skin.palette.accent).add_modifier(Modifier::BOLD),
-    )
+/// An inset title that reads as part of the top border (`╭─ Title ───`): the
+/// connecting dash keeps the border color, the label is accented and bold.
+fn title_span(skin: &Skin, title: &str) -> Line<'static> {
+    let label = style::accent(&skin.palette).add_modifier(Modifier::BOLD);
+    title_line(skin, title, label)
+}
+
+/// Builds the inset title line: the leading `─ ` in the border color, then the
+/// trimmed title in `label` style.
+fn title_line(skin: &Skin, title: &str, label: Style) -> Line<'static> {
+    Line::from(vec![
+        Span::styled("\u{2500} ", style::border(&skin.palette)),
+        Span::styled(format!("{} ", title.trim()), label),
+    ])
 }
 
 /// The bottom-right badge shown inside a boxed widget's border.
