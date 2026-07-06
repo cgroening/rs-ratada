@@ -153,6 +153,24 @@ impl Color {
         }
     }
 
+    /// The perceptual distance to `other`, Euclidean in the OKLab space.
+    /// `f32::INFINITY` when either side is `Default` (no comparable point).
+    #[must_use]
+    pub fn distance(self, other: Color) -> f32 {
+        match (self.oklab(), other.oklab()) {
+            (Some(first), Some(second)) => {
+                let lightness = first.lightness - second.lightness;
+                let green_red = first.a - second.a;
+                let blue_yellow = first.b - second.b;
+                (lightness * lightness
+                    + green_red * green_red
+                    + blue_yellow * blue_yellow)
+                    .sqrt()
+            }
+            _ => f32::INFINITY,
+        }
+    }
+
     /// The perceptual lightness (OKLab L, 0..1). `Default` yields `0.0`.
     pub fn luminance(self) -> f32 {
         self.oklab().map_or(0.0, |lab| lab.lightness)
@@ -648,6 +666,17 @@ mod tests {
         let b = Color::hex("#8bd3cd");
         assert_eq!(channels(a.mix(b, 0.0)), channels(a));
         assert_eq!(channels(a.mix(b, 1.0)), channels(b));
+    }
+
+    #[test]
+    fn distance_is_zero_to_self_and_grows_with_difference() {
+        let teal = Color::hex("#8bd3cd");
+        assert!(teal.distance(teal) < 1e-6);
+        let black = Color::hex("#000000");
+        let white = Color::hex("#ffffff");
+        let near = Color::hex("#111111");
+        assert!(black.distance(near) < black.distance(white));
+        assert!(Color::Default.distance(teal).is_infinite());
     }
 
     #[test]
