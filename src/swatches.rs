@@ -272,10 +272,39 @@ fn palette_entries(palette: &Palette) -> Vec<(&'static str, Color)> {
     ]
 }
 
-/// Opens the swatch picker. `↑`/`↓`/`←`/`→` (or `k`/`j`/`h`/`l`) move, `m` cycles
-/// the mode, `[`/`]` shift the grid's lightness, `/` filters the named list, `y`
-/// copies the hex, `Space` returns the color directly, `Enter` opens it in the
-/// color picker, `Esc` cancels. `initial` highlights its nearest color.
+/// Which view the [`color_chooser`] starts in (also its current view).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Start {
+    Swatches,
+    Picker,
+}
+
+/// How the swatch view was left.
+enum SwatchExit {
+    Pick(Color),
+    Edit(Color),
+    Cancel,
+    Quit,
+}
+
+/// The swatch view state that survives a trip through the picker, so returning
+/// (`Esc`/`s`) restores the same mode and grid lightness.
+#[derive(Clone, Copy)]
+struct SwatchMemory {
+    mode: Mode,
+    grid_light: f32,
+}
+
+impl Default for SwatchMemory {
+    fn default() -> Self {
+        Self {
+            mode: Mode::Names,
+            grid_light: GRID_LIGHT_DEFAULT,
+        }
+    }
+}
+
+/// Opens the color chooser starting in the swatch view. See [`color_chooser`].
 pub fn swatch_picker(
     tui: &mut Tui,
     skin: &Skin,
@@ -283,14 +312,99 @@ pub fn swatch_picker(
     initial: Option<Color>,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<Color>> {
+    color_chooser(tui, skin, title, initial, Start::Swatches, render_bg)
+}
+
+/// A combined color chooser that alternates between the swatch view and the full
+/// [`color_picker`]. Swatch view: `↑`/`↓`/`←`/`→` (or `k`/`j`/`h`/`l`) move, `m`
+/// cycles the mode, `[`/`]` shift the grid lightness, `/` filters the named list,
+/// `y` copies the hex, `Space` returns the color directly, `Enter` opens it in the
+/// picker, `Esc` cancels. Picker view: `Enter` confirms, `s` switches to the
+/// swatch view, `Esc` steps back to it (or cancels if the picker was opened
+/// first and no swatch view has been shown). The focused color carries across
+/// both ways, and the swatch view keeps its mode/lightness across a round trip.
+/// `start` picks the initial view; `initial` highlights its nearest color.
+pub fn color_chooser(
+    tui: &mut Tui,
+    skin: &Skin,
+    title: &str,
+    initial: Option<Color>,
+    start: Start,
+    render_bg: impl Fn(&mut Frame),
+) -> io::Result<ModalSignal<Color>> {
+    let mut view = start;
+    let mut color = initial;
+    let mut memory = SwatchMemory::default();
+    // Whether the swatch view has been shown, so the picker's `Esc` (back) knows
+    // whether there is a swatch view to return to (else it cancels).
+    let mut swatch_seen = matches!(start, Start::Swatches);
+    loop {
+        match view {
+            Start::Swatches => {
+                swatch_seen = true;
+                let (exit, updated) =
+                    run_swatch(tui, skin, title, color, memory, &render_bg)?;
+                memory = updated;
+                match exit {
+                    SwatchExit::Pick(chosen) => {
+                        return Ok(ModalSignal::Value(chosen));
+                    }
+                    SwatchExit::Edit(chosen) => {
+                        color = Some(chosen);
+                        view = Start::Picker;
+                    }
+                    SwatchExit::Cancel => return Ok(ModalSignal::Cancelled),
+                    SwatchExit::Quit => return Ok(ModalSignal::Quit),
+                }
+            }
+            Start::Picker => {
+                let exit = color_picker::color_picker(
+                    tui, skin, title, color, &render_bg,
+                )?;
+                match exit {
+                    color_picker::ColorExit::Done(chosen) => {
+                        return Ok(ModalSignal::Value(chosen));
+                    }
+                    color_picker::ColorExit::Swatches(chosen) => {
+                        color = Some(chosen);
+                        view = Start::Swatches;
+                    }
+                    color_picker::ColorExit::Back(chosen) => {
+                        // Back to swatches if we came from there, else cancel.
+                        if swatch_seen {
+                            color = Some(chosen);
+                            view = Start::Swatches;
+                        } else {
+                            return Ok(ModalSignal::Cancelled);
+                        }
+                    }
+                    color_picker::ColorExit::Quit => {
+                        return Ok(ModalSignal::Quit);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Runs one pass of the swatch view, seeded from and reporting back `memory`
+/// (mode + grid lightness) so a round-trip through the picker is seamless.
+fn run_swatch(
+    tui: &mut Tui,
+    skin: &Skin,
+    title: &str,
+    initial: Option<Color>,
+    memory: SwatchMemory,
+    render_bg: impl Fn(&mut Frame),
+) -> io::Result<(SwatchExit, SwatchMemory)> {
     let mut state = State {
-        mode: Mode::Names,
+        mode: memory.mode,
         cursor: 0,
         offset: Cell::new(0),
         cells: Vec::new(),
         cols: 1,
         palette: palette_entries(&skin.palette),
-        grid_light: GRID_LIGHT_DEFAULT,
+        grid_light: memory.grid_light,
         filter: String::new(),
         filtering: false,
     };
@@ -310,16 +424,17 @@ pub fn swatch_picker(
         },
         handle,
     )?;
-    match signal {
-        ModalSignal::Value(Choice::Pick(color)) => {
-            Ok(ModalSignal::Value(color))
-        }
-        ModalSignal::Value(Choice::Edit(color)) => {
-            color_picker::color_picker(tui, skin, title, Some(color), render_bg)
-        }
-        ModalSignal::Cancelled => Ok(ModalSignal::Cancelled),
-        ModalSignal::Quit => Ok(ModalSignal::Quit),
-    }
+    let memory = SwatchMemory {
+        mode: state.mode,
+        grid_light: state.grid_light,
+    };
+    let exit = match signal {
+        ModalSignal::Value(Choice::Pick(color)) => SwatchExit::Pick(color),
+        ModalSignal::Value(Choice::Edit(color)) => SwatchExit::Edit(color),
+        ModalSignal::Cancelled => SwatchExit::Cancel,
+        ModalSignal::Quit => SwatchExit::Quit,
+    };
+    Ok((exit, memory))
 }
 
 /// The modal's `(width, height)` for the current mode. Layout parts: a mode bar,

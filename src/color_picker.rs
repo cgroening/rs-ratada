@@ -225,18 +225,39 @@ impl State {
     }
 }
 
+/// How the color picker was left.
+pub enum ColorExit {
+    /// The user confirmed this color (`Enter`).
+    Done(Color),
+    /// The user stepped back (`Esc`), carrying the current color.
+    Back(Color),
+    /// The user asked to switch to the swatch view (`s`), carrying the color.
+    Swatches(Color),
+    /// The user hard-quit (`Ctrl+Q`).
+    Quit,
+}
+
+/// The picker's popup result: confirmed, stepped back, or switched to swatches,
+/// each carrying the current color.
+enum Outcome {
+    Done(Color),
+    Back(Color),
+    Swatches(Color),
+}
+
 /// Lets the user compose a color. `↑`/`↓` (or `Tab`) move focus across the three
 /// channels, the hex field and the presets; `←`/`→` adjust the focused channel
 /// (hold `Shift` for fine steps), edit the hex field or pick a preset. `m` cycles
-/// the color model (RGB/HSL/OKLCH), `y` copies the hex code, `Enter` returns the
-/// color and `Esc` cancels. `initial` seeds the color (falling back to the accent).
+/// the color model (RGB/HSL/OKLCH), `y` copies the hex code, `s` switches to the
+/// swatch view. `Enter` confirms the color; `Esc` steps back (see [`ColorExit`]).
+/// `initial` seeds the color (falling back to the accent).
 pub fn color_picker(
     tui: &mut Tui,
     skin: &Skin,
     title: &str,
     initial: Option<Color>,
     render_bg: impl Fn(&mut Frame),
-) -> io::Result<ModalSignal<Color>> {
+) -> io::Result<ColorExit> {
     let color = initial
         .filter(|c| c.rgb().is_some())
         .or_else(|| {
@@ -254,7 +275,7 @@ pub fn color_picker(
         presets: preset_colors(&skin.palette),
         preset: 0,
     };
-    popup(
+    let signal = popup(
         tui,
         &mut state,
         |area, state: &State| {
@@ -268,7 +289,16 @@ pub fn color_picker(
             frame.render_widget(Paragraph::new(lines), inner);
         },
         handle,
-    )
+    )?;
+    Ok(match signal {
+        ModalSignal::Value(Outcome::Done(color)) => ColorExit::Done(color),
+        // `Esc` maps to a step-back; `Cancelled` cannot occur (no such path).
+        ModalSignal::Value(Outcome::Back(color)) => ColorExit::Back(color),
+        ModalSignal::Value(Outcome::Swatches(color)) => {
+            ColorExit::Swatches(color)
+        }
+        ModalSignal::Cancelled | ModalSignal::Quit => ColorExit::Quit,
+    })
 }
 
 /// The palette colors offered as quick-start presets.
@@ -289,10 +319,14 @@ fn preset_colors(palette: &Palette) -> Vec<Color> {
 fn handle(
     state: &mut State,
     key: crossterm::event::KeyEvent,
-) -> PopupFlow<Color> {
+) -> PopupFlow<Outcome> {
     match key.code {
-        KeyCode::Enter => return PopupFlow::Done(state.current_color()),
-        KeyCode::Esc => return PopupFlow::Cancelled,
+        KeyCode::Enter => {
+            return PopupFlow::Done(Outcome::Done(state.current_color()));
+        }
+        KeyCode::Esc => {
+            return PopupFlow::Done(Outcome::Back(state.current_color()));
+        }
         KeyCode::Tab | KeyCode::Down => {
             state.cycle_focus(1);
             return PopupFlow::Continue;
@@ -314,7 +348,7 @@ fn handle(
 fn handle_hex(
     state: &mut State,
     key: crossterm::event::KeyEvent,
-) -> PopupFlow<Color> {
+) -> PopupFlow<Outcome> {
     if state.hex.handle_key(key)
         && let Some(color) = parse_color(state.hex.value())
     {
@@ -328,7 +362,7 @@ fn handle_channel(
     state: &mut State,
     index: usize,
     key: crossterm::event::KeyEvent,
-) -> PopupFlow<Color> {
+) -> PopupFlow<Outcome> {
     let channel = state.model.channels()[index];
     let step = if key.modifiers.contains(KeyModifiers::SHIFT) {
         1.0
@@ -344,6 +378,9 @@ fn handle_channel(
         KeyCode::PageDown => state.adjust(index, channel.page()),
         KeyCode::Char('m') => state.set_model(state.model.next()),
         KeyCode::Char('y') => copy_hex(state),
+        KeyCode::Char('s') => {
+            return PopupFlow::Done(Outcome::Swatches(state.current_color()));
+        }
         _ => {}
     }
     PopupFlow::Continue
@@ -353,7 +390,7 @@ fn handle_channel(
 fn handle_presets(
     state: &mut State,
     key: crossterm::event::KeyEvent,
-) -> PopupFlow<Color> {
+) -> PopupFlow<Outcome> {
     match key.code {
         KeyCode::Left | KeyCode::Char('h') => {
             state.preset = state.preset.saturating_sub(1);
@@ -367,6 +404,9 @@ fn handle_presets(
         }
         KeyCode::Char('m') => state.set_model(state.model.next()),
         KeyCode::Char('y') => copy_hex(state),
+        KeyCode::Char('s') => {
+            return PopupFlow::Done(Outcome::Swatches(state.current_color()));
+        }
         _ => {}
     }
     PopupFlow::Continue
@@ -528,19 +568,24 @@ fn hint_lines(
             ("m", "model"),
             ("\u{2191}/\u{2193}", "focus"),
             ("enter", "ok"),
+            ("esc", "back"),
         ],
         Focus::Presets => &[
             ("\u{2190}/\u{2192}", "choose"),
             ("m", "model"),
+            ("s", "swatches"),
             ("y", "copy"),
             ("enter", "ok"),
+            ("esc", "back"),
         ],
         Focus::Channel(_) => &[
             ("\u{2190}/\u{2192}", "adjust"),
             ("shift", "fine"),
             ("m", "model"),
+            ("s", "swatches"),
             ("y", "copy"),
             ("enter", "ok"),
+            ("esc", "back"),
         ],
     };
     shortcut_hints::lines(hints, palette.accent_dim, width)
@@ -557,7 +602,13 @@ fn label_style(palette: &Palette, focused: bool) -> Style {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyEvent, KeyModifiers};
+
     use super::*;
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
 
     fn state_from(color: Color) -> State {
         State {
@@ -582,6 +633,29 @@ mod tests {
             assert!(g.abs_diff(gg) <= 1, "{name} G: {g} vs {gg}");
             assert!(b.abs_diff(bb) <= 1, "{name} B: {b} vs {bb}");
         }
+    }
+
+    #[test]
+    fn enter_confirms_and_esc_steps_back() {
+        let mut state = state_from(Color::hex("#8bd3cd"));
+        assert!(matches!(
+            handle(&mut state, key(KeyCode::Enter)),
+            PopupFlow::Done(Outcome::Done(_)),
+        ));
+        assert!(matches!(
+            handle(&mut state, key(KeyCode::Esc)),
+            PopupFlow::Done(Outcome::Back(_)),
+        ));
+    }
+
+    #[test]
+    fn s_switches_to_swatches_from_a_channel() {
+        let mut state = state_from(Color::hex("#8bd3cd"));
+        assert!(matches!(state.focus, Focus::Channel(_)));
+        assert!(matches!(
+            handle(&mut state, key(KeyCode::Char('s'))),
+            PopupFlow::Done(Outcome::Swatches(_)),
+        ));
     }
 
     #[test]
