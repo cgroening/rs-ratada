@@ -23,7 +23,7 @@ types.
 
 ## Theme (`ratada::theme`)
 
-- `enum Color { Default, Rgb(u8,u8,u8) }` + `parse_color` (`#rgb`/`#rrggbb`/`rgb(r,g,b)`/named); `Color::{rgb, to_hex, darken, lighten, vivid, dim, shade, mix, luminance, readable_on}` — OKLCH-based variants (hue-stable).
+- `enum Color { Default, Rgb(u8,u8,u8) }`; constructors `Color::hex("#rrggbb")` (const, compile-time checked) and `parse_color` (`#rgb`/`#rrggbb`/`rgb(r,g,b)`/named, runtime); `Color::{rgb, to_hex, darken, lighten, vivid, dim, shade, mix, luminance, readable_on}` — OKLCH-based variants (hue-stable).
 - `struct Palette` (19 colors: accent, accent_dim, accent_vivid, foreground, foreground_dim, background, header, footer, panel, surface, selection, cursor, input_bg, input_bg_active, border, success, warning, error, info) + `Palette::resolve(ThemeColors, &ColorOverrides)`, `Palette::entries() -> Vec<(name, Color)>`, `Palette::KEYS`. The whole set is declared once via a `define_palette!` macro (SSOT).
 - `struct ColorOverrides<'a>` — per-color override strings; `ColorOverrides::from_lookup(|name| ...)` builds it from a `name -> value` lookup.
 - `struct Skin { palette, glyphs, mode }` + `new`, `is_boxed`, `is_panels`.

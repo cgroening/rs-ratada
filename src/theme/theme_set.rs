@@ -13,13 +13,13 @@ use super::color::Color;
 pub const DEFAULT_THEME: &str = "default";
 
 /// Universal defaults for colors a (custom) theme omits.
-const DEFAULT_ACCENT: Color = Color::Rgb(0x8b, 0xd3, 0xcd);
-const DEFAULT_BACKGROUND: Color = Color::Rgb(0x15, 0x15, 0x15);
-const DEFAULT_FOREGROUND: Color = Color::Rgb(0xe5, 0xe5, 0xe5);
-const DEFAULT_SUCCESS: Color = Color::Rgb(0xa3, 0xc9, 0x95);
-const DEFAULT_WARNING: Color = Color::Rgb(0xde, 0xd4, 0x83);
-const DEFAULT_ERROR: Color = Color::Rgb(0xd5, 0x7b, 0x76);
-const DEFAULT_INFO: Color = Color::Rgb(0x7f, 0xb3, 0xd4);
+const DEFAULT_ACCENT: Color = Color::hex("#8bd3cd");
+const DEFAULT_BACKGROUND: Color = Color::hex("#151515");
+const DEFAULT_FOREGROUND: Color = Color::hex("#e5e5e5");
+const DEFAULT_SUCCESS: Color = Color::hex("#a3c995");
+const DEFAULT_WARNING: Color = Color::hex("#ded483");
+const DEFAULT_ERROR: Color = Color::hex("#d57b76");
+const DEFAULT_INFO: Color = Color::hex("#7fb3d4");
 
 /// How omitted neutral backgrounds are derived from `background` (`OKLab` L step).
 const HEADER_DARKEN: f32 = 0.03;
@@ -105,43 +105,43 @@ impl ThemeColors {
     }
 }
 
+/// The built-in `default` theme (teal accent on a near-black background).
+const DEFAULT_COLORS: ThemeColors = ThemeColors {
+    accent: Color::hex("#8bd3cd"),
+    foreground: Color::hex("#e5e5e5"),
+    background: Color::hex("#151515"),
+    header: Color::hex("#101010"),
+    footer: Color::hex("#101010"),
+    panel: Color::hex("#1b1b1b"),
+    surface: Color::hex("#3e3e3e"),
+    border: Color::hex("#4a4a4a"),
+    success: Color::hex("#a3c995"),
+    warning: Color::hex("#ded483"),
+    error: Color::hex("#d57b76"),
+    info: Color::hex("#7fb3d4"),
+};
+
+/// The built-in `monochrome` theme (grayscale).
+const MONOCHROME_COLORS: ThemeColors = ThemeColors {
+    accent: Color::hex("#c0c0c0"),
+    foreground: Color::hex("#e5e5e5"),
+    background: Color::hex("#101010"),
+    header: Color::hex("#0a0a0a"),
+    footer: Color::hex("#0a0a0a"),
+    panel: Color::hex("#1a1a1a"),
+    surface: Color::hex("#333333"),
+    border: Color::hex("#444444"),
+    success: Color::hex("#b8b8b8"),
+    warning: Color::hex("#d0d0d0"),
+    error: Color::hex("#9a9a9a"),
+    info: Color::hex("#a8a8a8"),
+};
+
 /// The built-in themes, in cycling order. The first entry is the default.
 fn builtin_themes() -> Vec<(String, ThemeColors)> {
     vec![
-        (
-            DEFAULT_THEME.to_string(),
-            ThemeColors {
-                accent: Color::Rgb(0x8b, 0xd3, 0xcd),
-                foreground: Color::Rgb(0xe5, 0xe5, 0xe5),
-                background: Color::Rgb(0x15, 0x15, 0x15),
-                header: Color::Rgb(0x10, 0x10, 0x10),
-                footer: Color::Rgb(0x10, 0x10, 0x10),
-                panel: Color::Rgb(0x1b, 0x1b, 0x1b),
-                surface: Color::Rgb(0x3e, 0x3e, 0x3e),
-                border: Color::Rgb(0x4a, 0x4a, 0x4a),
-                success: Color::Rgb(0xa3, 0xc9, 0x95),
-                warning: Color::Rgb(0xde, 0xd4, 0x83),
-                error: Color::Rgb(0xd5, 0x7b, 0x76),
-                info: Color::Rgb(0x7f, 0xb3, 0xd4),
-            },
-        ),
-        (
-            "monochrome".to_string(),
-            ThemeColors {
-                accent: Color::Rgb(0xc0, 0xc0, 0xc0),
-                foreground: Color::Rgb(0xe5, 0xe5, 0xe5),
-                background: Color::Rgb(0x10, 0x10, 0x10),
-                header: Color::Rgb(0x0a, 0x0a, 0x0a),
-                footer: Color::Rgb(0x0a, 0x0a, 0x0a),
-                panel: Color::Rgb(0x1a, 0x1a, 0x1a),
-                surface: Color::Rgb(0x33, 0x33, 0x33),
-                border: Color::Rgb(0x44, 0x44, 0x44),
-                success: Color::Rgb(0xb8, 0xb8, 0xb8),
-                warning: Color::Rgb(0xd0, 0xd0, 0xd0),
-                error: Color::Rgb(0x9a, 0x9a, 0x9a),
-                info: Color::Rgb(0xa8, 0xa8, 0xa8),
-            },
-        ),
+        (DEFAULT_THEME.to_string(), DEFAULT_COLORS),
+        ("monochrome".to_string(), MONOCHROME_COLORS),
     ]
 }
 
@@ -227,12 +227,12 @@ mod tests {
     #[test]
     fn default_theme_has_the_specified_colors() {
         let default = ThemeRegistry::builtin().resolve("default");
-        assert_eq!(default.accent, Color::Rgb(0x8b, 0xd3, 0xcd));
-        assert_eq!(default.foreground, Color::Rgb(0xe5, 0xe5, 0xe5));
-        assert_eq!(default.background, Color::Rgb(0x15, 0x15, 0x15));
-        assert_eq!(default.header, Color::Rgb(0x10, 0x10, 0x10));
-        assert_eq!(default.surface, Color::Rgb(0x3e, 0x3e, 0x3e));
-        assert_eq!(default.error, Color::Rgb(0xd5, 0x7b, 0x76));
+        assert_eq!(default.accent, Color::hex("#8bd3cd"));
+        assert_eq!(default.foreground, Color::hex("#e5e5e5"));
+        assert_eq!(default.background, Color::hex("#151515"));
+        assert_eq!(default.header, Color::hex("#101010"));
+        assert_eq!(default.surface, Color::hex("#3e3e3e"));
+        assert_eq!(default.error, Color::hex("#d57b76"));
     }
 
     #[test]
@@ -284,8 +284,8 @@ mod tests {
     #[test]
     fn derived_theme_fills_neutrals_and_semantics() {
         let theme = ThemeColors::from_accent(
-            Color::Rgb(0x8b, 0xd3, 0xcd),
-            Color::Rgb(0x15, 0x15, 0x15),
+            Color::hex("#8bd3cd"),
+            Color::hex("#151515"),
         );
         assert_eq!(theme.foreground, DEFAULT_FOREGROUND);
         assert_eq!(theme.success, DEFAULT_SUCCESS);

@@ -21,8 +21,8 @@ const SHADE_STEP: f32 = 0.08;
 const READABLE_CONTRAST: f32 = 0.4;
 /// The dark/light fallbacks [`Color::readable_on`] returns when `self` is too
 /// low-contrast for the background.
-const READABLE_DARK: Color = Color::Rgb(0x15, 0x15, 0x15);
-const READABLE_LIGHT: Color = Color::Rgb(0xe5, 0xe5, 0xe5);
+const READABLE_DARK: Color = Color::hex("#151515");
+const READABLE_LIGHT: Color = Color::hex("#e5e5e5");
 
 /// A color value, independent of any UI framework. `Default` means "use the
 /// surrounding default" (e.g. the terminal background).
@@ -51,6 +51,36 @@ impl Color {
         }
     }
 
+    /// Builds a color from an HTML-style `"#rrggbb"` string. Being `const`, it
+    /// works in theme literals; a malformed literal fails at compile time (in
+    /// const position) or panics at runtime otherwise. For the short `#rgb`
+    /// form, `rgb(...)` or named colors, use [`parse_color`] instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ratada::theme::Color;
+    /// const ACCENT: Color = Color::hex("#8bd3cd");
+    /// assert_eq!(ACCENT.to_hex(), "#8bd3cd");
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics when `value` is not exactly `"#rrggbb"` with six hex digits.
+    #[must_use]
+    pub const fn hex(value: &str) -> Color {
+        let bytes = value.as_bytes();
+        assert!(
+            bytes.len() == 7 && bytes[0] == b'#',
+            "hex color must be \"#rrggbb\"",
+        );
+        Color::Rgb(
+            (nibble(bytes[1]) << 4) | nibble(bytes[2]),
+            (nibble(bytes[3]) << 4) | nibble(bytes[4]),
+            (nibble(bytes[5]) << 4) | nibble(bytes[6]),
+        )
+    }
+
     /// A darker variant: lowers OKLab lightness by `amount` (0..1). `Default` is
     /// unchanged.
     ///
@@ -58,7 +88,7 @@ impl Color {
     ///
     /// ```
     /// use ratada::theme::Color;
-    /// let base = Color::Rgb(0x8b, 0xd3, 0xcd);
+    /// let base = Color::hex("#8bd3cd");
     /// assert!(base.darken(0.2).luminance() < base.luminance());
     /// ```
     #[must_use]
@@ -271,6 +301,17 @@ fn to_channel(linear: f32) -> u8 {
     (linear_to_srgb(linear.clamp(0.0, 1.0)) * 255.0).round() as u8
 }
 
+/// The value of a single hex digit; panics on a non-hex byte (see
+/// [`Color::hex`]).
+const fn nibble(byte: u8) -> u8 {
+    match byte {
+        b'0'..=b'9' => byte - b'0',
+        b'a'..=b'f' => byte - b'a' + 10,
+        b'A'..=b'F' => byte - b'A' + 10,
+        _ => panic!("hex color has a non-hex digit"),
+    }
+}
+
 /// Parses a color from a hex string (`#rgb` or `#rrggbb`), an `rgb(r, g, b)`
 /// triple, or a named palette entry. Returns `None` for anything else.
 pub fn parse_color(value: &str) -> Option<Color> {
@@ -345,6 +386,18 @@ mod tests {
     }
 
     #[test]
+    fn hex_builds_from_a_six_digit_string() {
+        assert_eq!(Color::hex("#8bd3cd"), Color::Rgb(139, 211, 205));
+        assert_eq!(Color::hex("#FFFFFF"), Color::Rgb(255, 255, 255));
+    }
+
+    #[test]
+    #[should_panic(expected = "non-hex digit")]
+    fn hex_panics_on_a_bad_literal() {
+        let _ = Color::hex("#zz11ff");
+    }
+
+    #[test]
     fn parses_three_and_six_digit_hex() {
         assert_eq!(parse_color("#6dd0ff"), Some(Color::Rgb(109, 208, 255)));
         assert_eq!(parse_color("#fff"), Some(Color::Rgb(255, 255, 255)));
@@ -375,10 +428,10 @@ mod tests {
     #[test]
     fn oklab_roundtrip_is_near_identity() {
         for color in [
-            Color::Rgb(0x8b, 0xd3, 0xcd),
-            Color::Rgb(0x15, 0x15, 0x15),
-            Color::Rgb(0xe5, 0xe5, 0xe5),
-            Color::Rgb(0xd5, 0x7b, 0x76),
+            Color::hex("#8bd3cd"),
+            Color::hex("#151515"),
+            Color::hex("#e5e5e5"),
+            Color::hex("#d57b76"),
         ] {
             let (r, g, b) = channels(color);
             let (rr, gg, bb) = channels(color.oklab().unwrap().to_color());
@@ -390,14 +443,14 @@ mod tests {
 
     #[test]
     fn darken_lowers_and_lighten_raises_luminance() {
-        let base = Color::Rgb(0x8b, 0xd3, 0xcd);
+        let base = Color::hex("#8bd3cd");
         assert!(base.darken(0.2).luminance() < base.luminance());
         assert!(base.lighten(0.2).luminance() > base.luminance());
     }
 
     #[test]
     fn vivid_raises_and_dim_lowers_chroma() {
-        let base = Color::Rgb(0x8b, 0xd3, 0xcd);
+        let base = Color::hex("#8bd3cd");
         assert!(
             base.vivid(0.3).oklch().unwrap().chroma
                 > base.oklch().unwrap().chroma
@@ -410,8 +463,8 @@ mod tests {
 
     #[test]
     fn mix_endpoints_return_the_sides() {
-        let a = Color::Rgb(0x15, 0x15, 0x15);
-        let b = Color::Rgb(0x8b, 0xd3, 0xcd);
+        let a = Color::hex("#151515");
+        let b = Color::hex("#8bd3cd");
         assert_eq!(channels(a.mix(b, 0.0)), channels(a));
         assert_eq!(channels(a.mix(b, 1.0)), channels(b));
     }
@@ -419,8 +472,8 @@ mod tests {
     #[test]
     fn readable_on_picks_a_contrasting_fallback() {
         // Label on its own swatch: no self-contrast, so a fallback is chosen.
-        let light = Color::Rgb(0xe5, 0xe5, 0xe5);
-        let dark = Color::Rgb(0x15, 0x15, 0x15);
+        let light = Color::hex("#e5e5e5");
+        let dark = Color::hex("#151515");
         assert_eq!(light.readable_on(light), READABLE_DARK);
         assert_eq!(dark.readable_on(dark), READABLE_LIGHT);
     }
