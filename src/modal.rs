@@ -3,9 +3,7 @@
 //! backdrop, box centering and event loop live in [`overlay`], not here.
 //! Destructive actions go through [`confirm`].
 //!
-//! Every modal takes a [`Skin`]: the palette drives the colors, while the
-//! [`Mode`](crate::theme::Mode) decides chrome details (the `Boxed` mode insets
-//! the body with a little padding; `Minimal` stays compact).
+//! Every modal takes a [`Skin`], whose palette drives the colors.
 
 use std::{collections::HashSet, io};
 
@@ -52,7 +50,7 @@ pub fn confirm(
         &mut state,
         |area, (): &()| {
             let width = (prompt.width() as u16 + 6).clamp(28, area.width);
-            centered_rect(width, modal_height(skin, 5), area)
+            centered_rect(width, 5, area)
         },
         |frame, (): &()| render_bg(frame),
         |frame, rect, (): &()| render_confirm(frame, skin, prompt, rect),
@@ -79,7 +77,7 @@ pub fn input(
     popup(
         tui,
         &mut state,
-        |area, _| input_area(skin, area),
+        |area, _| input_area(area),
         |frame, _| render_bg(frame),
         |frame, rect, field: &TextField| {
             render_input(frame, skin, title, &field.text, &field.cursor, rect);
@@ -310,7 +308,7 @@ pub fn number_input(
     popup(
         tui,
         &mut text,
-        |area, _| input_area(skin, area),
+        |area, _| input_area(area),
         |frame, _| render_bg(frame),
         |frame, rect, text: &String| {
             let cursor = TextCursor::at_end(text);
@@ -348,7 +346,7 @@ pub fn message(
         &mut state,
         |area, (): &()| {
             let width = (body.width() as u16 + 6).clamp(28, area.width);
-            centered_rect(width, modal_height(skin, 5), area)
+            centered_rect(width, 5, area)
         },
         |frame, (): &()| render_bg(frame),
         |frame, rect, (): &()| render_message(frame, skin, title, body, rect),
@@ -551,15 +549,9 @@ fn picker_area(area: Rect, item_count: usize) -> Rect {
 }
 
 /// The popup rect for the single-line text inputs.
-fn input_area(skin: &Skin, area: Rect) -> Rect {
+fn input_area(area: Rect) -> Rect {
     let width = area.width.saturating_sub(8).clamp(20, 60);
-    centered_rect(width, modal_height(skin, 5), area)
-}
-
-/// The modal height for `base` content rows, with one extra row in `Boxed` mode
-/// to make room for the vertical padding.
-fn modal_height(skin: &Skin, base: u16) -> u16 {
-    base + u16::from(skin.is_boxed())
+    centered_rect(width, 5, area)
 }
 
 fn hint(

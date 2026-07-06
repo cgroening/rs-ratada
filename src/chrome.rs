@@ -1,9 +1,9 @@
-//! Shared chrome: the framing that differs between the display modes.
+//! Shared chrome: the borderless view panels and the modal frame.
 //!
-//! Centralises the one decision "framed or not" so views and widgets never
-//! branch on [`Mode`](crate::theme::Mode) inline. In `Boxed` mode a [`panel`]
-//! is a rounded, accent-bordered box with an inset title; in `Minimal` mode it
-//! is a no-op frame, so content fills the area exactly as before.
+//! Centralises framing so views and widgets never build blocks inline. A
+//! [`panel`] is a borderless block whose content is inset one cell; a
+//! [`modal_block`] is a rounded, bordered box with a filled background and an
+//! inset title.
 
 use ratatui::{
     Frame,
@@ -16,62 +16,35 @@ use ratatui::{
 use super::style;
 use crate::theme::Skin;
 
-/// The container block for a view section. `Boxed` returns a rounded accent box
-/// with `title`; `Minimal` returns an empty block whose inner area equals the
-/// outer one, so existing layouts are unchanged. `Panels` returns a borderless
-/// block that just insets its content by one cell all around, so a filled
-/// column (see [`menu_panel`]) keeps its content off the panel edges.
-pub fn panel(skin: &Skin, title: &str) -> Block<'static> {
-    if skin.is_panels() {
-        return Block::default().padding(Padding::uniform(1));
-    }
-    if !skin.is_boxed() {
-        return Block::default();
-    }
+/// The container block for a view section: a borderless block that insets its
+/// content by one cell all around, so a filled column (see [`menu_panel`]) keeps
+/// its content off the panel edges.
+pub fn panel() -> Block<'static> {
+    Block::default().padding(Padding::uniform(1))
+}
+
+/// Like [`panel`], but filled with the `panel` color so a list/menu column reads
+/// as its own panel against the body.
+pub fn menu_panel(skin: &Skin) -> Block<'static> {
+    panel().style(style::bg(skin.palette.panel))
+}
+
+/// The shared modal frame: a rounded, bordered box with a filled background and
+/// an inset title. Used by every blocking modal widget.
+pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(style::border(&skin.palette))
-        .padding(Padding::horizontal(1))
-        .title(title_span(skin, title))
-}
-
-/// Like [`panel`], but in `Panels` mode the box is filled with the `surface`
-/// color so a list/menu column reads as its own panel against the body.
-pub fn menu_panel(skin: &Skin, title: &str) -> Block<'static> {
-    let block = panel(skin, title);
-    if skin.is_panels() {
-        block.style(style::bg(skin.palette.panel))
-    } else {
-        block
-    }
-}
-
-/// The shared modal frame: a rounded accent border with a filled background and
-/// an inset title. Unlike [`panel`], a modal is always framed; in `Boxed` mode
-/// the body is padded and the title bold. Used by every blocking modal widget.
-pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
-    let mut block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(style::border(&skin.palette))
         .style(style::bg(skin.palette.background))
-        .title(modal_title(skin, title));
-    if skin.is_boxed() {
-        block = block.padding(Padding::horizontal(1));
-    }
-    block
+        .title(modal_title(skin, title))
 }
 
 /// An inset title that reads as part of the top border (`╭─ Title ───`): the
 /// connecting dash keeps the border color so the frame stays uniform, and the
-/// label is accented (bold in `Boxed` mode).
+/// label is accented.
 fn modal_title(skin: &Skin, title: &str) -> Line<'static> {
-    let mut label = style::accent(&skin.palette);
-    if skin.is_boxed() {
-        label = label.add_modifier(Modifier::BOLD);
-    }
-    title_line(skin, title, label)
+    title_line(skin, title, style::accent(&skin.palette))
 }
 
 /// An inset title that reads as part of the top border (`╭─ Title ───`): the

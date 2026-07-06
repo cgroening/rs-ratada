@@ -46,7 +46,7 @@ pub fn slider(
         &mut value,
         |area, _| {
             let rows = body_lines(skin, &cfg, cfg.initial).len() as u16 + 2;
-            centered_rect(overlay::box_width(BOX_WIDTH, skin), rows, area)
+            centered_rect(BOX_WIDTH, rows, area)
         },
         |frame, _| render_bg(frame),
         |frame, rect, value: &i64| {

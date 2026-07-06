@@ -56,7 +56,6 @@ pub struct TreeView {
     cursor: usize,
     offset: Cell<usize>,
     decor: Option<chrome::BoxDecor>,
-    force_box: bool,
 }
 
 impl TreeView {
@@ -68,32 +67,15 @@ impl TreeView {
             cursor: 0,
             offset: Cell::new(0),
             decor: None,
-            force_box: false,
         }
     }
 
-    /// Draws the tree inside a rounded box in `Boxed` mode, plain otherwise.
-    /// The badge defaults to the number of visible rows.
+    /// Draws the tree inside a rounded box with the given caption/badge (see
+    /// [`chrome::BoxDecor`]); the badge defaults to the number of visible rows.
+    /// Omit it for a plain tree.
     #[must_use]
     pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
         self.decor = Some(decor);
-        self
-    }
-
-    /// Like [`Self::boxed`] but always draws the box, regardless of the mode.
-    #[must_use]
-    pub fn boxed_always(mut self, decor: chrome::BoxDecor) -> Self {
-        self.decor = Some(decor);
-        self.force_box = true;
-        self
-    }
-
-    /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
-    /// decoration even in `Boxed` mode.
-    #[must_use]
-    pub fn minimal(mut self) -> Self {
-        self.decor = None;
-        self.force_box = false;
         self
     }
 
@@ -221,7 +203,7 @@ impl TreeView {
                 self.cursor,
                 &self.offset,
                 decor,
-                self.force_box,
+                true,
             ),
             None => {
                 list::render(

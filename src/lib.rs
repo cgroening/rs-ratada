@@ -4,8 +4,8 @@
 //! building blocks over `ratatui`/`crossterm` (plus `unicode-width`,
 //! `nucleo-matcher`, `chrono`, `log`) and never depends on any application
 //! types. The [`theme`] layer supplies the framework-agnostic styling
-//! vocabulary (a [`theme::Palette`], [`theme::Glyphs`] and [`theme::Mode`],
-//! bundled into a [`theme::Skin`]); the host supplies lifecycle hooks (see
+//! vocabulary (a [`theme::Palette`] and [`theme::Glyphs`], bundled into a
+//! [`theme::Skin`]); the host supplies lifecycle hooks (see
 //! [`terminal::Tui::with_hooks`]). Theme colors are mapped to ratatui styles in
 //! [`style`].
 //!

@@ -46,7 +46,7 @@ pub fn date_picker(
         |area, &cursor| {
             let rows =
                 body_lines(&skin.palette, cursor, allow_clear).len() as u16 + 2;
-            centered_rect(overlay::box_width(BOX_WIDTH, skin), rows, area)
+            centered_rect(BOX_WIDTH, rows, area)
         },
         |frame, _| render_bg(frame),
         |frame, rect, &cursor| {

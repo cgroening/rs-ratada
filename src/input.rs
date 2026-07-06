@@ -55,7 +55,6 @@ pub struct InputField {
     pub cursor: TextCursor,
     max_len: Option<usize>,
     decor: Option<chrome::BoxDecor>,
-    force_box: bool,
 }
 
 impl InputField {
@@ -88,28 +87,11 @@ impl InputField {
         self
     }
 
-    /// Draws the field inside a rounded box in `Boxed` mode (see [`Skin`]),
-    /// plain otherwise. See [`chrome::BoxDecor`] for caption/badge.
+    /// Draws the field inside a rounded box with the given caption/badge (see
+    /// [`chrome::BoxDecor`]); omit it for a plain field.
     #[must_use]
     pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
         self.decor = Some(decor);
-        self
-    }
-
-    /// Like [`Self::boxed`] but always draws the box, regardless of the mode.
-    #[must_use]
-    pub fn boxed_always(mut self, decor: chrome::BoxDecor) -> Self {
-        self.decor = Some(decor);
-        self.force_box = true;
-        self
-    }
-
-    /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
-    /// decoration even in `Boxed` mode.
-    #[must_use]
-    pub fn minimal(mut self) -> Self {
-        self.decor = None;
-        self.force_box = false;
         self
     }
 
@@ -136,8 +118,8 @@ impl InputField {
     }
 
     /// Renders the field into `area`: a filled background (active tint when
-    /// `focused`) plus the text line, wrapped in a box when decorated and in
-    /// `Boxed` mode (or forced via [`Self::boxed_always`]).
+    /// `focused`) plus the text line, wrapped in a box when decorated via
+    /// [`Self::boxed`].
     pub fn render(
         &self,
         frame: &mut Frame,
@@ -146,10 +128,10 @@ impl InputField {
         focused: bool,
     ) {
         let inner = match &self.decor {
-            Some(decor) if self.force_box || skin.is_boxed() => {
+            Some(decor) => {
                 chrome::framed_decor(frame, area, skin, decor, &self.badge())
             }
-            _ => area,
+            None => area,
         };
         let line =
             self.render_line(&skin.palette, inner.width as usize, focused);

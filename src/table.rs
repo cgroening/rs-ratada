@@ -347,7 +347,6 @@ pub struct Table {
     header_style: Style,
     show_status: bool,
     decor: Option<chrome::BoxDecor>,
-    force_box: bool,
 }
 
 impl Table {
@@ -388,33 +387,16 @@ impl Table {
             header_style: style::dim().add_modifier(Modifier::BOLD),
             show_status: true,
             decor: None,
-            force_box: false,
         }
     }
 
-    /// Draws the table inside a rounded box in `Boxed` mode, plain otherwise;
-    /// the caption sits in the top border and the row-count badge bottom-right.
-    /// The inner status/filter line is kept.
+    /// Draws the table inside a rounded box with the given caption/badge (see
+    /// [`chrome::BoxDecor`]); the caption sits in the top border and the
+    /// row-count badge bottom-right. The inner status/filter line is kept. Omit
+    /// it for a plain table.
     #[must_use]
     pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
         self.decor = Some(decor);
-        self
-    }
-
-    /// Like [`Self::boxed`] but always draws the box, regardless of the mode.
-    #[must_use]
-    pub fn boxed_always(mut self, decor: chrome::BoxDecor) -> Self {
-        self.decor = Some(decor);
-        self.force_box = true;
-        self
-    }
-
-    /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
-    /// decoration even in `Boxed` mode.
-    #[must_use]
-    pub fn minimal(mut self) -> Self {
-        self.decor = None;
-        self.force_box = false;
         self
     }
 
@@ -681,16 +663,14 @@ impl Table {
     /// scrollbar and an optional status/filter line.
     pub fn render(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
         let area = match &self.decor {
-            Some(decor) if self.force_box || skin.is_boxed() => {
-                chrome::framed_decor(
-                    frame,
-                    area,
-                    skin,
-                    decor,
-                    &self.view.len().to_string(),
-                )
-            }
-            _ => area,
+            Some(decor) => chrome::framed_decor(
+                frame,
+                area,
+                skin,
+                decor,
+                &self.view.len().to_string(),
+            ),
+            None => area,
         };
         let bottom = u16::from(self.filtering || self.show_status);
         let chunks = Layout::default()
@@ -978,15 +958,9 @@ impl Table {
     }
 }
 
-/// The cursor-row highlight: a bold accent bar in `Boxed`, a tint in `Minimal`.
+/// The cursor-row highlight: a subtle `selection` tint.
 fn cursor_highlight(skin: &Skin) -> Style {
-    if skin.is_boxed() {
-        style::bg(skin.palette.accent_dim)
-            .fg(style::to_ratatui(skin.palette.accent))
-            .add_modifier(Modifier::BOLD)
-    } else {
-        style::bg(skin.palette.selection)
-    }
+    style::bg(skin.palette.selection)
 }
 
 /// Pads `text` to `width` display columns on the side opposite `align`.

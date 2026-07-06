@@ -1,8 +1,8 @@
 //! Named color themes and the registry that resolves a theme name to colors.
 //!
-//! A theme is the color axis of the UI, independent of the layout
-//! [`Mode`](super::Mode). Built-in themes live here; the host may add custom
-//! themes from config, all reachable by name through a [`ThemeRegistry`]. Each
+//! A theme is the color axis of the UI. Built-in themes live here; the host may
+//! add custom themes from config, all reachable by name through a
+//! [`ThemeRegistry`]. Each
 //! theme provides a [`ThemeColors`] base that the [`Palette`](super::Palette)
 //! builds on. A custom theme may set only some colors; the rest are derived
 //! from `accent`/`foreground`/`background` via [`ThemeColors::derived`].
@@ -113,7 +113,7 @@ const DEFAULT_COLORS: ThemeColors = ThemeColors {
     header: Color::hex("#101010"),
     footer: Color::hex("#101010"),
     panel: Color::hex("#1b1b1b"),
-    surface: Color::hex("#3e3e3e"),
+    surface: Color::hex("#303030"),
     border: Color::hex("#4a4a4a"),
     success: Color::hex("#a3c995"),
     warning: Color::hex("#ded483"),
@@ -231,7 +231,7 @@ mod tests {
         assert_eq!(default.foreground, Color::hex("#e5e5e5"));
         assert_eq!(default.background, Color::hex("#151515"));
         assert_eq!(default.header, Color::hex("#101010"));
-        assert_eq!(default.surface, Color::hex("#3e3e3e"));
+        assert_eq!(default.surface, Color::hex("#303030"));
         assert_eq!(default.error, Color::hex("#d57b76"));
     }
 

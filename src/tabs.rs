@@ -2,16 +2,14 @@
 //!
 //! Tabs are packed onto as few rows as fit `width`; overflow wraps to the next
 //! row, indented under the brand. The active tab (its number and label) stands
-//! out in the normal text color and bold; the rest are dim. In `Boxed` mode the
-//! bar is wrapped in a rounded, accent-bordered box; in `Minimal` mode it is a
-//! single plain row.
+//! out in the normal text color and bold; the rest are dim.
 
 use ratatui::{
     Frame,
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Padding, Paragraph},
+    widgets::Paragraph,
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -28,17 +26,9 @@ fn tab_label(key: &str, label: &str) -> String {
     format!("{key} {label}")
 }
 
-/// Number of rows the tab bar needs at `width`, including the border in `Boxed`
-/// mode.
-pub fn height(
-    skin: &Skin,
-    brand: &str,
-    tabs: &[(&str, &str)],
-    width: usize,
-) -> u16 {
-    let inner = inner_width(skin, width);
-    let rows = pack(brand, tabs, inner).len().max(1) as u16;
-    rows + frame_rows(skin)
+/// Number of rows the tab bar needs at `width`.
+pub fn height(brand: &str, tabs: &[(&str, &str)], width: usize) -> u16 {
+    pack(brand, tabs, width).len().max(1) as u16
 }
 
 /// Renders the tab bar into `area`, wrapping tabs across rows when needed and
@@ -53,7 +43,7 @@ pub fn render(
 ) {
     let palette = &skin.palette;
     let brand_width = brand_label(brand).width();
-    let rows = pack(brand, tabs, inner_width(skin, area.width as usize));
+    let rows = pack(brand, tabs, area.width as usize);
 
     let lines: Vec<Line> = rows
         .iter()
@@ -90,37 +80,7 @@ pub fn render(
         })
         .collect();
 
-    let paragraph = Paragraph::new(lines);
-    if skin.is_boxed() {
-        frame.render_widget(paragraph.block(boxed_block(skin)), area);
-    } else {
-        frame.render_widget(paragraph, area);
-    }
-}
-
-/// The rounded accent box used to frame the bar in `Boxed` mode.
-fn boxed_block(skin: &Skin) -> Block<'static> {
-    Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(style::border(&skin.palette))
-        .padding(Padding::horizontal(1))
-}
-
-/// Extra rows the frame occupies: two (top/bottom border) in `Boxed`, none in
-/// `Minimal`.
-fn frame_rows(skin: &Skin) -> u16 {
-    if skin.is_boxed() { 2 } else { 0 }
-}
-
-/// The width available to the packed tabs after the frame/padding.
-fn inner_width(skin: &Skin, width: usize) -> usize {
-    if skin.is_boxed() {
-        // 2 border columns + 2 padding columns.
-        width.saturating_sub(4)
-    } else {
-        width
-    }
+    frame.render_widget(Paragraph::new(lines), area);
 }
 
 /// Packs tab indices onto rows that each fit `width`. The first tab on a row is
@@ -153,30 +113,4 @@ fn pack(brand: &str, tabs: &[(&str, &str)], width: usize) -> Vec<Vec<usize>> {
         rows.push(Vec::new());
     }
     rows
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::theme::{
-        ColorOverrides, GlyphVariant, Glyphs, Mode, Palette, ThemeRegistry,
-    };
-
-    fn skin(mode: Mode) -> Skin {
-        let base = ThemeRegistry::builtin().resolve("default");
-        Skin::new(
-            Palette::resolve(base, &ColorOverrides::default()),
-            Glyphs::new(GlyphVariant::Unicode),
-            mode,
-        )
-    }
-
-    #[test]
-    fn boxed_height_adds_the_border_rows() {
-        let tabs = [("1", "One"), ("2", "Two")];
-        let width = 80;
-        let minimal = height(&skin(Mode::Minimal), "demo", &tabs, width);
-        let boxed = height(&skin(Mode::Boxed), "demo", &tabs, width);
-        assert_eq!(boxed, minimal + 2);
-    }
 }

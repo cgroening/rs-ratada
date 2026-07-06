@@ -63,7 +63,7 @@ pub fn month_picker(
             )
             .len() as u16
                 + 2;
-            centered_rect(overlay::box_width(BOX_WIDTH, skin), rows, area)
+            centered_rect(BOX_WIDTH, rows, area)
         },
         |frame, _| render_bg(frame),
         |frame, rect, state: &Month| {

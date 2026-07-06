@@ -28,7 +28,6 @@ pub struct TextArea {
     scroll: Cell<usize>,
     max_len: Option<usize>,
     decor: Option<chrome::BoxDecor>,
-    force_box: bool,
 }
 
 impl TextArea {
@@ -60,27 +59,11 @@ impl TextArea {
         self
     }
 
-    /// Draws the area inside a rounded box in `Boxed` mode, plain otherwise.
+    /// Draws the area inside a rounded box with the given caption/badge (see
+    /// [`chrome::BoxDecor`]); omit it for a plain area.
     #[must_use]
     pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
         self.decor = Some(decor);
-        self
-    }
-
-    /// Like [`Self::boxed`] but always draws the box, regardless of the mode.
-    #[must_use]
-    pub fn boxed_always(mut self, decor: chrome::BoxDecor) -> Self {
-        self.decor = Some(decor);
-        self.force_box = true;
-        self
-    }
-
-    /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
-    /// decoration even in `Boxed` mode.
-    #[must_use]
-    pub fn minimal(mut self) -> Self {
-        self.decor = None;
-        self.force_box = false;
         self
     }
 
@@ -186,7 +169,7 @@ impl TextArea {
     /// Renders the buffer into `area`, scrolling so the caret stays visible and
     /// filling the field with the input background (active tint when `focused`).
     /// A block caret is shown only when `focused`. Wrapped in a box when
-    /// decorated and in `Boxed` mode (or forced via [`Self::boxed_always`]).
+    /// decorated via [`Self::boxed`].
     pub fn render(
         &self,
         frame: &mut Frame,
@@ -195,10 +178,10 @@ impl TextArea {
         focused: bool,
     ) {
         let inner = match &self.decor {
-            Some(decor) if self.force_box || skin.is_boxed() => {
+            Some(decor) => {
                 chrome::framed_decor(frame, area, skin, decor, &self.badge())
             }
-            _ => area,
+            None => area,
         };
         let palette = &skin.palette;
         let base_bg = if focused {
