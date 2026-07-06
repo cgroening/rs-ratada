@@ -2,7 +2,7 @@
 
 ## Context
 
-Das Repo ist nach mehreren Feature-Runden stabil und sauber (`cargo fmt --check` grün, `cargo clippy --all-targets -- -D warnings` grün, 96 Unit-/Integrationstests + 5 Doctests, `clippy::pedantic` crate-weit, nur wenige begründete `#[allow]`, keine offenen TODOs, jedes Modul hat einen `//!`-Doc). `ratada` ist die **Bibliothek selbst** – das wiederverwendbare ratatui-Widget-Toolkit plus die framework-agnostische `theme`-Schicht; es gibt kein Binary, keine Domänen-/Persistenz-Schicht. Konsumierende Apps (z. B. `clibase`) hängen als Pfad-Dependency daran. Diese Checkliste betrifft daher das **gesamte Crate**; da es eine öffentliche API ist, sind Sichtbarkeit und Signatur-Stabilität hier besonders wichtig (`pub`-Änderungen sind Breaking Changes).
+Das Repo ist nach mehreren Feature-Runden stabil und sauber (`cargo fmt --check` grün, `cargo clippy --all-targets -- -D warnings` grün, 106 Unit-/Integrationstests + 7 Doctests, `clippy::pedantic` crate-weit, nur wenige begründete `#[allow]`, keine offenen TODOs, jedes Modul hat einen `//!`-Doc). `ratada` ist die **Bibliothek selbst** – das wiederverwendbare ratatui-Widget-Toolkit plus die framework-agnostische `theme`-Schicht; es gibt kein Binary, keine Domänen-/Persistenz-Schicht. Konsumierende Apps (z. B. `clibase`) hängen als Pfad-Dependency daran. Diese Checkliste betrifft daher das **gesamte Crate**; da es eine öffentliche API ist, sind Sichtbarkeit und Signatur-Stabilität hier besonders wichtig (`pub`-Änderungen sind Breaking Changes).
 
 Reihenfolge-Prinzip: zuerst Baseline herstellen, dann Schicht für Schicht von den abhängigkeitsfreien Fundamenten (`theme`) nach außen zu den zusammengesetzten Widgets (so baut sich das Verständnis bottom-up auf und jede Schicht wird nach ihren Abhängigkeiten geprüft), zum Schluss ein Querschnitts-Durchlauf.
 
@@ -39,11 +39,11 @@ Bottom-up nur *lesen*, um die mentale Landkarte aufzubauen, bevor aufgeräumt wi
 
 Das abhängigkeitsfreie Fundament (nur `serde` für die persistierbaren Enums).
 
-- [ ] `color.rs` (`Color`, `parse_color`/`dim_color`/`lighten`): generische Checks; Parsing-Fehlerpfade robust (kein `unwrap`); Wertebereiche/Clamping.
-- [ ] `glyphs.rs` + `mode.rs` (`Glyphs`, `GlyphVariant`, `Mode`): zwei Icon-Varianten (Unicode + ASCII-Fallback), keine Emojis; `serde`-Ableitungen bewusst.
-- [ ] `palette.rs` (`Palette`, `resolve`, `ColorOverrides`): SSOT der Akzent-/Dim-/Tint-Farben; Override-Merge klar; benannte Konstanten statt verstreuter RGB-Literale.
-- [ ] `skin.rs` (`Skin`): Bündel aus Palette/Glyphs/Mode – schlanke Konstruktion.
-- [ ] `theme_set.rs` (`ThemeRegistry`, `ThemeColors`, `Surfaces`, Built-in-Themes): Registry-Struktur, Default-Fallback; keine Magic-Strings für Theme-Namen.
+- [ ] `color.rs` (`Color`, `parse_color`, `hex`, OKLCH-Varianten `darken`/`lighten`/`vivid`/`dim`/`shade`/`mix`/`readable_on`): generische Checks; Parsing-Fehlerpfade robust (kein `unwrap`); Wertebereiche/Clamping.
+- [ ] `glyphs.rs` (`Glyphs`, `GlyphVariant`): zwei Icon-Varianten (Unicode + ASCII-Fallback), keine Emojis; `serde`-Ableitungen bewusst.
+- [ ] `palette.rs` (`Palette`, `resolve`, `ColorOverrides`, `define_palette!`): SSOT der Akzent-/Dim-/Tint-Farben (Palette-Felder einmalig im Makro deklariert); Override-Merge klar; benannte Konstanten statt verstreuter RGB-Literale.
+- [ ] `skin.rs` (`Skin`): Bündel aus Palette/Glyphs – schlanke Konstruktion.
+- [ ] `theme_set.rs` (`ThemeRegistry`, `ThemeColors`, Built-in-Themes `default`/`monochrome`): Registry-Struktur, Default-Fallback; keine Magic-Strings für Theme-Namen.
 - [ ] `mod.rs`: Re-Exports minimal und konsistent.
 
 ## Phase 2 – style (`src/style.rs`)
@@ -55,7 +55,7 @@ Das abhängigkeitsfreie Fundament (nur `serde` für die persistierbaren Enums).
 Zustandslose Helfer, auf denen die Widgets aufsetzen – freie Funktionen (CLAUDE.md §2.6).
 
 - [ ] `nav.rs` (`cycle`/`rem_euclid`): zyklische Navigation als SSOT; leere Liste ergibt Index 0; Rand-Klemmung für Seiten/Sprünge korrekt.
-- [ ] `scroll.rs` (`render_scrollbar`): Dim-Stil ohne Pfeile; Positionszahl `total - viewport + 1`; nur bei Überlauf.
+- [ ] `scroll.rs` (`render_scrollbar`): sichtbarer Stil ohne Pfeile (Thumb `foreground_dim`, Track `border`), nimmt `skin`; Positionszahl `total - viewport + 1`; nur bei Überlauf.
 - [ ] `layout.rs`, `text.rs` (`truncate`): Überlauf-Kürzung mit `…` auf sichtbare Breite; `unicode-width`-korrekt (keine Byte-/Char-Verwechslung bei breiten Glyphen).
 - [ ] `fuzzy.rs` (backed by `nucleo-matcher`): Match-/Ranking-Schnittstelle klar; Eingaben begrenzt.
 - [ ] `double_press.rs`: Zeitfenster-Logik; `Instant`-Nutzung; generische Checks.
@@ -70,7 +70,7 @@ Der App-Rahmen: RAII-Guard und Event-Loop.
 ## Phase 5 – chrome & overlay (`src/chrome.rs`, `src/overlay.rs`)
 
 - [ ] `overlay.rs` (`popup`, `PopupFlow`, Dim-Backdrop): das eine Overlay-Primitive – zentriertes Box + `Clear` + Key-Routing als SSOT für jedes blockierende Widget. Prüfen, dass Picker/Modals wirklich darüber laufen (keine Nachbauten).
-- [ ] `chrome.rs` (`panel`/`BoxDecor`): zentralisiert die Entscheidung „framed vs. no-op" je `Mode`; abgerundete Rahmen (`BorderType::Rounded`); Views branchen nicht inline auf `Mode`.
+- [ ] `chrome.rs` (`panel`/`menu_panel`/`modal_block`/`BoxDecor`/`framed_decor`): zentralisiert das Rahmen-Chrome (Caption in der Top-Border, Badge unten rechts über `framed_decor`); abgerundete Rahmen (`BorderType::Rounded`); Views/Widgets bauen Blöcke nicht inline.
 
 ## Phase 6 – Text-Eingabe & Editieren (`input`, `textarea`, `autocomplete`, `clipboard`, `editor`)
 
@@ -80,14 +80,15 @@ Der App-Rahmen: RAII-Guard und Event-Loop.
 - [ ] `clipboard.rs`: externe Tools über `Command` mit `.arg()`/`.args()` – **kein `sh -c` mit zusammengesetzten Strings** (§7.9 Command-Injection); Fehlerpfade kontrolliert.
 - [ ] `editor.rs`: `$EDITOR` via Temp-Datei, Terminal um den Prozess herum via `Tui::suspend` ausgesetzt/wiederhergestellt; Command-Injection-Disziplin; Temp-Datei-Handling robust.
 
-## Phase 7 – Anzeige-Widgets (`table`, `tree`, `list`, `tabs`, `pager`, `gauge`, `spinner`, `toast`, `header`, `footer`, `statusbar`)
+## Phase 7 – Anzeige-Widgets (`table`, `tree`, `list`, `tabs`, `pager`, `gauge`, `spinner`, `toast`, `header`, `statusbar`, `shortcut_hints`, `theme_preview`)
 
 - [ ] `table.rs` (**größte Datei, ~1170 Zeilen**): dichte Render-/Navigations-Funktionen gezielt auf SLAP und Verschachtelungstiefe prüfen; Navigations-Helper über `nav`; Sticky-Header/Spaltenkopf; keine Magic-Strings. Kandidat für Zerlegung in kleinere Einheiten (siehe konkrete Kandidaten).
 - [ ] `tree.rs`, `list.rs`: Navigation/Selektion/Scroll-Offset generisch; `list.rs` trägt das eine `#[allow(too_many_arguments)]` – prüfen (siehe Kandidaten).
 - [ ] `tabs.rs`: Tab-Bar, aktiver Tab im Akzentton; zyklisch.
 - [ ] `pager.rs`: Scroll/Seiten-Navigation; Scrollbar bei Überlauf; `PageUp/Down` geklemmt.
-- [ ] `gauge.rs`, `spinner.rs`, `toast.rs`: kleine Anzeige-Widgets; Animation über `tick`; benannte Konstanten für Frames/Timings.
-- [ ] `header.rs`, `footer.rs`, `statusbar.rs`: `footer::lines` als gemeinsamer Hint-Helfer (`(Taste, Beschreibung)`-Tokens, Taste im Akzentton, ` · `-getrennt, umbrechend); transiente Status-Zeile; Sekundärtext dim.
+- [ ] `gauge.rs`, `spinner.rs`, `toast.rs`: kleine Anzeige-Widgets; Animation über `tick`; benannte Konstanten für Frames/Timings. `gauge.rs`: Prozent-Label über dem gefüllten Balken in Kontrastfarbe (`readable_on`).
+- [ ] `theme_preview.rs`: rendert die Farb-/Varianten-Vorschau (OKLCH-Stufen) für die Gallery – keine Magic-RGB, Farben aus `palette`.
+- [ ] `header.rs`, `statusbar.rs`, `shortcut_hints.rs`: `shortcut_hints::lines`/`group_lines` als gemeinsamer Hint-Helfer (`(Taste, Beschreibung)`-Tokens, Taste im Akzentton, ` · `-getrennt, umbrechend); `statusbar` als transiente Status-Zeile; Sekundärtext dim.
 
 ## Phase 8 – Picker (`color_picker`, `date_picker`, `date_range_picker`, `month_picker`, `path_picker`, `slider`)
 
@@ -113,7 +114,7 @@ Zuletzt, weil hier alles zusammenläuft:
 
 ## Phase 11 – Querschnitt & Abschluss
 
-- [ ] **`#[allow]`-Inventur:** die crate-weiten Allows in `lib.rs` (cast-Lints, `must_use_candidate`, `missing_errors_doc`) bewusst bestätigen; das lokale `#[allow(clippy::too_many_arguments)]` in `list.rs:61` nach Phase 7 möglichst reduzieren (Parameter in Struct gruppieren) oder bewusst belassen + Begründung aktuell.
+- [ ] **`#[allow]`-Inventur:** die crate-weiten Allows in `lib.rs` (cast-Lints, `must_use_candidate`, `missing_errors_doc`) bewusst bestätigen; das lokale `#[allow(clippy::too_many_arguments)]` in `list.rs:39` (auf `render_boxed`) nach Phase 7 möglichst reduzieren (Parameter in Struct gruppieren) oder bewusst belassen + Begründung aktuell.
 - [ ] **Doku-Sync:** `README.md` / `DEVELOPMENT.md` / `API.md` und die rustdoc-Kommentare gegen den aufgeräumten Stand; Footer/Hilfe/Shortcuts-Verweise konsistent; `prelude`-Beschreibung stimmt.
 - [ ] **Tests:** durch Refactors berührte Pfade getestet; alle grün (inkl. Doctests).
 - [ ] **Abschluss-Gates:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` – alles grün.
@@ -121,7 +122,7 @@ Zuletzt, weil hier alles zusammenläuft:
 
 Konkrete Kandidaten:
 - [ ] **`table.rs` (~1170 Zeilen):** mit Abstand die größte Datei. Render-/Navigations-Verantwortungen auf SLAP prüfen und ggf. in kohärente Einheiten zerlegen (Sticky-Header, Spalten-Layout, Body-Render, Navigation). Reines Refactoring, Verhalten identisch – Render-Tests müssen ohne Neu-Generierung bestehen.
-- [ ] **`list.rs:61` `#[allow(clippy::too_many_arguments)]`:** die aufgefächerte Signatur ist ein Indikator für zu viele Parameter (§2.5). Prüfen, ob zusammengehörige Parameter in ein Struct gruppiert werden können, sodass das `#[allow]` entfällt.
+- [ ] **`list.rs:39` `#[allow(clippy::too_many_arguments)]` (auf `render_boxed`):** die aufgefächerte Signatur ist ein Indikator für zu viele Parameter (§2.5). Prüfen, ob zusammengehörige Parameter in ein Struct gruppiert werden können, sodass das `#[allow]` entfällt.
 - [ ] **Editier-Kern-Duplizierung:** gegenchecken, dass `textarea.rs` die Editier-Logik wirklich aus `input.rs` bezieht und nichts parallel nachbaut (SSOT/DRY der Textfeld-Shortcuts, §7.10).
 
 ## Verifikation
