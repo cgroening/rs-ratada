@@ -350,7 +350,7 @@ impl Form {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(style::fg(palette.accent))
+            .border_style(style::border(palette))
             .style(style::bg(palette.background))
             .title(Span::styled(
                 format!("\u{2500} {} ", self.title),
@@ -396,7 +396,7 @@ impl Form {
         let focused = index == self.focus;
         if focused {
             frame.render_widget(
-                Block::default().style(style::bg(palette.selection_bg)),
+                Block::default().style(style::bg(palette.selection)),
                 rect,
             );
         }
@@ -413,7 +413,10 @@ impl Form {
                 .constraints([Constraint::Length(1), Constraint::Min(1)])
                 .split(rect);
             frame.render_widget(
-                Paragraph::new(Line::from(Span::styled(label, style::dim()))),
+                Paragraph::new(Line::from(Span::styled(
+                    label,
+                    style::secondary(palette),
+                ))),
                 rows[0],
             );
             area.render(frame, rows[1], skin, focused);
@@ -425,7 +428,10 @@ impl Form {
             .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(1)])
             .split(rect);
         frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(label, style::dim()))),
+            Paragraph::new(Line::from(Span::styled(
+                label,
+                style::secondary(palette),
+            ))),
             columns[0],
         );
         let value_width = columns[1].width as usize;

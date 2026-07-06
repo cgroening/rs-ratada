@@ -141,7 +141,7 @@ fn body_lines(
         if index > 0 {
             weekdays.push(Span::raw(" "));
         }
-        weekdays.push(Span::styled(name, style::dim()));
+        weekdays.push(Span::styled(name, style::secondary(palette)));
     }
     lines.push(Line::from(weekdays));
 
@@ -198,15 +198,15 @@ fn day_style(
         day >= lo && day <= hi
     });
     if day == cursor || start == Some(day) {
-        style::bg(palette.selection_bg)
+        style::bg(palette.selection)
             .fg(style::to_ratatui(palette.accent))
             .add_modifier(Modifier::BOLD)
     } else if in_range {
-        style::bg(palette.selection_bg)
+        style::bg(palette.selection)
     } else if day == today {
         style::fg(palette.accent_dim).add_modifier(Modifier::BOLD)
     } else if day.weekday().num_days_from_monday() >= 5 {
-        style::dim()
+        style::secondary(palette)
     } else {
         Style::default().fg(Color::Reset)
     }

@@ -11,11 +11,9 @@ pub mod palette;
 pub mod skin;
 pub mod theme_set;
 
-pub use color::{Color, dim_color, lighten, parse_color};
+pub use color::{Color, parse_color};
 pub use glyphs::{GlyphVariant, Glyphs};
 pub use mode::Mode;
 pub use palette::{ColorOverrides, Palette};
 pub use skin::Skin;
-pub use theme_set::{
-    DEFAULT_THEME, Surfaces, ThemeColors, ThemeRegistry, derive_surfaces,
-};
+pub use theme_set::{DEFAULT_THEME, ThemeColors, ThemeRegistry};

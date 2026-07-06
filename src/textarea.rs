@@ -220,7 +220,7 @@ impl TextArea {
 
         let selection = self.cursor.selection();
         let cursor_style = style::bg(palette.cursor).fg(Color::Black);
-        let selection_style = style::bg(palette.selection_bg);
+        let selection_style = style::bg(palette.selection);
 
         let lines: Vec<Line> = rows
             .iter()

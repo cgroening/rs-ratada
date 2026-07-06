@@ -269,7 +269,7 @@ pub(crate) fn render_line(
     let cursor_style = Style::default()
         .bg(style::to_ratatui(palette.cursor))
         .fg(Color::Black);
-    let selection_style = style::bg(palette.selection_bg);
+    let selection_style = style::bg(palette.selection);
 
     // Display columns before each char index, so scrolling and the visible
     // window are measured in columns (wide glyphs count as two), not chars.

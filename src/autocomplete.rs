@@ -136,7 +136,7 @@ impl Autocomplete {
             .enumerate()
             .map(|(row, &candidate)| {
                 let row_style = if Some(row) == self.selected {
-                    style::bg(palette.selection_bg)
+                    style::bg(palette.selection)
                 } else {
                     base
                 };
@@ -149,7 +149,10 @@ impl Autocomplete {
         if self.overflow > 0 {
             lines.push(Line::from(vec![
                 Span::raw(pad),
-                Span::styled(format!("+{} more", self.overflow), style::dim()),
+                Span::styled(
+                    format!("+{} more", self.overflow),
+                    style::secondary(palette),
+                ),
             ]));
         }
         lines

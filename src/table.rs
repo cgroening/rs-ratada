@@ -889,7 +889,7 @@ impl Table {
             return Some(cursor_highlight(skin));
         }
         if self.selected_rows.contains(&orig) {
-            return Some(style::bg(skin.palette.selection_bg));
+            return Some(style::bg(skin.palette.selection));
         }
         None
     }
@@ -930,7 +930,7 @@ impl Table {
             SelectMode::Cell => self.selected_cells.contains(&(orig, col)),
         };
         if selected {
-            style = style.patch(style::bg(skin.palette.selection_bg));
+            style = style.patch(style::bg(skin.palette.selection));
         }
         let cursor_here = is_cursor
             && (self.mode == SelectMode::Row || col == self.active_col);
@@ -974,18 +974,18 @@ impl Table {
         if !self.filter.is_empty() {
             let _ = write!(text, " \u{b7} filter: {}", self.filter);
         }
-        Line::from(Span::styled(text, style::dim()))
+        Line::from(Span::styled(text, style::secondary(palette)))
     }
 }
 
 /// The cursor-row highlight: a bold accent bar in `Boxed`, a tint in `Minimal`.
 fn cursor_highlight(skin: &Skin) -> Style {
     if skin.is_boxed() {
-        style::bg(skin.palette.accent_dark)
+        style::bg(skin.palette.accent_dim)
             .fg(style::to_ratatui(skin.palette.accent))
             .add_modifier(Modifier::BOLD)
     } else {
-        style::bg(skin.palette.selection_bg)
+        style::bg(skin.palette.selection)
     }
 }
 

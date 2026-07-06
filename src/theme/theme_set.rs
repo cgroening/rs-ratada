@@ -4,117 +4,104 @@
 //! [`Mode`](super::Mode). Built-in themes live here; the host may add custom
 //! themes from config, all reachable by name through a [`ThemeRegistry`]. Each
 //! theme provides a [`ThemeColors`] base that the [`Palette`](super::Palette)
-//! builds on.
+//! builds on. A custom theme may set only some colors; the rest are derived
+//! from `accent`/`foreground`/`background` via [`ThemeColors::derived`].
 
-use super::color::{Color, lighten};
+use super::color::Color;
 
 /// The default theme name, used as the fallback when a name is unknown.
 pub const DEFAULT_THEME: &str = "default";
 
-/// Universal semantic colors, used when a theme omits its own.
-const DEFAULT_ERROR: Color = Color::Rgb(0xf3, 0x8b, 0x8b);
-const DEFAULT_WARNING: Color = Color::Rgb(0xff, 0xb9, 0x54);
-const DEFAULT_SUCCESS: Color = Color::Rgb(0x8c, 0xc8, 0x8c);
-const DEFAULT_INFO: Color = Color::Rgb(0x6d, 0xa8, 0xff);
+/// Universal defaults for colors a (custom) theme omits.
+const DEFAULT_ACCENT: Color = Color::Rgb(0x8b, 0xd3, 0xcd);
+const DEFAULT_BACKGROUND: Color = Color::Rgb(0x15, 0x15, 0x15);
+const DEFAULT_FOREGROUND: Color = Color::Rgb(0xe5, 0xe5, 0xe5);
+const DEFAULT_SUCCESS: Color = Color::Rgb(0xa3, 0xc9, 0x95);
+const DEFAULT_WARNING: Color = Color::Rgb(0xde, 0xd4, 0x83);
+const DEFAULT_ERROR: Color = Color::Rgb(0xd5, 0x7b, 0x76);
+const DEFAULT_INFO: Color = Color::Rgb(0x7f, 0xb3, 0xd4);
 
-/// How far each surface is lightened from the theme's `background`. The bars
-/// and the sidebar sit progressively above the content surface so the
-/// borderless `Panels` layout reads as distinct regions.
-const SURFACE_FACTOR: f32 = 0.06;
-const SURFACE_ALT_FACTOR: f32 = 0.12;
-const SURFACE_BAR_FACTOR: f32 = 0.18;
-
-/// The panel background colors used by the borderless `Panels` mode: `surface`
-/// for the gallery widget-list panel, `surface_alt` for the content/body,
-/// `surface_bar` for the header and status bars.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Surfaces {
-    pub surface: Color,
-    pub surface_alt: Color,
-    pub surface_bar: Color,
-}
-
-/// Derives the three panel surfaces from a theme's `background` by lightening it
-/// in three steps. A [`Color::Default`] background yields all-`Default` surfaces
-/// (the terminal background shows through, so the panels do not stand apart).
-pub fn derive_surfaces(background: Color) -> Surfaces {
-    Surfaces {
-        surface: lighten(background, SURFACE_FACTOR),
-        surface_alt: lighten(background, SURFACE_ALT_FACTOR),
-        surface_bar: lighten(background, SURFACE_BAR_FACTOR),
-    }
-}
+/// How omitted neutral backgrounds are derived from `background` (`OKLab` L step).
+const HEADER_DARKEN: f32 = 0.03;
+const PANEL_LIGHTEN: f32 = 0.03;
+const SURFACE_LIGHTEN: f32 = 0.10;
+const BORDER_LIGHTEN: f32 = 0.12;
 
 /// The base colors a theme contributes before any config override is applied.
-///
-/// The first four are the core roles; the semantic colors carry meaning
-/// (errors, warnings, success, info) and default to universal values when a
-/// theme does not set them via [`ThemeColors::with_semantics`].
+/// Every built-in theme sets all of them explicitly; a custom theme may leave
+/// some to [`ThemeColors::derived`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThemeColors {
     pub accent: Color,
-    pub selection_bg: Color,
-    pub cursor: Color,
+    pub foreground: Color,
     pub background: Color,
-    pub error: Color,
-    pub warning: Color,
-    pub success: Color,
-    pub info: Color,
-    /// Panel backgrounds for the `Panels` mode; derived from `background` by
-    /// default, overridable per theme via [`ThemeColors::with_surfaces`].
+    pub header: Color,
+    pub footer: Color,
+    pub panel: Color,
     pub surface: Color,
-    pub surface_alt: Color,
-    pub surface_bar: Color,
+    pub border: Color,
+    pub success: Color,
+    pub warning: Color,
+    pub error: Color,
+    pub info: Color,
 }
 
 impl ThemeColors {
-    /// Builds a theme from its four core colors, with universal semantic colors
-    /// and panel surfaces derived from `background`.
-    pub fn new(
+    /// A theme built from just `accent`, `foreground` and `background`: the
+    /// neutral backgrounds and the border are derived from `background`, and the
+    /// semantic colors fall back to universal defaults. Used for custom themes
+    /// that set only a few colors.
+    pub fn derived(
         accent: Color,
-        selection_bg: Color,
-        cursor: Color,
+        foreground: Color,
         background: Color,
     ) -> Self {
-        let surfaces = derive_surfaces(background);
         Self {
             accent,
-            selection_bg,
-            cursor,
+            foreground,
             background,
-            error: DEFAULT_ERROR,
-            warning: DEFAULT_WARNING,
+            header: background.darken(HEADER_DARKEN),
+            footer: background.darken(HEADER_DARKEN),
+            panel: background.lighten(PANEL_LIGHTEN),
+            surface: background.lighten(SURFACE_LIGHTEN),
+            border: background.lighten(BORDER_LIGHTEN),
             success: DEFAULT_SUCCESS,
+            warning: DEFAULT_WARNING,
+            error: DEFAULT_ERROR,
             info: DEFAULT_INFO,
-            surface: surfaces.surface,
-            surface_alt: surfaces.surface_alt,
-            surface_bar: surfaces.surface_bar,
         }
     }
 
-    /// Returns a copy with explicit semantic colors.
-    #[must_use]
-    pub fn with_semantics(
-        mut self,
-        error: Color,
-        warning: Color,
-        success: Color,
-        info: Color,
-    ) -> Self {
-        self.error = error;
-        self.warning = warning;
-        self.success = success;
-        self.info = info;
-        self
+    /// A theme derived from `accent`/`background` with the universal light
+    /// [`DEFAULT_FOREGROUND`].
+    pub fn from_accent(accent: Color, background: Color) -> Self {
+        Self::derived(accent, DEFAULT_FOREGROUND, background)
     }
 
-    /// Returns a copy with explicit panel surfaces, replacing the derived ones.
-    #[must_use]
-    pub fn with_surfaces(mut self, surfaces: Surfaces) -> Self {
-        self.surface = surfaces.surface;
-        self.surface_alt = surfaces.surface_alt;
-        self.surface_bar = surfaces.surface_bar;
-        self
+    /// Builds theme colors from a `name -> color` lookup: `accent`/`foreground`/
+    /// `background` (or universal defaults) seed the derived neutrals and
+    /// semantics via [`ThemeColors::derived`], then any other present base color
+    /// overrides its derived value. Lets a custom theme set only a few colors.
+    pub fn from_lookup(lookup: impl Fn(&str) -> Option<Color>) -> Self {
+        let accent = lookup("accent").unwrap_or(DEFAULT_ACCENT);
+        let foreground = lookup("foreground").unwrap_or(DEFAULT_FOREGROUND);
+        let background = lookup("background").unwrap_or(DEFAULT_BACKGROUND);
+        let mut colors = Self::derived(accent, foreground, background);
+        let set = |name: &str, field: &mut Color| {
+            if let Some(color) = lookup(name) {
+                *field = color;
+            }
+        };
+        set("header", &mut colors.header);
+        set("footer", &mut colors.footer);
+        set("panel", &mut colors.panel);
+        set("surface", &mut colors.surface);
+        set("border", &mut colors.border);
+        set("success", &mut colors.success);
+        set("warning", &mut colors.warning);
+        set("error", &mut colors.error);
+        set("info", &mut colors.info);
+        colors
     }
 }
 
@@ -123,36 +110,37 @@ fn builtin_themes() -> Vec<(String, ThemeColors)> {
     vec![
         (
             DEFAULT_THEME.to_string(),
-            ThemeColors::new(
-                Color::Rgb(0xe6, 0x8f, 0xff),
-                Color::Rgb(0x33, 0x38, 0x4a),
-                Color::Rgb(0xf3, 0x8b, 0x8b),
-                Color::Rgb(0x0d, 0x0d, 0x1e),
-            ),
-        ),
-        (
-            "nord".to_string(),
-            ThemeColors::new(
-                Color::Rgb(0x88, 0xc0, 0xd0),
-                Color::Rgb(0x3b, 0x42, 0x52),
-                Color::Rgb(0xbf, 0x61, 0x6a),
-                Color::Rgb(0x2e, 0x34, 0x40),
-            )
-            .with_semantics(
-                Color::Rgb(0xbf, 0x61, 0x6a),
-                Color::Rgb(0xeb, 0xcb, 0x8b),
-                Color::Rgb(0xa3, 0xbe, 0x8c),
-                Color::Rgb(0x88, 0xc0, 0xd0),
-            ),
+            ThemeColors {
+                accent: Color::Rgb(0x8b, 0xd3, 0xcd),
+                foreground: Color::Rgb(0xe5, 0xe5, 0xe5),
+                background: Color::Rgb(0x15, 0x15, 0x15),
+                header: Color::Rgb(0x10, 0x10, 0x10),
+                footer: Color::Rgb(0x10, 0x10, 0x10),
+                panel: Color::Rgb(0x1b, 0x1b, 0x1b),
+                surface: Color::Rgb(0x3e, 0x3e, 0x3e),
+                border: Color::Rgb(0x33, 0x33, 0x33),
+                success: Color::Rgb(0xa3, 0xc9, 0x95),
+                warning: Color::Rgb(0xde, 0xd4, 0x83),
+                error: Color::Rgb(0xd5, 0x7b, 0x76),
+                info: Color::Rgb(0x7f, 0xb3, 0xd4),
+            },
         ),
         (
             "monochrome".to_string(),
-            ThemeColors::new(
-                Color::Rgb(0xc0, 0xc0, 0xc0),
-                Color::Rgb(0x2a, 0x2a, 0x2a),
-                Color::Rgb(0xff, 0xff, 0xff),
-                Color::Rgb(0x10, 0x10, 0x10),
-            ),
+            ThemeColors {
+                accent: Color::Rgb(0xc0, 0xc0, 0xc0),
+                foreground: Color::Rgb(0xe5, 0xe5, 0xe5),
+                background: Color::Rgb(0x10, 0x10, 0x10),
+                header: Color::Rgb(0x0a, 0x0a, 0x0a),
+                footer: Color::Rgb(0x0a, 0x0a, 0x0a),
+                panel: Color::Rgb(0x1a, 0x1a, 0x1a),
+                surface: Color::Rgb(0x33, 0x33, 0x33),
+                border: Color::Rgb(0x2e, 0x2e, 0x2e),
+                success: Color::Rgb(0xb8, 0xb8, 0xb8),
+                warning: Color::Rgb(0xd0, 0xd0, 0xd0),
+                error: Color::Rgb(0x9a, 0x9a, 0x9a),
+                info: Color::Rgb(0xa8, 0xa8, 0xa8),
+            },
         ),
     ]
 }
@@ -202,12 +190,7 @@ impl ThemeRegistry {
             .or_else(|| self.get(DEFAULT_THEME))
             .or_else(|| self.themes.first().map(|(_, colors)| *colors))
             .unwrap_or_else(|| {
-                ThemeColors::new(
-                    Color::Default,
-                    Color::Default,
-                    Color::Default,
-                    Color::Default,
-                )
+                ThemeColors::from_accent(Color::Default, Color::Default)
             })
     }
 
@@ -242,21 +225,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn builtin_themes_have_distinct_accents() {
-        let registry = ThemeRegistry::builtin();
-        let default = registry.resolve("default").accent;
-        let nord = registry.resolve("nord").accent;
-        let mono = registry.resolve("monochrome").accent;
-        assert_ne!(default, nord);
-        assert_ne!(nord, mono);
-        assert_ne!(default, mono);
+    fn default_theme_has_the_specified_colors() {
+        let default = ThemeRegistry::builtin().resolve("default");
+        assert_eq!(default.accent, Color::Rgb(0x8b, 0xd3, 0xcd));
+        assert_eq!(default.foreground, Color::Rgb(0xe5, 0xe5, 0xe5));
+        assert_eq!(default.background, Color::Rgb(0x15, 0x15, 0x15));
+        assert_eq!(default.header, Color::Rgb(0x10, 0x10, 0x10));
+        assert_eq!(default.surface, Color::Rgb(0x3e, 0x3e, 0x3e));
+        assert_eq!(default.error, Color::Rgb(0xd5, 0x7b, 0x76));
+    }
+
+    #[test]
+    fn registry_holds_two_builtins() {
+        assert_eq!(
+            ThemeRegistry::builtin().names(),
+            vec!["default", "monochrome"],
+        );
     }
 
     #[test]
     fn next_cycles_through_all_and_wraps() {
         let registry = ThemeRegistry::builtin();
-        assert_eq!(registry.next("default"), "nord");
-        assert_eq!(registry.next("nord"), "monochrome");
+        assert_eq!(registry.next("default"), "monochrome");
         assert_eq!(registry.next("monochrome"), "default");
     }
 
@@ -268,44 +258,39 @@ mod tests {
 
     #[test]
     fn custom_theme_overrides_builtin_in_place() {
-        let custom = ThemeColors::new(
+        let custom = ThemeColors::from_accent(
             Color::Rgb(1, 2, 3),
-            Color::Rgb(4, 5, 6),
-            Color::Rgb(7, 8, 9),
             Color::Rgb(10, 11, 12),
         );
         let registry = ThemeRegistry::builtin()
-            .with_custom([("nord".to_string(), custom)]);
-        assert_eq!(registry.resolve("nord").accent, Color::Rgb(1, 2, 3));
-        // Order preserved: nord stays the second entry.
-        assert_eq!(registry.names(), vec!["default", "nord", "monochrome"]);
+            .with_custom([("monochrome".to_string(), custom)]);
+        assert_eq!(registry.resolve("monochrome").accent, Color::Rgb(1, 2, 3));
+        assert_eq!(registry.names(), vec!["default", "monochrome"]);
     }
 
     #[test]
     fn custom_theme_is_appended_and_cycles() {
-        let custom = ThemeColors::new(
+        let custom = ThemeColors::from_accent(
             Color::Rgb(1, 2, 3),
-            Color::Rgb(4, 5, 6),
-            Color::Rgb(7, 8, 9),
             Color::Rgb(10, 11, 12),
         );
         let registry = ThemeRegistry::builtin()
             .with_custom([("dracula".to_string(), custom)]);
         assert!(registry.contains("dracula"));
-        // dracula is appended after the built-ins, so it joins the cycle.
         assert_eq!(registry.next("monochrome"), "dracula");
         assert_eq!(registry.next("dracula"), "default");
     }
 
     #[test]
-    fn omitted_semantics_default_to_universal_values() {
-        let colors = ThemeColors::new(
-            Color::Rgb(1, 1, 1),
-            Color::Rgb(2, 2, 2),
-            Color::Rgb(3, 3, 3),
-            Color::Rgb(4, 4, 4),
+    fn derived_theme_fills_neutrals_and_semantics() {
+        let theme = ThemeColors::from_accent(
+            Color::Rgb(0x8b, 0xd3, 0xcd),
+            Color::Rgb(0x15, 0x15, 0x15),
         );
-        assert_eq!(colors.error, DEFAULT_ERROR);
-        assert_eq!(colors.success, DEFAULT_SUCCESS);
+        assert_eq!(theme.foreground, DEFAULT_FOREGROUND);
+        assert_eq!(theme.success, DEFAULT_SUCCESS);
+        // Neutral backgrounds derive from the background (distinct steps).
+        assert_ne!(theme.panel, theme.background);
+        assert_ne!(theme.surface, theme.panel);
     }
 }

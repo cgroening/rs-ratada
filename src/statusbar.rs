@@ -28,7 +28,7 @@ pub fn render(
         .saturating_sub(left.width())
         .saturating_sub(right.width());
     let line = Line::from(vec![
-        Span::styled(left.to_string(), style::dim()),
+        Span::styled(left.to_string(), style::secondary(palette)),
         Span::raw(" ".repeat(gap)),
         Span::styled(right.to_string(), style::fg(palette.accent)),
     ]);

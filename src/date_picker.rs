@@ -148,7 +148,7 @@ fn body_lines(
         if index > 0 {
             header.push(Span::raw(" "));
         }
-        header.push(Span::styled(name, style::dim()));
+        header.push(Span::styled(name, style::secondary(palette)));
     }
     lines.push(Line::from(header));
 
@@ -202,13 +202,13 @@ fn day_style(
     today: NaiveDate,
 ) -> Style {
     if day == cursor {
-        style::bg(palette.selection_bg)
+        style::bg(palette.selection)
             .fg(style::to_ratatui(palette.accent))
             .add_modifier(Modifier::BOLD)
     } else if day == today {
         style::fg(palette.accent_dim).add_modifier(Modifier::BOLD)
     } else if day.weekday().num_days_from_monday() >= 5 {
-        style::dim()
+        style::secondary(palette)
     } else {
         Style::default().fg(Color::Reset)
     }

@@ -23,13 +23,13 @@ types.
 
 ## Theme (`ratada::theme`)
 
-- `enum Color { Default, Rgb(u8,u8,u8) }` + `parse_color`, `dim_color`, `lighten`; `Color::rgb()`, `Color::to_hex()`.
-- `struct Palette { accent, accent_dim, accent_dark, selection_bg, cursor, background, surface, surface_alt, surface_bar, input_bg, input_bg_active, error, warning, success, info }` + `Palette::resolve(ThemeColors, &ColorOverrides)`.
-- `struct ColorOverrides<'a>` — per-color config override strings.
+- `enum Color { Default, Rgb(u8,u8,u8) }` + `parse_color` (`#rgb`/`#rrggbb`/`rgb(r,g,b)`/named); `Color::{rgb, to_hex, darken, lighten, vivid, dim, shade, mix, luminance, readable_on}` — OKLCH-based variants (hue-stable).
+- `struct Palette` (19 colors: accent, accent_dim, accent_vivid, foreground, foreground_dim, background, header, footer, panel, surface, selection, cursor, input_bg, input_bg_active, border, success, warning, error, info) + `Palette::resolve(ThemeColors, &ColorOverrides)`, `Palette::entries() -> Vec<(name, Color)>`, `Palette::KEYS`. The whole set is declared once via a `define_palette!` macro (SSOT).
+- `struct ColorOverrides<'a>` — per-color override strings; `ColorOverrides::from_lookup(|name| ...)` builds it from a `name -> value` lookup.
 - `struct Skin { palette, glyphs, mode }` + `new`, `is_boxed`, `is_panels`.
 - `enum GlyphVariant { Unicode, Ascii }`, `struct Glyphs` + `Glyphs::new(variant)`.
 - `enum Mode { Minimal, Boxed, Panels }` + `ALL`, `next`, `is_boxed`, `is_panels`, `label` (accepts legacy `"fancy"` for `Boxed`).
-- `struct ThemeColors` (+ `new`/`with_semantics`/`with_surfaces`), `struct Surfaces`, `derive_surfaces`, `struct ThemeRegistry` (`builtin`, `with_custom`, `get`, `resolve`, `contains`, `names`, `next`), `const DEFAULT_THEME`.
+- `struct ThemeColors` (12 base colors; `derived(accent, foreground, background)`, `from_accent`, `from_lookup`), `struct ThemeRegistry` (`builtin`, `with_custom`, `get`, `resolve`, `contains`, `names`, `next`), `const DEFAULT_THEME`. Built-ins: `default`, `monochrome`.
 
 ## Boxed decoration (`chrome`)
 
@@ -76,7 +76,9 @@ Each opens over a caller-supplied `render_bg` and returns a `ModalSignal<T>`
 
 - `nav::{cycle, step_clamped, keep_visible}` — wrapping/clamped/scroll-offset helpers.
 - `scroll::render_scrollbar(&mut Frame, Rect, total, offset, viewport)` — draws only on overflow, skips empty areas.
-- `style::{to_ratatui, fg, bg, dim, darken}` — the theme→ratatui adapter.
+- `style::{to_ratatui, fg, bg, base, dim, darken}` — theme→ratatui adapter.
+- `style` semantic roles (take `&Palette`): `primary, secondary, title, accent, accent_dim, accent_vivid, key, selected, cursor, border, disabled, success, warning, error, info` — the single source for how each UI part is colored.
+- `theme_preview::render(&mut Frame, Rect, &Skin)` — draws every palette color as a labeled swatch (hex printed on it via `readable_on`) plus the accent variant ladder; drop into a gallery to verify a theme.
 - `text::truncate(text, width)` — unicode-width aware, appends `…`.
 - `layout::centered_rect(width, height, area)`.
 - `fuzzy::{score, match_indices, highlight}` — nucleo-backed matching.

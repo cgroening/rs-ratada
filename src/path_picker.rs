@@ -209,13 +209,13 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
             truncate(&state.dir.display().to_string(), inner_width),
-            style::dim(),
+            style::secondary(palette),
         ))),
         rows[0],
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("filter ", style::dim()),
+            Span::styled("filter ", style::secondary(palette)),
             Span::raw(state.filter.value().to_string()),
         ])),
         rows[1],

@@ -28,14 +28,14 @@ pub fn render(
             format!(" {brand} "),
             style::fg(skin.palette.accent).add_modifier(Modifier::BOLD),
         ),
-        Span::styled(format!(" {status}"), style::dim()),
+        Span::styled(format!(" {status}"), style::secondary(&skin.palette)),
     ]);
     let paragraph = Paragraph::new(line);
     if skin.is_boxed() {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(style::fg(skin.palette.accent))
+            .border_style(style::border(&skin.palette))
             .padding(Padding::horizontal(1));
         frame.render_widget(paragraph.block(block), area);
     } else {

@@ -15,7 +15,7 @@ use crate::theme::Skin;
 /// Callers build each row's content (and any per-row styling such as dimming);
 /// this widget overlays the selection highlight and the scrollbar. The
 /// highlight follows the [`Mode`](crate::theme::Mode): `Minimal` uses a subtle
-/// `selection_bg` tint, `Boxed` a bold accent-tinted bar.
+/// `selection` tint, `Boxed` a bold accent-tinted bar.
 pub fn render(
     frame: &mut Frame,
     area: Rect,
@@ -31,11 +31,11 @@ pub fn render(
     offset.set(visible_offset);
 
     let highlight = if skin.is_boxed() {
-        style::bg(skin.palette.accent_dark)
+        style::bg(skin.palette.accent_dim)
             .fg(style::to_ratatui(skin.palette.accent))
             .add_modifier(Modifier::BOLD)
     } else {
-        style::bg(skin.palette.selection_bg)
+        style::bg(skin.palette.selection)
     };
 
     let visible: Vec<Line> = rows

@@ -70,7 +70,10 @@ pub fn render(
             }
             for (position, &index) in segments.iter().enumerate() {
                 if position > 0 {
-                    spans.push(Span::styled(SEPARATOR, style::dim()));
+                    spans.push(Span::styled(
+                        SEPARATOR,
+                        style::secondary(palette),
+                    ));
                 }
                 let (key, label) = tabs[index];
                 // The active tab's number and label share one style: the normal
@@ -78,7 +81,7 @@ pub fn render(
                 let tab_style = if index == active {
                     Style::default().add_modifier(Modifier::BOLD)
                 } else {
-                    style::dim()
+                    style::secondary(palette)
                 };
                 spans.push(Span::styled(format!("{key} "), tab_style));
                 spans.push(Span::styled(label.to_string(), tab_style));
@@ -100,7 +103,7 @@ fn boxed_block(skin: &Skin) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(style::fg(skin.palette.accent))
+        .border_style(style::border(&skin.palette))
         .padding(Padding::horizontal(1))
 }
 

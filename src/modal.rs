@@ -532,7 +532,7 @@ fn check_prefix(
 
 fn picker_list<'a>(entries: Vec<ListItem<'a>>, skin: &Skin) -> List<'a> {
     List::new(entries).highlight_style(
-        style::bg(skin.palette.selection_bg).add_modifier(Modifier::BOLD),
+        style::bg(skin.palette.selection).add_modifier(Modifier::BOLD),
     )
 }
 

@@ -109,7 +109,7 @@ fn body_lines(skin: &Skin, rgb: [u8; 3], channel: usize) -> Vec<Line<'static>> {
     let color = Color::Rgb(rgb[0], rgb[1], rgb[2]);
     let bar_width = (BOX_WIDTH as usize).saturating_sub(12).max(1);
     let accent = style::to_ratatui(palette.accent);
-    let track = style::to_ratatui(palette.selection_bg);
+    let track = style::to_ratatui(palette.selection);
 
     let mut lines: Vec<Line> = CHANNELS
         .iter()
@@ -120,7 +120,7 @@ fn body_lines(skin: &Skin, rgb: [u8; 3], channel: usize) -> Vec<Line<'static>> {
             let label_style = if index == channel {
                 style::fg(palette.accent).add_modifier(Modifier::BOLD)
             } else {
-                style::dim()
+                style::secondary(palette)
             };
             let mut spans =
                 vec![Span::styled(format!(" {name} {value:>3} "), label_style)];
@@ -130,7 +130,7 @@ fn body_lines(skin: &Skin, rgb: [u8; 3], channel: usize) -> Vec<Line<'static>> {
             }));
             let line = Line::from(spans);
             if index == channel {
-                line.style(style::bg(palette.selection_bg))
+                line.style(style::bg(palette.selection))
             } else {
                 line
             }

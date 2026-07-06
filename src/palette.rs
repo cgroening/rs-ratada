@@ -276,7 +276,7 @@ fn render_body(
         .split(inner);
 
     let search = Line::from(vec![
-        Span::styled("search ", style::dim()),
+        Span::styled("search ", style::secondary(palette)),
         Span::raw(state.query.clone()),
         Span::styled(
             " ",
@@ -323,19 +323,27 @@ fn item_line(
     if !grouped {
         spans.push(Span::styled(
             format!("{:<CATEGORY_WIDTH$}", item.category),
-            style::dim(),
+            style::secondary(palette),
         ));
     }
     let label = format!("{:<LABEL_WIDTH$}", item.label);
     if item.enabled {
-        spans.extend(fuzzy::highlight(&label, query, style::dim(), palette));
+        spans.extend(fuzzy::highlight(
+            &label,
+            query,
+            style::secondary(palette),
+            palette,
+        ));
         spans.push(Span::styled(
             item.key_hint.to_string(),
             style::fg(palette.accent).add_modifier(Modifier::BOLD),
         ));
     } else {
-        spans.push(Span::styled(label, style::dim()));
-        spans.push(Span::styled(item.key_hint.to_string(), style::dim()));
+        spans.push(Span::styled(label, style::secondary(palette)));
+        spans.push(Span::styled(
+            item.key_hint.to_string(),
+            style::secondary(palette),
+        ));
     }
     Line::from(spans)
 }

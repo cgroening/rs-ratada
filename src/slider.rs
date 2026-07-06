@@ -99,7 +99,7 @@ fn body_lines(
     };
     let filled = (ratio * bar_width as f64).round() as usize;
     let accent = style::to_ratatui(palette.accent);
-    let track = style::to_ratatui(palette.selection_bg);
+    let track = style::to_ratatui(palette.selection);
     let bar: Vec<Span> = (0..bar_width)
         .map(|index| {
             let background = if index < filled { accent } else { track };

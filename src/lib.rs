@@ -99,6 +99,7 @@ pub mod tabs;
 pub mod terminal;
 pub mod text;
 pub mod textarea;
+pub mod theme_preview;
 pub mod toast;
 pub mod tree;
 

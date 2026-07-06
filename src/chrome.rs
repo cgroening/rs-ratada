@@ -31,7 +31,7 @@ pub fn panel(skin: &Skin, title: &str) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(style::fg(skin.palette.accent))
+        .border_style(style::border(&skin.palette))
         .padding(Padding::horizontal(1))
         .title(title_span(skin, title))
 }
@@ -41,7 +41,7 @@ pub fn panel(skin: &Skin, title: &str) -> Block<'static> {
 pub fn menu_panel(skin: &Skin, title: &str) -> Block<'static> {
     let block = panel(skin, title);
     if skin.is_panels() {
-        block.style(style::bg(skin.palette.surface))
+        block.style(style::bg(skin.palette.panel))
     } else {
         block
     }
@@ -54,7 +54,7 @@ pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
     let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(style::fg(skin.palette.accent))
+        .border_style(style::border(&skin.palette))
         .style(style::bg(skin.palette.background))
         .title(modal_title(skin, title));
     if skin.is_boxed() {
@@ -164,7 +164,7 @@ pub fn framed_decor(
     let mut block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(style::fg(skin.palette.accent))
+        .border_style(style::border(&skin.palette))
         .padding(Padding::horizontal(1));
     if let Some(caption) = &decor.caption {
         block = block.title(title_span(skin, caption));

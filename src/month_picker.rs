@@ -169,7 +169,7 @@ fn month_style(
     today: chrono::NaiveDate,
 ) -> Style {
     if month == cursor {
-        style::bg(palette.selection_bg)
+        style::bg(palette.selection)
             .fg(style::to_ratatui(palette.accent))
             .add_modifier(Modifier::BOLD)
     } else if year == today.year() && month == today.month() {

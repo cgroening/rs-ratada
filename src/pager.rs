@@ -205,7 +205,7 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &Pager) {
             format!(
                 " {percent}%  \u{b7}  j/k scroll \u{b7} / search \u{b7} n/N next \u{b7} q close"
             ),
-            style::dim(),
+            style::secondary(palette),
         ))
     };
     frame.render_widget(Paragraph::new(footer), rows[1]);

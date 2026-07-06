@@ -216,7 +216,7 @@ fn render_body<B: AsRef<str>>(
         .split(inner);
 
     let search = Line::from(vec![
-        Span::styled("search ", style::dim()),
+        Span::styled("search ", style::secondary(palette)),
         Span::raw(state.query.clone()),
         Span::styled(
             " ",
@@ -242,7 +242,7 @@ fn render_body<B: AsRef<str>>(
                 spans.extend(fuzzy::highlight(
                     description,
                     &state.query,
-                    style::dim(),
+                    style::secondary(palette),
                     palette,
                 ));
                 Line::from(spans)
