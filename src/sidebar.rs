@@ -321,12 +321,7 @@ impl Sidebar {
         let height = body.height as usize;
         self.viewport.set(height.max(1));
         let selected_row = self.selected_row(&rows);
-        let offset = nav::keep_visible(
-            self.offset.get(),
-            selected_row,
-            height,
-            rows.len(),
-        );
+        let offset = self.scroll_offset(&rows, selected_row, height);
         self.offset.set(offset);
         let h_offset = self.clamp_h_offset(max_width, content_width);
 
@@ -415,6 +410,31 @@ impl Sidebar {
         0
     }
 
+    /// The vertical scroll offset keeping the selected item visible. When
+    /// scrolling up it reveals the item's section header too, so the first item
+    /// sits at the very top (offset 0) and the header stays in view — otherwise
+    /// `keep_visible` would stop at the item and clip the header above it.
+    fn scroll_offset(
+        &self,
+        rows: &[Row],
+        selected_row: usize,
+        height: usize,
+    ) -> usize {
+        if height == 0 || rows.is_empty() {
+            return 0;
+        }
+        let max_offset = rows.len().saturating_sub(height);
+        let anchor = section_header_row(rows, selected_row);
+        let mut offset = self.offset.get().min(max_offset);
+        if anchor < offset {
+            offset = anchor;
+        }
+        if selected_row >= offset + height {
+            offset = selected_row + 1 - height;
+        }
+        offset.min(max_offset)
+    }
+
     /// Clamps and stores the horizontal offset against the widest row, returning
     /// the value to render (always 0 outside scroll mode).
     fn clamp_h_offset(&self, max_width: usize, inner_width: usize) -> usize {
@@ -434,6 +454,16 @@ impl Sidebar {
             Row::Item(item) => item.label.width() + 2,
         }
     }
+}
+
+/// The row index of the header for the section containing `selected_row`, or
+/// `selected_row` itself when no header sits above it (e.g. an untitled section).
+fn section_header_row(rows: &[Row], selected_row: usize) -> usize {
+    let last = selected_row.min(rows.len().saturating_sub(1));
+    (0..=last)
+        .rev()
+        .find(|&index| matches!(rows[index], Row::Header(_)))
+        .unwrap_or(selected_row)
 }
 
 /// Splits `area` into a body and an optional bottom row for the horizontal
@@ -477,6 +507,27 @@ mod tests {
         let sidebar = sample();
         assert_eq!(sidebar.selected_id(), Some(10));
         assert_eq!(sidebar.selected_label(), Some("Apple"));
+    }
+
+    #[test]
+    fn selecting_the_first_item_scrolls_to_the_top() {
+        // Rows: [Header FRUIT, Apple, Banana, Header VEG, Carrot] = 5 rows.
+        let sidebar = sample();
+        let rows = sidebar.rows();
+        // Pretend we had scrolled down before returning to the first item.
+        sidebar.offset.set(1);
+        let selected_row = sidebar.selected_row(&rows); // first item -> row 1
+        let offset = sidebar.scroll_offset(&rows, selected_row, 4);
+        // The header (row 0) is revealed, so the offset is the very top.
+        assert_eq!(offset, 0);
+    }
+
+    #[test]
+    fn section_header_row_finds_the_header_above() {
+        let sidebar = sample();
+        let rows = sidebar.rows();
+        assert_eq!(section_header_row(&rows, 1), 0); // Apple -> FRUIT header
+        assert_eq!(section_header_row(&rows, 4), 3); // Carrot -> VEG header
     }
 
     #[test]
