@@ -44,9 +44,14 @@ const GRAY_STEPS: usize = 16;
 /// The grid's starting lightness plane and the `[`/`]` step.
 const GRID_LIGHT_DEFAULT: f32 = 0.5;
 const GRID_LIGHT_STEP: f32 = 0.08;
-/// Display width of one grid cell, and the focus marker drawn in it.
+/// Display width of one grid cell. The focus marker is a thin vertical bar split
+/// across the two columns, so it centers on the cell's midline even at width two:
+/// `▕` (right one-eighth block) sits at the right edge of the left column, `▏`
+/// (left one-eighth block) at the left edge of the right column, meeting at the
+/// center.
 const CELL_WIDTH: usize = 2;
-const CELL_MARK: &str = "\u{25c6}";
+const MARK_LEFT: &str = "\u{2595}";
+const MARK_RIGHT: &str = "\u{258f}";
 /// Reference backgrounds for the contrast preview.
 const LIGHT_BG: Color = Color::hex("#e5e5e5");
 const DARK_BG: Color = Color::hex("#151515");
@@ -474,8 +479,9 @@ fn render_grid(frame: &mut Frame, area: Rect, state: &State, _skin: &Skin) {
             if index == state.cursor {
                 let mark =
                     style::to_ratatui(cell.color.readable_on(cell.color));
-                spans.push(Span::styled(CELL_MARK.to_string(), fill.fg(mark)));
-                spans.push(Span::styled(" ".repeat(CELL_WIDTH - 1), fill));
+                let styled = fill.fg(mark);
+                spans.push(Span::styled(MARK_LEFT, styled));
+                spans.push(Span::styled(MARK_RIGHT, styled));
             } else {
                 spans.push(Span::styled(" ".repeat(CELL_WIDTH), fill));
             }
