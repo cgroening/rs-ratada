@@ -509,6 +509,7 @@ fn render_picker_list(
     scroll::render_scrollbar(
         frame,
         inner,
+        skin,
         total,
         state.offset(),
         inner.height as usize,

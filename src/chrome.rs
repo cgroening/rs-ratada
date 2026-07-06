@@ -151,16 +151,24 @@ pub fn framed_decor(
         block = block.title(title_span(skin, caption));
     }
     if let Some(badge) = decor.badge_text(auto_badge) {
-        block =
-            block.title_bottom(Line::from(badge_span(badge)).right_aligned());
+        block = block.title_bottom(badge_line(skin, badge).right_aligned());
     }
     let inner = block.inner(area);
     frame.render_widget(block, area);
     inner
 }
 
-/// The bottom-right badge span: a dim, padded label reading as part of the
-/// bottom border (`─ 12/80 ─╯`).
-fn badge_span(text: &str) -> Span<'static> {
-    Span::styled(format!("\u{2500} {} ", text.trim()), style::dim())
+/// The bottom-right badge line reading as part of the bottom border
+/// (`─ 12/80 ─╯`): the connecting dashes in the border color (one on each side
+/// so it joins the corner), the count in dimmed secondary text.
+fn badge_line(skin: &Skin, text: &str) -> Line<'static> {
+    let border = style::border(&skin.palette);
+    Line::from(vec![
+        Span::styled("\u{2500} ", border),
+        Span::styled(
+            format!("{} ", text.trim()),
+            style::secondary(&skin.palette),
+        ),
+        Span::styled("\u{2500}", border),
+    ])
 }

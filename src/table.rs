@@ -384,7 +384,8 @@ impl Table {
             filtering: false,
             offset: Cell::new(0),
             viewport: Cell::new(1),
-            header_style: style::dim().add_modifier(Modifier::BOLD),
+            // Bold on the `panel` header band; overridable per table/column.
+            header_style: Style::default().add_modifier(Modifier::BOLD),
             show_status: true,
             decor: None,
         }
@@ -688,8 +689,11 @@ impl Table {
         let avail = (body.width as usize).saturating_sub(1 + GUTTER);
         let widths = allocate_columns(&specs, avail);
 
+        // The header sits on its own `panel` band so it reads as a distinct
+        // strip above the content rows.
         frame.render_widget(
-            Paragraph::new(self.header_line(&widths, skin)),
+            Paragraph::new(self.header_line(&widths, skin))
+                .style(style::bg(skin.palette.panel)),
             chunks[0],
         );
 
@@ -727,6 +731,7 @@ impl Table {
         scroll::render_scrollbar(
             frame,
             body,
+            skin,
             self.view.len(),
             offset,
             count.max(1),

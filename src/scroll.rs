@@ -7,12 +7,15 @@ use ratatui::{
 };
 
 use super::style;
+use crate::theme::Skin;
 
-/// Draws a dim vertical scrollbar at the right edge of `area`, but only when
-/// the content overflows the viewport.
+/// Draws a vertical scrollbar at the right edge of `area`, but only when the
+/// content overflows the viewport. The thumb uses the dimmed foreground and the
+/// track the border color, so both stay visible.
 pub fn render_scrollbar(
     frame: &mut Frame,
     area: Rect,
+    skin: &Skin,
     total: usize,
     offset: usize,
     viewport: usize,
@@ -29,6 +32,7 @@ pub fn render_scrollbar(
     let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .begin_symbol(None)
         .end_symbol(None)
-        .style(style::dim());
+        .thumb_style(style::fg(skin.palette.foreground_dim))
+        .track_style(style::fg(skin.palette.border));
     frame.render_stateful_widget(scrollbar, area, &mut state);
 }

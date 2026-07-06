@@ -191,7 +191,7 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &Pager) {
         .map(|line| highlight_line(line, query, skin))
         .collect();
     frame.render_widget(Paragraph::new(visible), text_area);
-    scroll::render_scrollbar(frame, text_area, lines.len(), offset, view);
+    scroll::render_scrollbar(frame, text_area, skin, lines.len(), offset, view);
 
     let footer = if searching {
         Line::from(vec![

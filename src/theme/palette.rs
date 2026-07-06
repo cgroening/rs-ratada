@@ -14,11 +14,13 @@ const ACCENT_DIM: f32 = 0.15;
 const ACCENT_VIVID: f32 = 0.25;
 /// `OKLab` lightness drop for secondary (dimmed) text.
 const FOREGROUND_DIM: f32 = 0.30;
-/// How far the selection background is mixed from `background` toward `accent`.
-const SELECTION_MIX: f32 = 0.22;
-/// `OKLab` lightness rise for the resting / active input fills.
+/// How far the selection background is mixed from `surface` toward `accent`, so
+/// a selected row stands out against the content it sits on.
+const SELECTION_MIX: f32 = 0.35;
+/// `OKLab` lightness rise from `surface` for the resting / active input fills,
+/// so a text field stands out from the content it sits on (more so when active).
 const INPUT_BG: f32 = 0.10;
-const INPUT_BG_ACTIVE: f32 = 0.16;
+const INPUT_BG_ACTIVE: f32 = 0.22;
 
 /// Declares the full palette color set once and generates the [`Palette`] and
 /// [`ColorOverrides`] structs plus [`Palette::entries`]/[`Palette::KEYS`]. The
@@ -82,13 +84,13 @@ define_palette! {
     panel,
     /// Content surface for tables and lists.
     surface,
-    /// Selected-row / active background, derived from `background` + `accent`.
+    /// Selected-row / active background, derived from `surface` + `accent`.
     selection,
     /// Block-cursor color, derived from `accent`.
     cursor,
-    /// Resting text-input fill, derived from `background`.
+    /// Resting text-input fill, derived from `surface`.
     input_bg,
-    /// Active (editing) text-input fill, derived from `background`.
+    /// Active (editing) text-input fill, derived from `surface`.
     input_bg_active,
     /// Border/line color.
     border,
@@ -111,6 +113,7 @@ impl Palette {
         let accent = get(overrides.accent, base.accent);
         let foreground = get(overrides.foreground, base.foreground);
         let background = get(overrides.background, base.background);
+        let surface = get(overrides.surface, base.surface);
 
         Self {
             accent,
@@ -128,16 +131,16 @@ impl Palette {
             header: get(overrides.header, base.header),
             footer: get(overrides.footer, base.footer),
             panel: get(overrides.panel, base.panel),
-            surface: get(overrides.surface, base.surface),
+            surface,
             selection: get(
                 overrides.selection,
-                background.mix(accent, SELECTION_MIX),
+                surface.mix(accent, SELECTION_MIX),
             ),
             cursor: get(overrides.cursor, accent),
-            input_bg: get(overrides.input_bg, background.lighten(INPUT_BG)),
+            input_bg: get(overrides.input_bg, surface.lighten(INPUT_BG)),
             input_bg_active: get(
                 overrides.input_bg_active,
-                background.lighten(INPUT_BG_ACTIVE),
+                surface.lighten(INPUT_BG_ACTIVE),
             ),
             border: get(overrides.border, base.border),
             success: get(overrides.success, base.success),

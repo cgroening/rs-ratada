@@ -242,7 +242,14 @@ impl TextArea {
             inner,
         );
         // A scrollbar on the right whenever the wrapped text overflows.
-        scroll::render_scrollbar(frame, inner, rows.len(), scroll, height);
+        scroll::render_scrollbar(
+            frame,
+            inner,
+            skin,
+            rows.len(),
+            scroll,
+            height,
+        );
     }
 
     /// The automatic badge text: character count, or `n/max` with a limit.
