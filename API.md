@@ -67,6 +67,7 @@ Each opens over a caller-supplied `render_bg` and returns a `ModalSignal<T>`
 ## Overlays & chrome
 
 - `help::show(&mut Tui, &Skin, &[HelpSection], render_bg)` — sectioned, fuzzy help overlay; `Tab`/`Shift+Tab` jump sections. `struct HelpSection<'a, B> { title, bindings }`.
+- `palette::palette(&mut Tui, &Skin, title, &[PaletteItem], render_bg) -> ModalSignal<usize>` — fuzzy command palette; grouped when empty, ranked while searching, `Enter` runs the highlighted command. `struct PaletteItem<'a> { label, category, key_hint, enabled }` (disabled items render dimmed and are not selectable).
 - `overlay::{popup, framed, box_width, dim}`, `const SCRIM_FACTOR`, `enum PopupFlow`.
 - `header::render`, `footer::{lines, height, render}`, `statusbar::render`, `struct DoublePress` (`new`, `register`).
 

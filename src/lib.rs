@@ -87,6 +87,7 @@ pub mod month_picker;
 pub mod nav;
 pub mod overlay;
 pub mod pager;
+pub mod palette;
 pub mod path_picker;
 pub mod scroll;
 pub mod slider;
