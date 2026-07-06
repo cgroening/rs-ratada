@@ -305,10 +305,17 @@ impl Sidebar {
     /// the horizontal scrollbar, keeping the cursor row visible.
     fn render_list(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
         let rows = self.rows();
-        let inner_width = area.width as usize;
         let max_width = rows.iter().map(Self::row_width).max().unwrap_or(0);
+        // A vertical scrollbar claims the rightmost column when the rows
+        // overflow the height, so reserve it: labels then clip before the bar
+        // instead of underneath it. An hbar only shrinks the height further, so
+        // measuring against the full area height keeps this decision simple.
+        let has_scrollbar = rows.len() > area.height as usize;
+        let content_width =
+            (area.width as usize).saturating_sub(usize::from(has_scrollbar));
+
         let overflowing =
-            self.overflow == Overflow::Scroll && max_width > inner_width;
+            self.overflow == Overflow::Scroll && max_width > content_width;
         let (body, hbar) = split_for_hbar(area, overflowing);
 
         let height = body.height as usize;
@@ -321,7 +328,7 @@ impl Sidebar {
             rows.len(),
         );
         self.offset.set(offset);
-        let h_offset = self.clamp_h_offset(max_width, inner_width);
+        let h_offset = self.clamp_h_offset(max_width, content_width);
 
         let lines: Vec<Line> = rows
             .iter()
@@ -332,7 +339,7 @@ impl Sidebar {
                 self.render_row(
                     row,
                     index == selected_row,
-                    inner_width,
+                    content_width,
                     h_offset,
                     skin,
                 )
@@ -348,7 +355,7 @@ impl Sidebar {
                 skin,
                 max_width,
                 h_offset,
-                inner_width,
+                content_width,
             );
         }
     }
