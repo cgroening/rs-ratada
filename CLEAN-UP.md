@@ -2,7 +2,7 @@
 
 ## Context
 
-Das Repo ist nach mehreren Feature-Runden stabil und sauber (`cargo fmt --check` grün, `cargo clippy --all-targets -- -D warnings` grün, 106 Unit-/Integrationstests + 7 Doctests, `clippy::pedantic` crate-weit, nur wenige begründete `#[allow]`, keine offenen TODOs, jedes Modul hat einen `//!`-Doc). `ratada` ist die **Bibliothek selbst** – das wiederverwendbare ratatui-Widget-Toolkit plus die framework-agnostische `theme`-Schicht; es gibt kein Binary, keine Domänen-/Persistenz-Schicht. Konsumierende Apps (z. B. `clibase`) hängen als Pfad-Dependency daran. Diese Checkliste betrifft daher das **gesamte Crate**; da es eine öffentliche API ist, sind Sichtbarkeit und Signatur-Stabilität hier besonders wichtig (`pub`-Änderungen sind Breaking Changes).
+Das Repo ist nach mehreren Feature-Runden stabil und sauber (`cargo fmt --check` grün, `cargo clippy --all-targets -- -D warnings` grün, 123 Unit-/Integrationstests + 7 Doctests, `clippy::pedantic` crate-weit, nur wenige begründete `#[allow]`, keine offenen TODOs, jedes Modul hat einen `//!`-Doc). `ratada` ist die **Bibliothek selbst** – das wiederverwendbare ratatui-Widget-Toolkit plus die framework-agnostische `theme`-Schicht; es gibt kein Binary, keine Domänen-/Persistenz-Schicht. Konsumierende Apps (z. B. `clibase`) hängen als Pfad-Dependency daran. Diese Checkliste betrifft daher das **gesamte Crate**; da es eine öffentliche API ist, sind Sichtbarkeit und Signatur-Stabilität hier besonders wichtig (`pub`-Änderungen sind Breaking Changes).
 
 Reihenfolge-Prinzip: zuerst Baseline herstellen, dann Schicht für Schicht von den abhängigkeitsfreien Fundamenten (`theme`) nach außen zu den zusammengesetzten Widgets (so baut sich das Verständnis bottom-up auf und jede Schicht wird nach ihren Abhängigkeiten geprüft), zum Schluss ein Querschnitts-Durchlauf.
 
@@ -80,10 +80,11 @@ Der App-Rahmen: RAII-Guard und Event-Loop.
 - [ ] `clipboard.rs`: externe Tools über `Command` mit `.arg()`/`.args()` – **kein `sh -c` mit zusammengesetzten Strings** (§7.9 Command-Injection); Fehlerpfade kontrolliert.
 - [ ] `editor.rs`: `$EDITOR` via Temp-Datei, Terminal um den Prozess herum via `Tui::suspend` ausgesetzt/wiederhergestellt; Command-Injection-Disziplin; Temp-Datei-Handling robust.
 
-## Phase 7 – Anzeige-Widgets (`table`, `tree`, `list`, `tabs`, `pager`, `gauge`, `spinner`, `toast`, `header`, `statusbar`, `shortcut_hints`, `theme_preview`)
+## Phase 7 – Anzeige-Widgets (`table`, `tree`, `list`, `sidebar`, `tabs`, `pager`, `gauge`, `spinner`, `toast`, `header`, `statusbar`, `shortcut_hints`, `theme_preview`)
 
 - [ ] `table.rs` (**größte Datei, ~1170 Zeilen**): dichte Render-/Navigations-Funktionen gezielt auf SLAP und Verschachtelungstiefe prüfen; Navigations-Helper über `nav`; Sticky-Header/Spaltenkopf; keine Magic-Strings. Kandidat für Zerlegung in kleinere Einheiten (siehe konkrete Kandidaten).
 - [ ] `tree.rs`, `list.rs`: Navigation/Selektion/Scroll-Offset generisch; `list.rs` trägt das eine `#[allow(too_many_arguments)]` – prüfen (siehe Kandidaten).
+- [ ] `sidebar.rs`: sektionierte Menü-Spalte (Header + Items, optionaler `/`-Fuzzy-Filter, `Overflow::Truncate`/`Scroll` mit horizontaler Scrollbar); Selektion überspringt Header, `selected_id`-Mapping; Highlight = Pointer + Akzent + `selection`-Tint; nutzt `nav`/`text`/`scroll`/`chrome::menu_panel`.
 - [ ] `tabs.rs`: Tab-Bar, aktiver Tab im Akzentton; zyklisch.
 - [ ] `pager.rs`: Scroll/Seiten-Navigation; Scrollbar bei Überlauf; `PageUp/Down` geklemmt.
 - [ ] `gauge.rs`, `spinner.rs`, `toast.rs`: kleine Anzeige-Widgets; Animation über `tick`; benannte Konstanten für Frames/Timings. `gauge.rs`: Prozent-Label über dem gefüllten Balken in Kontrastfarbe (`readable_on`).

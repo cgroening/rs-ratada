@@ -90,6 +90,7 @@ pub mod palette;
 pub mod path_picker;
 pub mod scroll;
 pub mod shortcut_hints;
+pub mod sidebar;
 pub mod slider;
 pub mod spinner;
 pub mod statusbar;
