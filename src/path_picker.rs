@@ -21,14 +21,14 @@ use ratatui::{
 };
 
 use super::{
-    footer, fuzzy,
+    fuzzy,
     input::InputField,
     layout::centered_rect,
     list,
     modal::ModalSignal,
     nav,
     overlay::{self, PopupFlow, popup},
-    style,
+    shortcut_hints, style,
     terminal::Tui,
     text::truncate,
 };
@@ -245,7 +245,7 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
 
     frame.render_widget(
         Paragraph::new(
-            footer::lines(
+            shortcut_hints::lines(
                 &[
                     ("\u{2190}\u{2192}", "browse"),
                     ("enter", "pick"),

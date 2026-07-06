@@ -15,11 +15,10 @@ use ratatui::{
 };
 
 use super::{
-    footer,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup},
-    style,
+    shortcut_hints, style,
     terminal::Tui,
 };
 use crate::theme::{Palette, Skin};
@@ -154,7 +153,11 @@ fn body_lines(
     if allow_clear {
         hints.push(("del", "clear"));
     }
-    lines.extend(footer::lines(&hints, palette.accent_dim, INNER_WIDTH));
+    lines.extend(shortcut_hints::lines(
+        &hints,
+        palette.accent_dim,
+        INNER_WIDTH,
+    ));
     lines
 }
 

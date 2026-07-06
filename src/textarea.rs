@@ -60,7 +60,7 @@ impl TextArea {
         self
     }
 
-    /// Draws the area inside a rounded box in `Fancy` mode, plain otherwise.
+    /// Draws the area inside a rounded box in `Boxed` mode, plain otherwise.
     #[must_use]
     pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
         self.decor = Some(decor);
@@ -76,7 +76,7 @@ impl TextArea {
     }
 
     /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
-    /// decoration even in `Fancy` mode.
+    /// decoration even in `Boxed` mode.
     #[must_use]
     pub fn minimal(mut self) -> Self {
         self.decor = None;
@@ -186,7 +186,7 @@ impl TextArea {
     /// Renders the buffer into `area`, scrolling so the caret stays visible and
     /// filling the field with the input background (active tint when `focused`).
     /// A block caret is shown only when `focused`. Wrapped in a box when
-    /// decorated and in `Fancy` mode (or forced via [`Self::boxed_always`]).
+    /// decorated and in `Boxed` mode (or forced via [`Self::boxed_always`]).
     pub fn render(
         &self,
         frame: &mut Frame,
@@ -195,7 +195,7 @@ impl TextArea {
         focused: bool,
     ) {
         let inner = match &self.decor {
-            Some(decor) if self.force_box || skin.is_fancy() => {
+            Some(decor) if self.force_box || skin.is_boxed() => {
                 chrome::framed_decor(frame, area, skin, decor, &self.badge())
             }
             _ => area,

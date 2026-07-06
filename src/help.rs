@@ -266,7 +266,7 @@ fn render_body<B: AsRef<str>>(
 
 /// The footer hint line for the overlay.
 fn footer_hint(skin: &Skin, width: usize) -> Line<'static> {
-    super::footer::lines(
+    super::shortcut_hints::lines(
         &[
             ("\u{2191}\u{2193}", "move"),
             ("tab", "section"),

@@ -15,7 +15,7 @@ use crate::theme::Skin;
 /// Callers build each row's content (and any per-row styling such as dimming);
 /// this widget overlays the selection highlight and the scrollbar. The
 /// highlight follows the [`Mode`](crate::theme::Mode): `Minimal` uses a subtle
-/// `selection_bg` tint, `Fancy` a bold accent-tinted bar.
+/// `selection_bg` tint, `Boxed` a bold accent-tinted bar.
 pub fn render(
     frame: &mut Frame,
     area: Rect,
@@ -30,7 +30,7 @@ pub fn render(
         nav::keep_visible(offset.get(), selected, viewport, total);
     offset.set(visible_offset);
 
-    let highlight = if skin.is_fancy() {
+    let highlight = if skin.is_boxed() {
         style::bg(skin.palette.accent_dark)
             .fg(style::to_ratatui(skin.palette.accent))
             .add_modifier(Modifier::BOLD)
@@ -57,7 +57,7 @@ pub fn render(
 }
 
 /// Like [`render`], but wrapped in a rounded box (see [`chrome::BoxDecor`]) when
-/// in `Fancy` mode or when `force` is set. The badge defaults to the row count.
+/// in `Boxed` mode or when `force` is set. The badge defaults to the row count.
 #[allow(clippy::too_many_arguments)]
 pub fn render_boxed(
     frame: &mut Frame,
@@ -69,7 +69,7 @@ pub fn render_boxed(
     decor: &chrome::BoxDecor,
     force: bool,
 ) {
-    let inner = if force || skin.is_fancy() {
+    let inner = if force || skin.is_boxed() {
         chrome::framed_decor(frame, area, skin, decor, &rows.len().to_string())
     } else {
         area

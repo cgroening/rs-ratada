@@ -19,13 +19,13 @@ use ratatui::{
 };
 
 use super::{
-    footer, fuzzy,
+    fuzzy,
     layout::centered_rect,
     list,
     modal::ModalSignal,
     nav,
     overlay::{self, PopupFlow, popup},
-    style,
+    shortcut_hints, style,
     terminal::Tui,
 };
 use crate::theme::{Palette, Skin};
@@ -348,7 +348,7 @@ fn footer_hint(skin: &Skin, width: usize, grouped: bool) -> Line<'static> {
         hints.push(("tab", "section"));
     }
     hints.push(("esc", "close"));
-    footer::lines(&hints, skin.palette.accent_dim, width)
+    shortcut_hints::lines(&hints, skin.palette.accent_dim, width)
         .into_iter()
         .next()
         .unwrap_or_default()

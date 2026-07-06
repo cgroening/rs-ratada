@@ -17,11 +17,10 @@ use ratatui::{
 
 use super::{
     date_picker::{add_months, month_cells, shift, today},
-    footer,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup},
-    style,
+    shortcut_hints, style,
     terminal::Tui,
 };
 use crate::theme::Skin;
@@ -148,7 +147,7 @@ fn body_lines(
 
     lines.extend(day_grid(skin, cursor, start, today));
 
-    lines.extend(footer::lines(
+    lines.extend(shortcut_hints::lines(
         &[
             ("\u{2190}\u{2192}\u{2191}\u{2193}", "move"),
             ("enter", "start/end"),

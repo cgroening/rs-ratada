@@ -11,11 +11,10 @@ use ratatui::{
 };
 
 use super::{
-    footer,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup},
-    style,
+    shortcut_hints, style,
     terminal::Tui,
 };
 use crate::theme::Skin;
@@ -112,7 +111,7 @@ fn body_lines(
         format!(" {value}  ({}..{})", cfg.min, cfg.max),
         style::fg(palette.accent).add_modifier(Modifier::BOLD),
     ));
-    let hint = footer::lines(
+    let hint = shortcut_hints::lines(
         &[("\u{2190}/\u{2192}", "adjust"), ("enter", "ok")],
         palette.accent_dim,
         bar_width,

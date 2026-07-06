@@ -24,9 +24,9 @@ impl Skin {
         }
     }
 
-    /// Whether the active mode is [`Mode::Fancy`].
-    pub fn is_fancy(&self) -> bool {
-        self.mode.is_fancy()
+    /// Whether the active mode is [`Mode::Boxed`].
+    pub fn is_boxed(&self) -> bool {
+        self.mode.is_boxed()
     }
 
     /// Whether the active mode is [`Mode::Panels`].

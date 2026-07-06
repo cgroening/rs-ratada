@@ -4,7 +4,7 @@
 //! Destructive actions go through [`confirm`].
 //!
 //! Every modal takes a [`Skin`]: the palette drives the colors, while the
-//! [`Mode`](crate::theme::Mode) decides chrome details (the `Fancy` mode insets
+//! [`Mode`](crate::theme::Mode) decides chrome details (the `Boxed` mode insets
 //! the body with a little padding; `Minimal` stays compact).
 
 use std::{collections::HashSet, io};
@@ -20,12 +20,11 @@ use ratatui::{
 use unicode_width::UnicodeWidthStr;
 
 use super::{
-    footer,
     input::{self, TextCursor},
     layout::centered_rect,
     nav,
     overlay::{self, PopupFlow, popup},
-    scroll, style,
+    scroll, shortcut_hints, style,
     terminal::Tui,
 };
 use crate::theme::{Palette, Skin};
@@ -557,10 +556,10 @@ fn input_area(skin: &Skin, area: Rect) -> Rect {
     centered_rect(width, modal_height(skin, 5), area)
 }
 
-/// The modal height for `base` content rows, with one extra row in `Fancy` mode
+/// The modal height for `base` content rows, with one extra row in `Boxed` mode
 /// to make room for the vertical padding.
 fn modal_height(skin: &Skin, base: u16) -> u16 {
-    base + u16::from(skin.is_fancy())
+    base + u16::from(skin.is_boxed())
 }
 
 fn hint(
@@ -568,7 +567,7 @@ fn hint(
     palette: &Palette,
     width: usize,
 ) -> Line<'static> {
-    footer::lines(items, palette.accent, width)
+    shortcut_hints::lines(items, palette.accent, width)
         .into_iter()
         .next()
         .unwrap_or_default()

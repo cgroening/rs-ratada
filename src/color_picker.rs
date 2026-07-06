@@ -11,11 +11,10 @@ use ratatui::{
 };
 
 use super::{
-    footer,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup},
-    style,
+    shortcut_hints, style,
     terminal::Tui,
 };
 use crate::theme::{Color, Skin};
@@ -148,7 +147,7 @@ fn body_lines(skin: &Skin, rgb: [u8; 3], channel: usize) -> Vec<Line<'static>> {
         ),
     ]));
     lines.push(Line::from(""));
-    lines.extend(footer::lines(
+    lines.extend(shortcut_hints::lines(
         &[
             ("\u{2190}/\u{2192}", "\u{b1}10"),
             ("shift", "fine"),

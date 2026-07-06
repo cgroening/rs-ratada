@@ -1,7 +1,7 @@
 //! Shared chrome: the framing that differs between the display modes.
 //!
 //! Centralises the one decision "framed or not" so views and widgets never
-//! branch on [`Mode`](crate::theme::Mode) inline. In `Fancy` mode a [`panel`]
+//! branch on [`Mode`](crate::theme::Mode) inline. In `Boxed` mode a [`panel`]
 //! is a rounded, accent-bordered box with an inset title; in `Minimal` mode it
 //! is a no-op frame, so content fills the area exactly as before.
 
@@ -16,7 +16,7 @@ use ratatui::{
 use super::style;
 use crate::theme::Skin;
 
-/// The container block for a view section. `Fancy` returns a rounded accent box
+/// The container block for a view section. `Boxed` returns a rounded accent box
 /// with `title`; `Minimal` returns an empty block whose inner area equals the
 /// outer one, so existing layouts are unchanged. `Panels` returns a borderless
 /// block that just insets its content by one cell all around, so a filled
@@ -25,7 +25,7 @@ pub fn panel(skin: &Skin, title: &str) -> Block<'static> {
     if skin.is_panels() {
         return Block::default().padding(Padding::uniform(1));
     }
-    if !skin.is_fancy() {
+    if !skin.is_boxed() {
         return Block::default();
     }
     Block::default()
@@ -48,7 +48,7 @@ pub fn menu_panel(skin: &Skin, title: &str) -> Block<'static> {
 }
 
 /// The shared modal frame: a rounded accent border with a filled background and
-/// an inset title. Unlike [`panel`], a modal is always framed; in `Fancy` mode
+/// an inset title. Unlike [`panel`], a modal is always framed; in `Boxed` mode
 /// the body is padded and the title bold. Used by every blocking modal widget.
 pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
     let mut block = Block::default()
@@ -57,17 +57,17 @@ pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
         .border_style(style::fg(skin.palette.accent))
         .style(style::bg(skin.palette.background))
         .title(modal_title(skin, title));
-    if skin.is_fancy() {
+    if skin.is_boxed() {
         block = block.padding(Padding::horizontal(1));
     }
     block
 }
 
 /// An inset title that reads as part of the top border (`╭─ Title ───`). Bold in
-/// `Fancy` mode; the accent color in either.
+/// `Boxed` mode; the accent color in either.
 fn modal_title(skin: &Skin, title: &str) -> Span<'static> {
     let mut style = style::fg(skin.palette.accent);
-    if skin.is_fancy() {
+    if skin.is_boxed() {
         style = style.add_modifier(Modifier::BOLD);
     }
     Span::styled(format!("\u{2500} {} ", title.trim()), style)

@@ -26,9 +26,9 @@ types.
 - `enum Color { Default, Rgb(u8,u8,u8) }` + `parse_color`, `dim_color`, `lighten`; `Color::rgb()`, `Color::to_hex()`.
 - `struct Palette { accent, accent_dim, accent_dark, selection_bg, cursor, background, surface, surface_alt, surface_bar, input_bg, input_bg_active, error, warning, success, info }` + `Palette::resolve(ThemeColors, &ColorOverrides)`.
 - `struct ColorOverrides<'a>` — per-color config override strings.
-- `struct Skin { palette, glyphs, mode }` + `new`, `is_fancy`, `is_panels`.
+- `struct Skin { palette, glyphs, mode }` + `new`, `is_boxed`, `is_panels`.
 - `enum GlyphVariant { Unicode, Ascii }`, `struct Glyphs` + `Glyphs::new(variant)`.
-- `enum Mode { Minimal, Fancy, Panels }` + `ALL`, `next`, `is_fancy`, `is_panels`, `label`.
+- `enum Mode { Minimal, Boxed, Panels }` + `ALL`, `next`, `is_boxed`, `is_panels`, `label` (accepts legacy `"fancy"` for `Boxed`).
 - `struct ThemeColors` (+ `new`/`with_semantics`/`with_surfaces`), `struct Surfaces`, `derive_surfaces`, `struct ThemeRegistry` (`builtin`, `with_custom`, `get`, `resolve`, `contains`, `names`, `next`), `const DEFAULT_THEME`.
 
 ## Boxed decoration (`chrome`)
@@ -69,7 +69,8 @@ Each opens over a caller-supplied `render_bg` and returns a `ModalSignal<T>`
 - `help::show(&mut Tui, &Skin, &[HelpSection], render_bg)` — sectioned, fuzzy help overlay; `Tab`/`Shift+Tab` jump sections. `struct HelpSection<'a, B> { title, bindings }`.
 - `palette::palette(&mut Tui, &Skin, title, &[PaletteItem], render_bg) -> ModalSignal<usize>` — fuzzy command palette; grouped when empty, ranked while searching, `Enter` runs the highlighted command. `struct PaletteItem<'a> { label, category, key_hint, enabled }` (disabled items render dimmed and are not selectable).
 - `overlay::{popup, framed, box_width, dim}`, `const SCRIM_FACTOR`, `enum PopupFlow`.
-- `header::render`, `footer::{lines, height, render}`, `statusbar::render`, `struct DoublePress` (`new`, `register`).
+- `header::render`, `statusbar::render`, `struct DoublePress` (`new`, `register`).
+- `shortcut_hints::{lines, group_lines, height, render}` — flat or grouped, label-aligned, wrapping key hints. `struct HintGroup<'a, S> { label, hints }` (empty label = flat), `struct HintStyle { label, key, description, top_margin, background }` (a `Style` per part; `Default` = dim labels/descriptions, bold keys).
 
 ## Utilities
 

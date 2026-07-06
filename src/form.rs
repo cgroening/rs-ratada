@@ -19,11 +19,11 @@ use ratatui::{
 };
 
 use super::{
-    date_picker, editor, footer,
+    date_picker, editor,
     input::InputField,
     layout::centered_rect,
     modal::ModalSignal,
-    nav, overlay, style,
+    nav, overlay, shortcut_hints, style,
     terminal::{Tui, TuiEvent},
     textarea::TextArea,
 };
@@ -375,7 +375,7 @@ impl Form {
             self.render_field(frame, rects[index], skin, index, field);
         }
         if let Some(footer_rect) = rects.last() {
-            let hints = footer::lines(
+            let hints = shortcut_hints::lines(
                 &[("tab", "next"), ("ctrl+s", "save"), ("esc", "cancel")],
                 palette.accent_dim,
                 footer_rect.width as usize,

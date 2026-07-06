@@ -392,7 +392,7 @@ impl Table {
         }
     }
 
-    /// Draws the table inside a rounded box in `Fancy` mode, plain otherwise;
+    /// Draws the table inside a rounded box in `Boxed` mode, plain otherwise;
     /// the caption sits in the top border and the row-count badge bottom-right.
     /// The inner status/filter line is kept.
     #[must_use]
@@ -410,7 +410,7 @@ impl Table {
     }
 
     /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
-    /// decoration even in `Fancy` mode.
+    /// decoration even in `Boxed` mode.
     #[must_use]
     pub fn minimal(mut self) -> Self {
         self.decor = None;
@@ -681,7 +681,7 @@ impl Table {
     /// scrollbar and an optional status/filter line.
     pub fn render(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
         let area = match &self.decor {
-            Some(decor) if self.force_box || skin.is_fancy() => {
+            Some(decor) if self.force_box || skin.is_boxed() => {
                 chrome::framed_decor(
                     frame,
                     area,
@@ -978,9 +978,9 @@ impl Table {
     }
 }
 
-/// The cursor-row highlight: a bold accent bar in `Fancy`, a tint in `Minimal`.
+/// The cursor-row highlight: a bold accent bar in `Boxed`, a tint in `Minimal`.
 fn cursor_highlight(skin: &Skin) -> Style {
-    if skin.is_fancy() {
+    if skin.is_boxed() {
         style::bg(skin.palette.accent_dark)
             .fg(style::to_ratatui(skin.palette.accent))
             .add_modifier(Modifier::BOLD)

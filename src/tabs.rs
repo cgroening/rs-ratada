@@ -1,14 +1,15 @@
 //! A wrapping, segment-aware top tab bar: a brand plus numbered view tabs.
 //!
 //! Tabs are packed onto as few rows as fit `width`; overflow wraps to the next
-//! row, indented under the brand. The active tab is accented; the rest are dim.
-//! In `Fancy` mode the bar is wrapped in a rounded, accent-bordered box; in
-//! `Minimal` mode it is a single plain row.
+//! row, indented under the brand. The active tab (its number and label) stands
+//! out in the normal text color and bold; the rest are dim. In `Boxed` mode the
+//! bar is wrapped in a rounded, accent-bordered box; in `Minimal` mode it is a
+//! single plain row.
 
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Modifier,
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Padding, Paragraph},
 };
@@ -20,14 +21,14 @@ use crate::theme::Skin;
 const SEPARATOR: &str = " \u{2502} ";
 
 fn brand_label(brand: &str) -> String {
-    format!(" {brand}  ")
+    format!(" {brand}   ")
 }
 
 fn tab_label(key: &str, label: &str) -> String {
     format!("{key} {label}")
 }
 
-/// Number of rows the tab bar needs at `width`, including the border in `Fancy`
+/// Number of rows the tab bar needs at `width`, including the border in `Boxed`
 /// mode.
 pub fn height(
     skin: &Skin,
@@ -72,28 +73,30 @@ pub fn render(
                     spans.push(Span::styled(SEPARATOR, style::dim()));
                 }
                 let (key, label) = tabs[index];
-                let label_style = if index == active {
-                    style::fg(palette.accent).add_modifier(Modifier::BOLD)
+                // The active tab's number and label share one style: the normal
+                // text color in bold; inactive tabs are wholly dimmed.
+                let tab_style = if index == active {
+                    Style::default().add_modifier(Modifier::BOLD)
                 } else {
                     style::dim()
                 };
-                spans.push(Span::styled(format!("{key} "), style::dim()));
-                spans.push(Span::styled(label.to_string(), label_style));
+                spans.push(Span::styled(format!("{key} "), tab_style));
+                spans.push(Span::styled(label.to_string(), tab_style));
             }
             Line::from(spans)
         })
         .collect();
 
     let paragraph = Paragraph::new(lines);
-    if skin.is_fancy() {
-        frame.render_widget(paragraph.block(fancy_block(skin)), area);
+    if skin.is_boxed() {
+        frame.render_widget(paragraph.block(boxed_block(skin)), area);
     } else {
         frame.render_widget(paragraph, area);
     }
 }
 
-/// The rounded accent box used to frame the bar in `Fancy` mode.
-fn fancy_block(skin: &Skin) -> Block<'static> {
+/// The rounded accent box used to frame the bar in `Boxed` mode.
+fn boxed_block(skin: &Skin) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -101,15 +104,15 @@ fn fancy_block(skin: &Skin) -> Block<'static> {
         .padding(Padding::horizontal(1))
 }
 
-/// Extra rows the frame occupies: two (top/bottom border) in `Fancy`, none in
+/// Extra rows the frame occupies: two (top/bottom border) in `Boxed`, none in
 /// `Minimal`.
 fn frame_rows(skin: &Skin) -> u16 {
-    if skin.is_fancy() { 2 } else { 0 }
+    if skin.is_boxed() { 2 } else { 0 }
 }
 
 /// The width available to the packed tabs after the frame/padding.
 fn inner_width(skin: &Skin, width: usize) -> usize {
-    if skin.is_fancy() {
+    if skin.is_boxed() {
         // 2 border columns + 2 padding columns.
         width.saturating_sub(4)
     } else {
@@ -166,11 +169,11 @@ mod tests {
     }
 
     #[test]
-    fn fancy_height_adds_the_border_rows() {
+    fn boxed_height_adds_the_border_rows() {
         let tabs = [("1", "One"), ("2", "Two")];
         let width = 80;
         let minimal = height(&skin(Mode::Minimal), "demo", &tabs, width);
-        let fancy = height(&skin(Mode::Fancy), "demo", &tabs, width);
-        assert_eq!(fancy, minimal + 2);
+        let boxed = height(&skin(Mode::Boxed), "demo", &tabs, width);
+        assert_eq!(boxed, minimal + 2);
     }
 }

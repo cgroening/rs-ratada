@@ -72,7 +72,7 @@ impl TreeView {
         }
     }
 
-    /// Draws the tree inside a rounded box in `Fancy` mode, plain otherwise.
+    /// Draws the tree inside a rounded box in `Boxed` mode, plain otherwise.
     /// The badge defaults to the number of visible rows.
     #[must_use]
     pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
@@ -89,7 +89,7 @@ impl TreeView {
     }
 
     /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
-    /// decoration even in `Fancy` mode.
+    /// decoration even in `Boxed` mode.
     #[must_use]
     pub fn minimal(mut self) -> Self {
         self.decor = None;

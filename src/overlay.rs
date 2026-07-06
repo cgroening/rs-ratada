@@ -91,10 +91,10 @@ pub fn framed(frame: &mut Frame, rect: Rect, skin: &Skin, title: &str) -> Rect {
 }
 
 /// The outer width for a fixed-width popup whose content needs `base - 2`
-/// columns (the inner width in `Minimal` mode). Adds the `Fancy` mode's
+/// columns (the inner width in `Minimal` mode). Adds the `Boxed` mode's
 /// horizontal padding so the inner width is the same in both modes.
 pub fn box_width(base: u16, skin: &Skin) -> u16 {
-    base + 2 * u16::from(skin.is_fancy())
+    base + 2 * u16::from(skin.is_boxed())
 }
 
 /// Dims every cell currently in the frame toward black by `factor`, preserving

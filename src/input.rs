@@ -88,7 +88,7 @@ impl InputField {
         self
     }
 
-    /// Draws the field inside a rounded box in `Fancy` mode (see [`Skin`]),
+    /// Draws the field inside a rounded box in `Boxed` mode (see [`Skin`]),
     /// plain otherwise. See [`chrome::BoxDecor`] for caption/badge.
     #[must_use]
     pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
@@ -105,7 +105,7 @@ impl InputField {
     }
 
     /// Forces the plain (unframed) style, dropping any [`Self::boxed`]
-    /// decoration even in `Fancy` mode.
+    /// decoration even in `Boxed` mode.
     #[must_use]
     pub fn minimal(mut self) -> Self {
         self.decor = None;
@@ -137,7 +137,7 @@ impl InputField {
 
     /// Renders the field into `area`: a filled background (active tint when
     /// `focused`) plus the text line, wrapped in a box when decorated and in
-    /// `Fancy` mode (or forced via [`Self::boxed_always`]).
+    /// `Boxed` mode (or forced via [`Self::boxed_always`]).
     pub fn render(
         &self,
         frame: &mut Frame,
@@ -146,7 +146,7 @@ impl InputField {
         focused: bool,
     ) {
         let inner = match &self.decor {
-            Some(decor) if self.force_box || skin.is_fancy() => {
+            Some(decor) if self.force_box || skin.is_boxed() => {
                 chrome::framed_decor(frame, area, skin, decor, &self.badge())
             }
             _ => area,
