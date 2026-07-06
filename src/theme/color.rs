@@ -176,6 +176,53 @@ impl Color {
         }
     }
 
+    /// The HSL components `(hue, saturation, lightness)` with `hue` in degrees
+    /// (`0..360`) and `saturation`/`lightness` in `0..=1`, or `None` for
+    /// [`Color::Default`].
+    pub fn to_hsl(self) -> Option<(f32, f32, f32)> {
+        self.rgb().map(|rgb| {
+            let hsl = Hsl::from_rgb(rgb);
+            (hsl.h, hsl.s, hsl.l)
+        })
+    }
+
+    /// A color from HSL: `hue` in degrees, `saturation` and `lightness` in
+    /// `0..=1` (values are wrapped/clamped into range).
+    #[must_use]
+    pub fn from_hsl(hue: f32, saturation: f32, lightness: f32) -> Color {
+        Hsl {
+            h: hue,
+            s: saturation,
+            l: lightness,
+        }
+        .to_color()
+    }
+
+    /// The OKLCH components `(lightness, chroma, hue)` with `lightness` in
+    /// `0..=1`, `chroma >= 0` and `hue` in degrees (`0..360`), or `None` for
+    /// [`Color::Default`].
+    pub fn to_oklch(self) -> Option<(f32, f32, f32)> {
+        self.oklch().map(|oklch| {
+            (
+                oklch.lightness,
+                oklch.chroma,
+                oklch.hue.to_degrees().rem_euclid(360.0),
+            )
+        })
+    }
+
+    /// A color from OKLCH: `lightness` in `0..=1`, `chroma >= 0`, `hue` in
+    /// degrees. Out-of-gamut results are clamped to sRGB.
+    #[must_use]
+    pub fn from_oklch(lightness: f32, chroma: f32, hue: f32) -> Color {
+        Oklch {
+            lightness,
+            chroma,
+            hue: hue.to_radians(),
+        }
+        .to_color()
+    }
+
     /// Applies `edit` to the OKLCH form and converts back. `Default` is returned
     /// unchanged (there is no base to transform).
     fn adjust(self, edit: impl Fn(&mut Oklch)) -> Color {
@@ -277,6 +324,78 @@ impl Oklch {
         }
         .to_color()
     }
+}
+
+/// A color in cylindrical HSL form (hue in degrees, saturation and lightness in
+/// `0..=1`). Defined on gamma-encoded sRGB, so it does not go through OKLab.
+#[derive(Clone, Copy)]
+struct Hsl {
+    h: f32,
+    s: f32,
+    l: f32,
+}
+
+impl Hsl {
+    fn from_rgb((red, green, blue): (u8, u8, u8)) -> Hsl {
+        let red = f32::from(red) / 255.0;
+        let green = f32::from(green) / 255.0;
+        let blue = f32::from(blue) / 255.0;
+        let max = red.max(green).max(blue);
+        let min = red.min(green).min(blue);
+        let delta = max - min;
+        let lightness = f32::midpoint(max, min);
+
+        if delta.abs() < f32::EPSILON {
+            return Hsl {
+                h: 0.0,
+                s: 0.0,
+                l: lightness,
+            };
+        }
+
+        let saturation = delta / (1.0 - (2.0 * lightness - 1.0).abs());
+        let hue = if (max - red).abs() < f32::EPSILON {
+            ((green - blue) / delta).rem_euclid(6.0)
+        } else if (max - green).abs() < f32::EPSILON {
+            (blue - red) / delta + 2.0
+        } else {
+            (red - green) / delta + 4.0
+        };
+        Hsl {
+            h: (hue * 60.0).rem_euclid(360.0),
+            s: saturation,
+            l: lightness,
+        }
+    }
+
+    fn to_color(self) -> Color {
+        let hue = self.h.rem_euclid(360.0);
+        let saturation = self.s.clamp(0.0, 1.0);
+        let lightness = self.l.clamp(0.0, 1.0);
+        let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
+        let sector = hue / 60.0;
+        let second = chroma * (1.0 - (sector.rem_euclid(2.0) - 1.0).abs());
+        let (red, green, blue) = match sector as u32 {
+            0 => (chroma, second, 0.0),
+            1 => (second, chroma, 0.0),
+            2 => (0.0, chroma, second),
+            3 => (0.0, second, chroma),
+            4 => (second, 0.0, chroma),
+            _ => (chroma, 0.0, second),
+        };
+        let base = lightness - chroma / 2.0;
+        Color::Rgb(
+            srgb_u8(red + base),
+            srgb_u8(green + base),
+            srgb_u8(blue + base),
+        )
+    }
+}
+
+/// Quantizes a gamma-encoded sRGB channel in `0..=1` to an 8-bit value. Unlike
+/// [`to_channel`], it does no gamma conversion (HSL already lives in sRGB).
+fn srgb_u8(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 fn srgb_to_linear(channel: f32) -> f32 {
@@ -439,6 +558,68 @@ mod tests {
             assert!(g.abs_diff(gg) <= 1, "{g} vs {gg}");
             assert!(b.abs_diff(bb) <= 1, "{b} vs {bb}");
         }
+    }
+
+    #[test]
+    fn hsl_roundtrip_is_near_identity() {
+        for color in [
+            Color::hex("#8bd3cd"),
+            Color::hex("#151515"),
+            Color::hex("#e5e5e5"),
+            Color::hex("#d57b76"),
+            Color::hex("#808080"),
+        ] {
+            let (hue, sat, light) = color.to_hsl().unwrap();
+            let (red, green, blue) = channels(color);
+            let (rr, gg, bb) = channels(Color::from_hsl(hue, sat, light));
+            assert!(red.abs_diff(rr) <= 1, "{red} vs {rr}");
+            assert!(green.abs_diff(gg) <= 1, "{green} vs {gg}");
+            assert!(blue.abs_diff(bb) <= 1, "{blue} vs {bb}");
+        }
+    }
+
+    #[test]
+    fn hsl_has_zero_saturation_for_gray() {
+        let (_, saturation, lightness) =
+            Color::hex("#808080").to_hsl().unwrap();
+        assert!(saturation.abs() < 1e-4, "gray saturation {saturation}");
+        assert!(
+            (lightness - 0.502).abs() < 0.01,
+            "gray lightness {lightness}"
+        );
+    }
+
+    #[test]
+    fn hsl_hue_tracks_the_primaries() {
+        let (red, _, _) = Color::Rgb(255, 0, 0).to_hsl().unwrap();
+        let (green, _, _) = Color::Rgb(0, 255, 0).to_hsl().unwrap();
+        let (blue, _, _) = Color::Rgb(0, 0, 255).to_hsl().unwrap();
+        assert!(red.abs() < 1.0, "red hue {red}");
+        assert!((green - 120.0).abs() < 1.0, "green hue {green}");
+        assert!((blue - 240.0).abs() < 1.0, "blue hue {blue}");
+    }
+
+    #[test]
+    fn oklch_roundtrip_is_near_identity() {
+        for color in [
+            Color::hex("#8bd3cd"),
+            Color::hex("#151515"),
+            Color::hex("#d57b76"),
+            Color::hex("#7fb3d4"),
+        ] {
+            let (light, chroma, hue) = color.to_oklch().unwrap();
+            let (red, green, blue) = channels(color);
+            let (rr, gg, bb) = channels(Color::from_oklch(light, chroma, hue));
+            assert!(red.abs_diff(rr) <= 1, "{red} vs {rr}");
+            assert!(green.abs_diff(gg) <= 1, "{green} vs {gg}");
+            assert!(blue.abs_diff(bb) <= 1, "{blue} vs {bb}");
+        }
+    }
+
+    #[test]
+    fn hsl_and_oklch_leave_default_none() {
+        assert_eq!(Color::Default.to_hsl(), None);
+        assert_eq!(Color::Default.to_oklch(), None);
     }
 
     #[test]

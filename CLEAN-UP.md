@@ -2,7 +2,7 @@
 
 ## Context
 
-Das Repo ist nach mehreren Feature-Runden stabil und sauber (`cargo fmt --check` grün, `cargo clippy --all-targets -- -D warnings` grün, 123 Unit-/Integrationstests + 7 Doctests, `clippy::pedantic` crate-weit, nur wenige begründete `#[allow]`, keine offenen TODOs, jedes Modul hat einen `//!`-Doc). `ratada` ist die **Bibliothek selbst** – das wiederverwendbare ratatui-Widget-Toolkit plus die framework-agnostische `theme`-Schicht; es gibt kein Binary, keine Domänen-/Persistenz-Schicht. Konsumierende Apps (z. B. `clibase`) hängen als Pfad-Dependency daran. Diese Checkliste betrifft daher das **gesamte Crate**; da es eine öffentliche API ist, sind Sichtbarkeit und Signatur-Stabilität hier besonders wichtig (`pub`-Änderungen sind Breaking Changes).
+Das Repo ist nach mehreren Feature-Runden stabil und sauber (`cargo fmt --check` grün, `cargo clippy --all-targets -- -D warnings` grün, 135 Unit-/Integrationstests + 7 Doctests, `clippy::pedantic` crate-weit, nur wenige begründete `#[allow]`, keine offenen TODOs, jedes Modul hat einen `//!`-Doc). `ratada` ist die **Bibliothek selbst** – das wiederverwendbare ratatui-Widget-Toolkit plus die framework-agnostische `theme`-Schicht; es gibt kein Binary, keine Domänen-/Persistenz-Schicht. Konsumierende Apps (z. B. `clibase`) hängen als Pfad-Dependency daran. Diese Checkliste betrifft daher das **gesamte Crate**; da es eine öffentliche API ist, sind Sichtbarkeit und Signatur-Stabilität hier besonders wichtig (`pub`-Änderungen sind Breaking Changes).
 
 Reihenfolge-Prinzip: zuerst Baseline herstellen, dann Schicht für Schicht von den abhängigkeitsfreien Fundamenten (`theme`) nach außen zu den zusammengesetzten Widgets (so baut sich das Verständnis bottom-up auf und jede Schicht wird nach ihren Abhängigkeiten geprüft), zum Schluss ein Querschnitts-Durchlauf.
 
@@ -91,12 +91,13 @@ Der App-Rahmen: RAII-Guard und Event-Loop.
 - [ ] `theme_preview.rs`: rendert die Farb-/Varianten-Vorschau (OKLCH-Stufen) für die Gallery – keine Magic-RGB, Farben aus `palette`.
 - [ ] `header.rs`, `statusbar.rs`, `shortcut_hints.rs`: `shortcut_hints::lines`/`group_lines` als gemeinsamer Hint-Helfer (`(Taste, Beschreibung)`-Tokens, Taste im Akzentton, ` · `-getrennt, umbrechend); `statusbar` als transiente Status-Zeile; Sekundärtext dim.
 
-## Phase 8 – Picker (`color_picker`, `date_picker`, `date_range_picker`, `month_picker`, `path_picker`, `slider`)
+## Phase 8 – Picker (`color_picker`, `swatches`, `date_picker`, `date_range_picker`, `month_picker`, `path_picker`, `slider`)
 
 Alle sollten dünne Wrapper über `overlay::popup` sein – gemeinsamer Look/Shortcuts.
 
 - [ ] `date_picker.rs`, `date_range_picker.rs`, `month_picker.rs`: gemeinsames Kalender-Modal-Muster; `chrono`-Nutzung (kein `unwrap` außerhalb von Tests); einheitliche Shortcuts; Rand-/Monatswechsel-Logik.
-- [ ] `color_picker.rs`, `slider.rs`: Wertebereiche/Clamping; Schrittweiten als benannte Konstanten.
+- [ ] `color_picker.rs`, `slider.rs`: Wertebereiche/Clamping; Schrittweiten als benannte Konstanten. `color_picker.rs`: RGB/HSL/OKLCH-Modelle (Umschaltung via `m`), Gradient-Slider mit Marker, editierbares Hex-Feld, Palette-Presets, Hell/Dunkel-Vorschau; Modell-Konvertierungen als SSOT in `theme::color` (`to_hsl`/`from_hsl`/`to_oklch`/`from_oklch`).
+- [ ] `swatches.rs`: Auswahl aus dem kuratierten `NAMED_COLORS`-Set als scrollbare Liste (Swatch + Name + Hex) über `list::render`; Einfachauswahl mit `Enter`.
 - [ ] `path_picker.rs`: **Pfad-Traversal absichern** – Pfade von außen mit `canonicalize()` + `starts_with()` prüfen (§7.9); Verzeichnis-Navigation robust; Scrollbar bei Überlauf.
 
 ## Phase 9 – Zusammengesetzte Widgets (`modal`, `form`, `finder`, `help`)

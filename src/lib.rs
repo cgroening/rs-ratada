@@ -95,6 +95,7 @@ pub mod slider;
 pub mod spinner;
 pub mod statusbar;
 pub mod style;
+pub mod swatches;
 pub mod table;
 pub mod tabs;
 pub mod terminal;
