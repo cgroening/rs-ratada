@@ -90,7 +90,14 @@ fn render_core(
         .collect();
 
     frame.render_widget(Paragraph::new(visible), area);
-    scroll::render_scrollbar(frame, area, skin, total, visible_offset, viewport);
+    scroll::render_scrollbar(
+        frame,
+        area,
+        skin,
+        total,
+        visible_offset,
+        viewport,
+    );
 }
 
 /// The `position/total` label (1-based), e.g. `"3/12"`.

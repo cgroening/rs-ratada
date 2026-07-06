@@ -1,7 +1,8 @@
 //! A horizontal progress gauge: an accent bar with a centered percentage label.
 //!
-//! The bar segment that sits behind the label is drawn in `accent_dim` so the
-//! text stays readable over the fill.
+//! Over the filled bar the label is drawn in a readable contrast color (near
+//! black or near white, whichever suits the accent) so it stays legible; over
+//! the empty track it keeps the accent color.
 
 use ratatui::{
     Frame,
@@ -32,7 +33,8 @@ pub fn render(
     let label_start = width.saturating_sub(label_chars.len()) / 2;
 
     let accent = style::to_ratatui(palette.accent);
-    let accent_dim = style::to_ratatui(palette.accent_dim);
+    let on_fill =
+        style::to_ratatui(palette.background.readable_on(palette.accent));
     let track = style::to_ratatui(palette.selection);
 
     let spans: Vec<Span> = (0..width)
@@ -42,11 +44,11 @@ pub fn render(
                 .checked_sub(label_start)
                 .and_then(|offset| label_chars.get(offset));
             if let Some(&ch) = label_char {
-                // Over the filled bar the text turns dark for contrast; over
-                // the track it stays in the accent color. The background is
-                // always the underlying bar/track.
+                // Over the filled bar the text uses a readable contrast color;
+                // over the track it stays in the accent color. The background
+                // is always the underlying bar/track.
                 let (foreground, background) = if filled_here {
-                    (accent_dim, accent)
+                    (on_fill, accent)
                 } else {
                     (accent, track)
                 };
