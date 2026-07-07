@@ -17,6 +17,9 @@ palette and glyphs) that maps onto ratatui styles.
   core, autocomplete, tables, trees, tabs, pagers, gauges, spinners, toasts.
 - **Pickers** – color, swatch, date, date-range, month and path pickers (the
   path picker takes an optional confinement root).
+- **Markdown** – a CommonMark renderer (headings, lists, task lists, code
+  blocks, quotes, GFM tables/callouts, links) producing styled lines, plus a
+  scrollable `MarkdownView` widget and a viewer modal.
 - **Theming** – a `Skin` bundling a `Palette` (semantic colors) and `Glyphs`
   (Unicode/ASCII variants); framework-agnostic so a CLI can share it, with a
   single ratatui adapter in `style`.

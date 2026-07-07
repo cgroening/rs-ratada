@@ -5,9 +5,9 @@ Developer notes for working on `ratada`. For a usage overview see
 for the public API surface see [`API.md`](API.md).
 
 `ratada` is a reusable ratatui widget toolkit. It depends only on external
-crates (`ratatui`, `crossterm`, `unicode-width`, `nucleo-matcher`, `chrono`,
-`log`, `serde`) and never on application types, so any host can build a TUI on
-it.
+crates (`ratatui`, `crossterm`, `unicode-width`, `nucleo-matcher`,
+`pulldown-cmark`, `chrono`, `log`, `serde`) and never on application types, so
+any host can build a TUI on it.
 
 ## Project layout
 
@@ -47,6 +47,8 @@ src/
                     split into model / interaction / render
   tree.rs           collapsible TreeView
   list.rs           selectable list + scrollbar (ListView; render/render_boxed)
+  markdown/         CommonMark renderer (mod/render = engine, theme = StyleSheet
+                    default/from_skin, view = MarkdownView + viewer modal)
   sidebar.rs        sectioned menu column (headers + items, optional filter)
   tabs.rs, pager.rs, gauge.rs, spinner.rs, toast.rs
 

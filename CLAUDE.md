@@ -49,8 +49,9 @@ framework-agnostische Theming-Schicht über einem schlanken Kern aus `ratatui`,
   ist die **einzige** Naht, die `theme::Color` auf `ratatui::style::Color`
   abbildet.
 - **Abhängigkeiten:** nur `ratatui`, `crossterm`, `unicode-width`,
-  `nucleo-matcher`, `chrono`, `log`, `serde` (Letzteres für die persistierbaren
-  Enums `Mode`/`GlyphVariant`). Keine weiteren.
+  `nucleo-matcher`, `pulldown-cmark` (CommonMark-Parser für das `markdown`-Modul,
+  `default-features = false`), `chrono`, `log`, `serde` (Letzteres für die
+  persistierbaren Enums `GlyphVariant` etc.). Keine weiteren.
 
 ### Befehle
 

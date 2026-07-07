@@ -11,7 +11,9 @@ use ratada::{
     chrome::BoxDecor,
     gauge, header,
     input::InputField,
-    list, shortcut_hints,
+    list,
+    markdown::MarkdownView,
+    shortcut_hints,
     shortcut_hints::{HintGroup, HintStyle},
     statusbar,
     table::{Column, Row, Table},
@@ -188,5 +190,53 @@ fn chrome_widgets_render_across_sizes() {
         draw(width, height, |frame| {
             theme_preview::render(frame, frame.area(), &skin);
         });
+    }
+}
+
+/// A document exercising every Markdown element the renderer handles.
+const MARKDOWN_SAMPLE: &str = "\
+# Heading 世界
+
+Body with **bold**, *italic*, `code` and a [link](http://example.com).
+
+- bullet one
+- bullet two
+  - nested
+
+1. first
+2. second
+
+- [x] done
+- [ ] open
+
+> a blockquote
+
+> [!NOTE]
+> a callout
+
+```rust
+let wide = \"世界\";
+```
+
+| A | B |
+|---|---|
+| 1 | 2 |
+
+---
+";
+
+#[test]
+fn markdown_view_renders_across_sizes() {
+    let skin = skin();
+    for (width, height) in SIZES {
+        for boxed in [false, true] {
+            draw(width, height, |frame| {
+                let mut view = MarkdownView::new(MARKDOWN_SAMPLE);
+                if boxed {
+                    view = view.boxed(BoxDecor::new().caption("Doc"));
+                }
+                view.render(frame, frame.area(), &skin);
+            });
+        }
     }
 }

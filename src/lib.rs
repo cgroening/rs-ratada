@@ -2,10 +2,10 @@
 //!
 //! The toolkit owns the generic terminal, navigation, rendering and modal
 //! building blocks over `ratatui`/`crossterm` (plus `unicode-width`,
-//! `nucleo-matcher`, `chrono`, `log`) and never depends on any application
-//! types. The [`theme`] layer supplies the framework-agnostic styling
-//! vocabulary (a [`theme::Palette`] and [`theme::Glyphs`], bundled into a
-//! [`theme::Skin`]); the host supplies lifecycle hooks (see
+//! `nucleo-matcher`, `pulldown-cmark`, `chrono`, `log`) and never depends on
+//! any application types. The [`theme`] layer supplies the framework-agnostic
+//! styling vocabulary (a [`theme::Palette`] and [`theme::Glyphs`], bundled
+//! into a [`theme::Skin`]); the host supplies lifecycle hooks (see
 //! [`terminal::Tui::with_hooks`]). Theme colors are mapped to ratatui styles in
 //! [`style`].
 //!
@@ -82,6 +82,7 @@ pub mod help;
 pub mod input;
 pub mod layout;
 pub mod list;
+pub mod markdown;
 pub mod modal;
 pub mod month_picker;
 pub mod nav;

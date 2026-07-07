@@ -72,6 +72,32 @@ Each opens over a caller-supplied `render_bg` and returns a `ModalSignal<T>`
 - `header::render`, `statusbar::render`, `struct DoublePress` (`new`, `register`).
 - `shortcut_hints::{lines, group_lines, height, render}` — flat or grouped, label-aligned, wrapping key hints. `struct HintGroup<'a, S> { label, hints }` (empty label = flat), `struct HintStyle { label, key, description, top_margin, background }` (a `Style` per part; `Default` = dim labels/descriptions, bold keys).
 
+## Markdown (`ratada::markdown`)
+
+Renders CommonMark (plus strikethrough, task lists, GFM tables/callouts and a
+`==highlight==` extension) into styled `ratatui` primitives. The engine takes a
+`StyleSheet` and never depends on host types.
+
+- `markdown::render_block(src, width, &StyleSheet) -> Vec<Line>` — wrapped,
+  decorated block layout; `render_inline(src, width, &StyleSheet) -> Vec<Span>` —
+  inline-only, clipped; `measure_block(src, width, &StyleSheet) -> usize`.
+- `markdown::links(src) -> Vec<Link>` (`struct Link { text, url }`);
+  `style_overlay(src, &StyleSheet) -> Vec<Style>` (per-char, for edit surfaces);
+  `clip_spans(spans, max, ellipsis) -> Vec<Span>`.
+- `struct StyleSheet { base, headings[6], strong, emphasis, strikethrough,
+  inline_code, code_block, quote, highlight, link, rule, bullet, checkbox,
+  callout, table_border, smart_punctuation, html, ellipsis }` (sub-structs
+  `HeadingStyle`/`CodeBlockStyle`/`QuoteStyle`/`BulletStyle`/`CheckboxStyle`/
+  `RuleStyle`/`CalloutStyle`/`CalloutTheme`). `StyleSheet::default()` is the
+  built-in look; `StyleSheet::from_skin(&Skin)` keeps it but swaps ASCII glyph
+  fallbacks for an ASCII skin.
+- `struct MarkdownView` — scrollable inline widget: `new(src)`, `boxed(decor)`,
+  `with_stylesheet(sheet)`, `set_source`, `links()`, `selected_link()`,
+  `handle_key -> bool` (scroll + `Tab` link cycle), `render(&mut Frame, Rect,
+  &Skin)`.
+- `markdown::viewer(&mut Tui, &Skin, title, src, render_bg) -> ModalSignal<Link>`
+  — blocking viewer; `Enter`/`o` returns the highlighted link, `Esc` cancels.
+
 ## Utilities
 
 - `nav::{cycle, step_clamped, keep_visible}` — wrapping/clamped/scroll-offset helpers; `struct ScrollView { total, offset, viewport }` groups a scroll window.
@@ -79,6 +105,7 @@ Each opens over a caller-supplied `render_bg` and returns a `ModalSignal<T>`
 - `style::{to_ratatui, fg, bg, base, dim, darken}` — theme→ratatui adapter.
 - `style` semantic roles (take `&Palette`): `primary, secondary, title, accent, accent_dim, accent_vivid, key, selected, cursor, border, disabled, success, warning, error, info` — the single source for how each UI part is colored.
 - `theme_preview::render(&mut Frame, Rect, &Skin)` — draws every palette color as a labeled swatch (hex printed on it via `readable_on`) plus the accent variant ladder; drop into a gallery to verify a theme.
-- `text::truncate(text, width)` — unicode-width aware, appends `…`.
+- `text::{truncate(text, width), wrap(text, width)}` — unicode-width aware clip
+  (appends `…`) and word-wrap (`Vec<String>`, hard-splits over-long words).
 - `layout::{centered_rect(width, height, area), centered_fraction(area, num, den, min_w, min_h)}` — the shared centered-popup sizing.
 - `fuzzy::{score, match_indices, highlight}` — nucleo-backed matching.
