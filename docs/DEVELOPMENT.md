@@ -1,8 +1,9 @@
 # Development
 
 Developer notes for working on `ratada`. For a usage overview see
-[`README.md`](README.md); for coding conventions see [`CLAUDE.md`](CLAUDE.md);
-for the public API surface see [`API.md`](API.md).
+[`README.md`](../README.md); for coding conventions see
+[`CLAUDE.md`](../CLAUDE.md); the authoritative API reference is the rustdoc
+(`cargo doc --open`, or [docs.rs/ratada](https://docs.rs/ratada)).
 
 `ratada` is a reusable ratatui widget toolkit. It depends only on external
 crates (`ratatui`, `crossterm`, `unicode-width`, `nucleo-matcher`,
@@ -154,4 +155,5 @@ renders every widget in a live, interactive gallery (run it and open `view 3`).
    render through `chrome::framed_decor`; add a `.boxed(decor)` builder.
 5. Add unit tests for the logic and a case in `tests/render.rs`; a doctest for
    the constructor.
-6. Keep `README.md`/`API.md`/`CLAUDE.md` in sync when the public API changes.
+6. Keep the rustdoc, `README.md` and `CLAUDE.md` in sync when the public API
+   changes.

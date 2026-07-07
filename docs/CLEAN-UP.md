@@ -34,7 +34,7 @@ Bottom-up nur *lesen*, um die mentale Landkarte aufzubauen, bevor aufgeräumt wi
 - [x] `lib.rs`: Modulbaum, crate-weite `#![warn/allow]`, öffentliche Re-Exports und `prelude` überfliegen – was ist nach außen sichtbar, welche Schichten gibt es?
 - [x] `theme/mod.rs` → `style.rs`: die eine Naht `theme::Color → ratatui::style::Color` nachvollziehen; alles Weitere baut darauf auf.
 - [x] Den Abhängigkeiten von innen nach außen folgen (`theme` → Primitives `nav/scroll/text` → `terminal/driver` → `overlay/chrome` → Eingabe/Anzeige/Picker → zusammengesetzte Widgets `modal/form/finder/help`). Auffälligkeiten notieren, aber noch nicht anfassen – das passiert bottom-up ab Phase 1.
-- [x] Quer-Referenz zur Doku: `API.md`, `DEVELOPMENT.md`, `README.md` überfliegen und mit dem tatsächlichen Modulbaum abgleichen.
+- [x] Quer-Referenz zur Doku: rustdoc (SSOT der API), `DEVELOPMENT.md`, `README.md` überfliegen und mit dem tatsächlichen Modulbaum abgleichen.
 
 ## Phase 0 – Baseline & Scope
 

@@ -1,5 +1,10 @@
 # ratada
 
+[![crates.io](https://img.shields.io/crates/v/ratada.svg)](https://crates.io/crates/ratada)
+[![docs.rs](https://img.shields.io/docsrs/ratada)](https://docs.rs/ratada)
+[![license](https://img.shields.io/crates/l/ratada.svg)](https://github.com/cgroening/rs-ratada/blob/main/LICENSE)
+![MSRV](https://img.shields.io/badge/rustc-1.88+-blue.svg)
+
 A reusable [ratatui](https://ratatui.rs) widget toolkit for Rust terminal apps.
 
 `ratada` provides the generic building blocks for a TUI over `ratatui` and
@@ -8,7 +13,7 @@ pickers, tables, trees, a fuzzy finder, a help overlay, a command palette,
 footers and status bars, plus a framework-agnostic theming layer (colors,
 palette and glyphs) that maps onto ratatui styles.
 
-![sparcli output widgets](https://raw.githubusercontent.com/cgroening/rs-ratada/main/images/screenshot.png)
+![ratada widget gallery](https://raw.githubusercontent.com/cgroening/rs-ratada/main/images/screenshot.png)
 
 ## Overview
 
@@ -39,6 +44,8 @@ palette and glyphs) that maps onto ratatui styles.
 [dependencies]
 ratada = "0.2"
 ```
+
+Requires Rust 1.88 or newer (the crate uses `let`-chains).
 
 Implement the `Screen` trait and hand it to `run`, which owns the draw/input
 loop inside a raw-mode `Tui` guard. The `prelude` re-exports the driver
@@ -87,12 +94,14 @@ top border, an automatic or fixed badge bottom-right), e.g.
 
 ## Documentation
 
-- [`API.md`](API.md) – a compact index of the public surface (rustdoc via
-  `cargo doc --open` is the authoritative reference).
-- [`DEVELOPMENT.md`](DEVELOPMENT.md) – module layout, conventions and how to add
-  a widget.
-- [`CLAUDE.md`](CLAUDE.md) – the binding style guide.
+- [API reference on docs.rs](https://docs.rs/ratada) – the authoritative,
+  complete rustdoc (or `cargo doc --open` locally).
+- [`DEVELOPMENT.md`](https://github.com/cgroening/rs-ratada/blob/main/docs/DEVELOPMENT.md)
+  – module layout, conventions and how to add a widget.
+- [`CLAUDE.md`](https://github.com/cgroening/rs-ratada/blob/main/CLAUDE.md) – the
+  binding style guide.
 
 ## License
 
-MIT
+Licensed under the MIT License. See
+[`LICENSE`](https://github.com/cgroening/rs-ratada/blob/main/LICENSE).

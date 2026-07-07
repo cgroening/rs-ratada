@@ -28,12 +28,13 @@ so every public item needs a `///` doc comment.
   `pub` signature are breaking changes. Make them deliberately and record them in
   [`CHANGELOG.md`](CHANGELOG.md).
 - **Keep the docs in sync.** When you change the public surface, update the
-  rustdoc, [`API.md`](API.md), [`README.md`](README.md) and
-  [`DEVELOPMENT.md`](DEVELOPMENT.md) as needed.
+  rustdoc (the authoritative API reference), [`README.md`](README.md) and
+  [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) as needed.
 - **Reuse the shared building blocks** (navigation, scrollbar, framing, styling)
-  described in [`DEVELOPMENT.md`](DEVELOPMENT.md) rather than reinventing them.
+  described in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) rather than
+  reinventing them.
 - **Ship tests** for logic-bearing code; add a render smoke case in
   `tests/render.rs` for a new frame-based widget.
 
-See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the module layout and how to add a
-widget.
+See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the module layout and how to
+add a widget.

@@ -5,7 +5,9 @@ All notable changes to `ratada` are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) – while `0.x`, a minor
 bump may contain breaking changes.
 
-## [0.2.0]
+## [Unreleased]
+
+## [0.2.0] - 2026-07-07
 
 ### Added
 
@@ -25,7 +27,7 @@ bump may contain breaking changes.
 
 - Complete rustdoc coverage, enforced crate-wide with `#![warn(missing_docs)]`.
 
-## [0.1.0]
+## [0.1.0] - 2026-07-02
 
 Crate-wide cleanup and API consolidation. This release contains breaking changes.
 
@@ -42,3 +44,7 @@ Crate-wide cleanup and API consolidation. This release contains breaking changes
   render); behavior unchanged.
 - `textarea` now reuses the shared single-line edit core from `input` (SSOT).
 - Documentation synced with the code and the public API surface tightened.
+
+[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cgroening/rs-ratada/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/cgroening/rs-ratada/releases/tag/v0.1.0
