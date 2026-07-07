@@ -6,7 +6,7 @@
 
 use std::io;
 
-use chrono::{Datelike, NaiveDate};
+use chrono::NaiveDate;
 use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
@@ -16,7 +16,9 @@ use ratatui::{
 };
 
 use super::{
-    date_picker::{add_months, month_cells, shift, today},
+    date_picker::{
+        add_months, day_grid, is_weekend, shift, today, weekday_header,
+    },
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup},
@@ -133,19 +135,11 @@ fn body_lines(
         style::fg(palette.accent).add_modifier(Modifier::BOLD),
     )));
 
-    let mut weekdays: Vec<Span> = vec![Span::raw(" ")];
-    for (index, name) in ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
-        .into_iter()
-        .enumerate()
-    {
-        if index > 0 {
-            weekdays.push(Span::raw(" "));
-        }
-        weekdays.push(Span::styled(name, style::secondary(palette)));
-    }
-    lines.push(Line::from(weekdays));
+    lines.push(weekday_header(palette));
 
-    lines.extend(day_grid(skin, cursor, start, today));
+    lines.extend(day_grid(cursor, |day| {
+        day_style(skin, day, cursor, start, today)
+    }));
 
     lines.extend(shortcut_hints::lines(
         &[
@@ -156,33 +150,6 @@ fn body_lines(
         INNER_WIDTH,
     ));
     lines
-}
-
-fn day_grid(
-    skin: &Skin,
-    cursor: NaiveDate,
-    start: Option<NaiveDate>,
-    today: NaiveDate,
-) -> Vec<Line<'static>> {
-    month_cells(cursor)
-        .chunks(7)
-        .map(|week| {
-            let mut spans: Vec<Span> = vec![Span::raw(" ")];
-            for (index, cell) in week.iter().enumerate() {
-                if index > 0 {
-                    spans.push(Span::raw(" "));
-                }
-                match cell {
-                    Some(day) => spans.push(Span::styled(
-                        format!("{:>2}", day.day()),
-                        day_style(skin, *day, cursor, start, today),
-                    )),
-                    None => spans.push(Span::raw("  ")),
-                }
-            }
-            Line::from(spans)
-        })
-        .collect()
 }
 
 fn day_style(
@@ -205,7 +172,7 @@ fn day_style(
         style::bg(palette.selection)
     } else if day == today {
         style::fg(palette.accent_dim).add_modifier(Modifier::BOLD)
-    } else if day.weekday().num_days_from_monday() >= 5 {
+    } else if is_weekend(day) {
         style::secondary(palette)
     } else {
         Style::default().fg(Color::Reset)

@@ -11,12 +11,13 @@ pub struct DoublePress {
 }
 
 impl DoublePress {
+    /// A tracker with no press recorded yet.
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Registers a press at `now`. Returns `true` when it completes a
-    /// double-press (two presses within [`WINDOW`]); the state then resets so a
+    /// double-press (two presses within `WINDOW`); the state then resets so a
     /// third press starts fresh.
     pub fn register(&mut self, now: Instant) -> bool {
         let doubled = matches!(

@@ -17,7 +17,7 @@ use ratatui::{
 
 use super::{
     fuzzy,
-    layout::centered_rect,
+    layout::centered_fraction,
     list,
     modal::ModalSignal,
     nav,
@@ -56,13 +56,7 @@ pub fn finder(
     popup(
         tui,
         &mut state,
-        |area, _| {
-            centered_rect(
-                (area.width * 2 / 3).clamp(40, area.width),
-                (area.height * 2 / 3).clamp(8, area.height),
-                area,
-            )
-        },
+        |area, _| centered_fraction(area, 2, 3, 40, 8),
         |frame, _| render_bg(frame),
         |frame, rect, state: &Finder| {
             let inner = overlay::framed(frame, rect, skin, title);
@@ -155,7 +149,16 @@ fn render_body(
             ))
         })
         .collect();
-    list::render(frame, rows[1], skin, lines, cursor, &state.offset);
+    list::render(
+        frame,
+        rows[1],
+        skin,
+        list::ListView {
+            rows: lines,
+            selected: cursor,
+            offset: &state.offset,
+        },
+    );
 }
 
 #[cfg(test)]

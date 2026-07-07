@@ -32,14 +32,14 @@ pub trait Screen {
         tui: &mut Tui,
     ) -> Result<Flow, Self::Error>;
 
-    /// Called on each idle tick (no input within [`TICK`]); use it to advance
+    /// Called on each idle tick (no input within `TICK`); use it to advance
     /// animations. Default: do nothing.
     fn tick(&mut self) {}
 }
 
 /// Runs the draw/read/handle loop until the screen or the user quits.
 ///
-/// Redraws every iteration; when no event arrives within [`TICK`], calls
+/// Redraws every iteration; when no event arrives within `TICK`, calls
 /// [`Screen::tick`] so animated widgets keep moving.
 ///
 /// # Errors

@@ -300,7 +300,9 @@ pub(crate) fn render_line(
     Line::from(spans)
 }
 
-fn move_caret(cursor: &mut TextCursor, to: usize, extend: bool) {
+/// Moves the caret to `to`, extending the selection when `extend` is set (an
+/// anchor is dropped there on the first extend) or clearing it otherwise.
+pub(crate) fn move_caret(cursor: &mut TextCursor, to: usize, extend: bool) {
     if extend {
         cursor.anchor.get_or_insert(cursor.pos);
     } else {
@@ -309,7 +311,9 @@ fn move_caret(cursor: &mut TextCursor, to: usize, extend: bool) {
     cursor.pos = to;
 }
 
-fn insert_char(
+/// Inserts `ch` at the caret, first replacing any selection and respecting
+/// `max_len`.
+pub(crate) fn insert_char(
     chars: &mut Vec<char>,
     cursor: &mut TextCursor,
     ch: char,
@@ -324,7 +328,8 @@ fn insert_char(
     cursor.anchor = None;
 }
 
-fn backspace(chars: &mut Vec<char>, cursor: &mut TextCursor) {
+/// Deletes the selection, or the char before the caret when there is none.
+pub(crate) fn backspace(chars: &mut Vec<char>, cursor: &mut TextCursor) {
     if delete_selection(chars, cursor) {
         return;
     }
@@ -334,7 +339,8 @@ fn backspace(chars: &mut Vec<char>, cursor: &mut TextCursor) {
     }
 }
 
-fn delete_forward(chars: &mut Vec<char>, cursor: &mut TextCursor) {
+/// Deletes the selection, or the char at the caret when there is none.
+pub(crate) fn delete_forward(chars: &mut Vec<char>, cursor: &mut TextCursor) {
     if delete_selection(chars, cursor) {
         return;
     }
@@ -343,7 +349,11 @@ fn delete_forward(chars: &mut Vec<char>, cursor: &mut TextCursor) {
     }
 }
 
-fn delete_selection(chars: &mut Vec<char>, cursor: &mut TextCursor) -> bool {
+/// Deletes the current selection if any, returning whether one was removed.
+pub(crate) fn delete_selection(
+    chars: &mut Vec<char>,
+    cursor: &mut TextCursor,
+) -> bool {
     let Some((start, end)) = cursor.selection() else {
         return false;
     };
@@ -369,23 +379,47 @@ fn delete_range(
     cursor.anchor = None;
 }
 
-fn copy_selection(chars: &[char], cursor: &TextCursor) {
+/// Copies the current selection (if any) to the clipboard.
+pub(crate) fn copy_selection(chars: &[char], cursor: &TextCursor) {
     if let Some((start, end)) = cursor.selection() {
         let text: String = chars[start..end].iter().collect();
         clipboard::copy(&text);
     }
 }
 
-fn paste(
+/// Pastes clipboard text at the caret, replacing any selection and stripping
+/// all control characters (single-line fields).
+pub(crate) fn paste(
     chars: &mut Vec<char>,
     cursor: &mut TextCursor,
     max_len: Option<usize>,
+) {
+    paste_filtered(chars, cursor, max_len, |ch| !ch.is_control());
+}
+
+/// Like [`paste`], but keeps newlines so multi-line fields preserve the pasted
+/// line breaks.
+pub(crate) fn paste_multiline(
+    chars: &mut Vec<char>,
+    cursor: &mut TextCursor,
+    max_len: Option<usize>,
+) {
+    paste_filtered(chars, cursor, max_len, |ch| ch == '\n' || !ch.is_control());
+}
+
+/// Shared paste: replaces any selection, then inserts the clipboard's
+/// `keep`-passing chars at the caret, respecting `max_len`.
+fn paste_filtered(
+    chars: &mut Vec<char>,
+    cursor: &mut TextCursor,
+    max_len: Option<usize>,
+    keep: impl Fn(char) -> bool,
 ) {
     let Some(text) = clipboard::paste() else {
         return;
     };
     delete_selection(chars, cursor);
-    for ch in text.chars().filter(|ch| !ch.is_control()) {
+    for ch in text.chars().filter(|&ch| keep(ch)) {
         if max_len.is_some_and(|max| chars.len() >= max) {
             break;
         }

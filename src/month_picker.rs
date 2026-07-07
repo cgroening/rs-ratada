@@ -29,6 +29,9 @@ const MONTHS: [&str; 12] = [
 ];
 const BOX_WIDTH: u16 = 18;
 const INNER_WIDTH: usize = 16;
+/// The month grid is laid out as `MONTH_GRID_ROWS` x `MONTH_GRID_COLS` (12).
+const MONTH_GRID_ROWS: u32 = 4;
+const MONTH_GRID_COLS: u32 = 3;
 
 /// The picked year and month (1-12).
 struct Month {
@@ -132,10 +135,10 @@ fn body_lines(
         style::fg(palette.accent).add_modifier(Modifier::BOLD),
     )));
 
-    for row in 0..4u32 {
+    for row in 0..MONTH_GRID_ROWS {
         let mut spans: Vec<Span> = vec![Span::raw(" ")];
-        for col in 0..3u32 {
-            let candidate = row * 3 + col + 1;
+        for col in 0..MONTH_GRID_COLS {
+            let candidate = row * MONTH_GRID_COLS + col + 1;
             spans.push(Span::raw(" "));
             spans.push(Span::styled(
                 MONTHS[(candidate - 1) as usize],

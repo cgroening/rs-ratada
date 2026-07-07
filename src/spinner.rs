@@ -15,6 +15,7 @@ pub struct Spinner {
 }
 
 impl Spinner {
+    /// A spinner resting on its first frame.
     pub fn new() -> Self {
         Self::default()
     }

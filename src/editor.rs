@@ -4,8 +4,10 @@
 //! through [`Tui::suspend`].
 
 use std::{
+    fs::OpenOptions,
     io::{self, Write},
     process::Command,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use super::terminal::Tui;
@@ -28,9 +30,19 @@ pub fn edit_in_editor(
     editor: &str,
     initial: &str,
 ) -> io::Result<Option<String>> {
+    // A pid plus a nanosecond stamp keeps the name unique; `create_new` then
+    // refuses to open a pre-existing file or symlink, so we never write through
+    // one an attacker planted at this predictable path.
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
     let path = std::env::temp_dir()
-        .join(format!("clibase-{}.txt", std::process::id()));
-    std::fs::File::create(&path)?.write_all(initial.as_bytes())?;
+        .join(format!("ratada-{}-{unique}.txt", std::process::id()));
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)?
+        .write_all(initial.as_bytes())?;
 
     let status = tui.suspend(|| Command::new(editor).arg(&path).status())?;
 

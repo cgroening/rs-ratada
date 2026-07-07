@@ -1,4 +1,4 @@
-//! ratatui adapter for framework-agnostic [`theme::Color`] values.
+//! ratatui adapter for framework-agnostic [`crate::theme::Color`] values.
 //!
 //! This is the single place that maps theme colors to ratatui styles, so the
 //! rest of the kit never converts colors inline.

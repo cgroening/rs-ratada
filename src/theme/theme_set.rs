@@ -12,17 +12,21 @@ use super::color::Color;
 /// The default theme name, used as the fallback when a name is unknown.
 pub const DEFAULT_THEME: &str = "default";
 
-/// Universal defaults for colors a (custom) theme omits.
-const DEFAULT_ACCENT: Color = Color::hex("#8bd3cd");
-const DEFAULT_BACKGROUND: Color = Color::hex("#151515");
-const DEFAULT_FOREGROUND: Color = Color::hex("#e5e5e5");
-const DEFAULT_SUCCESS: Color = Color::hex("#a3c995");
-const DEFAULT_WARNING: Color = Color::hex("#ded483");
-const DEFAULT_ERROR: Color = Color::hex("#d57b76");
-const DEFAULT_INFO: Color = Color::hex("#7fb3d4");
+/// Universal defaults for colors a (custom) theme omits. These reuse the
+/// `default` theme's values ([`DEFAULT_COLORS`]) as the single source of truth,
+/// so the fallbacks never drift from the built-in default.
+const DEFAULT_ACCENT: Color = DEFAULT_COLORS.accent;
+const DEFAULT_BACKGROUND: Color = DEFAULT_COLORS.background;
+const DEFAULT_FOREGROUND: Color = DEFAULT_COLORS.foreground;
+const DEFAULT_SUCCESS: Color = DEFAULT_COLORS.success;
+const DEFAULT_WARNING: Color = DEFAULT_COLORS.warning;
+const DEFAULT_ERROR: Color = DEFAULT_COLORS.error;
+const DEFAULT_INFO: Color = DEFAULT_COLORS.info;
 
-/// How omitted neutral backgrounds are derived from `background` (`OKLab` L step).
-const HEADER_DARKEN: f32 = 0.03;
+/// How omitted neutral backgrounds are derived from `background` (`OKLab` L
+/// step). `CHROME_DARKEN` darkens the header and footer bars alike; the others
+/// lighten the panel/surface/border layers.
+const CHROME_DARKEN: f32 = 0.03;
 const PANEL_LIGHTEN: f32 = 0.03;
 const SURFACE_LIGHTEN: f32 = 0.10;
 const BORDER_LIGHTEN: f32 = 0.12;
@@ -32,17 +36,29 @@ const BORDER_LIGHTEN: f32 = 0.12;
 /// some to [`ThemeColors::derived`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThemeColors {
+    /// The single accent hue for headers, active tabs and highlights.
     pub accent: Color,
+    /// The primary text color.
     pub foreground: Color,
+    /// The base window background.
     pub background: Color,
+    /// The header bar background (a darkened `background`).
     pub header: Color,
+    /// The footer bar background (a darkened `background`).
     pub footer: Color,
+    /// The panel background, one step lighter than `background`.
     pub panel: Color,
+    /// The raised surface background (selection/focus tints build on it).
     pub surface: Color,
+    /// The border color for boxes and separators.
     pub border: Color,
+    /// The semantic color for success/positive states.
     pub success: Color,
+    /// The semantic color for warnings.
     pub warning: Color,
+    /// The semantic color for errors/negative states.
     pub error: Color,
+    /// The semantic color for informational accents.
     pub info: Color,
 }
 
@@ -60,8 +76,8 @@ impl ThemeColors {
             accent,
             foreground,
             background,
-            header: background.darken(HEADER_DARKEN),
-            footer: background.darken(HEADER_DARKEN),
+            header: background.darken(CHROME_DARKEN),
+            footer: background.darken(CHROME_DARKEN),
             panel: background.lighten(PANEL_LIGHTEN),
             surface: background.lighten(SURFACE_LIGHTEN),
             border: background.lighten(BORDER_LIGHTEN),
@@ -73,7 +89,7 @@ impl ThemeColors {
     }
 
     /// A theme derived from `accent`/`background` with the universal light
-    /// [`DEFAULT_FOREGROUND`].
+    /// `DEFAULT_FOREGROUND`.
     pub fn from_accent(accent: Color, background: Color) -> Self {
         Self::derived(accent, DEFAULT_FOREGROUND, background)
     }

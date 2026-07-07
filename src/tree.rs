@@ -194,27 +194,16 @@ impl TreeView {
                 Line::from(format!("{indent}{marker} {}", node.label))
             })
             .collect();
+        let view = list::ListView {
+            rows: lines,
+            selected: self.cursor,
+            offset: &self.offset,
+        };
         match &self.decor {
-            Some(decor) => list::render_boxed(
-                frame,
-                area,
-                skin,
-                lines,
-                self.cursor,
-                &self.offset,
-                decor,
-                true,
-            ),
-            None => {
-                list::render(
-                    frame,
-                    area,
-                    skin,
-                    lines,
-                    self.cursor,
-                    &self.offset,
-                );
+            Some(decor) => {
+                list::render_boxed(frame, area, skin, view, decor, true);
             }
+            None => list::render(frame, area, skin, view),
         }
     }
 }

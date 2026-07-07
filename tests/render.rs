@@ -9,13 +9,19 @@ use ratatui::{Frame, Terminal, backend::TestBackend, text::Line};
 
 use ratada::{
     chrome::BoxDecor,
+    gauge, header,
     input::InputField,
-    list,
+    list, shortcut_hints,
+    shortcut_hints::{HintGroup, HintStyle},
+    statusbar,
     table::{Column, Row, Table},
+    tabs,
     textarea::TextArea,
     theme::{
         ColorOverrides, GlyphVariant, Glyphs, Palette, Skin, ThemeRegistry,
     },
+    theme_preview,
+    toast::{ToastKind, Toasts},
     tree::{TreeItem, TreeView},
 };
 
@@ -48,7 +54,16 @@ fn widgets_render_across_styles_and_sizes() {
                 .iter()
                 .map(|item| Line::from(*item))
                 .collect();
-            list::render(frame, frame.area(), &skin, rows, 1, &offset);
+            list::render(
+                frame,
+                frame.area(),
+                &skin,
+                list::ListView {
+                    rows,
+                    selected: 1,
+                    offset: &offset,
+                },
+            );
         });
 
         for boxed in [false, true] {
@@ -99,5 +114,79 @@ fn widgets_render_across_styles_and_sizes() {
                 });
             }
         }
+    }
+}
+
+#[test]
+fn chrome_widgets_render_across_sizes() {
+    let skin = skin();
+    for (width, height) in SIZES {
+        draw(width, height, |frame| {
+            tabs::render(
+                frame,
+                frame.area(),
+                &skin,
+                "Brand",
+                &[("1", "One"), ("2", "Two 世界"), ("3", "Three")],
+                1,
+            );
+        });
+
+        draw(width, height, |frame| {
+            header::render(frame, frame.area(), &skin, "Brand", "status 世界");
+        });
+
+        draw(width, height, |frame| {
+            statusbar::render(
+                frame,
+                frame.area(),
+                &skin,
+                skin.palette.panel,
+                "left 世界",
+                "right",
+            );
+        });
+
+        for ratio in [0.0, 0.5, 1.5] {
+            draw(width, height, |frame| {
+                gauge::render(
+                    frame,
+                    frame.area(),
+                    &skin.palette,
+                    ratio,
+                    "load 世界",
+                );
+            });
+        }
+
+        draw(width, height, |frame| {
+            let groups = [
+                HintGroup {
+                    label: "File",
+                    hints: &[("s", "save"), ("q", "quit 世界")],
+                },
+                HintGroup {
+                    label: "Edit",
+                    hints: &[("u", "undo")],
+                },
+            ];
+            shortcut_hints::render(
+                frame,
+                frame.area(),
+                &groups,
+                &HintStyle::default(),
+            );
+        });
+
+        draw(width, height, |frame| {
+            let mut toasts = Toasts::new();
+            toasts.push(ToastKind::Info, "info 世界");
+            toasts.push(ToastKind::Error, "error");
+            toasts.render(frame, frame.area(), &skin);
+        });
+
+        draw(width, height, |frame| {
+            theme_preview::render(frame, frame.area(), &skin);
+        });
     }
 }

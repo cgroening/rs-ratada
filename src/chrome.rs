@@ -37,25 +37,12 @@ pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
         .border_type(BorderType::Rounded)
         .border_style(style::border(&skin.palette))
         .style(style::bg(skin.palette.background))
-        .title(modal_title(skin, title))
+        .title(title_line(skin, title, style::accent(&skin.palette)))
 }
 
-/// An inset title that reads as part of the top border (`╭─ Title ───`): the
-/// connecting dash keeps the border color so the frame stays uniform, and the
-/// label is accented.
-fn modal_title(skin: &Skin, title: &str) -> Line<'static> {
-    title_line(skin, title, style::accent(&skin.palette))
-}
-
-/// An inset title that reads as part of the top border (`╭─ Title ───`): the
-/// connecting dash keeps the border color, the label is accented and bold.
-fn title_span(skin: &Skin, title: &str) -> Line<'static> {
-    let label = style::accent(&skin.palette).add_modifier(Modifier::BOLD);
-    title_line(skin, title, label)
-}
-
-/// Builds the inset title line: the leading `─ ` in the border color, then the
-/// trimmed title in `label` style.
+/// Builds the inset title line that reads as part of the top border
+/// (`╭─ Title ───`): the leading `─ ` keeps the border color so the frame stays
+/// uniform, then the trimmed title in `label` style.
 fn title_line(skin: &Skin, title: &str, label: Style) -> Line<'static> {
     Line::from(vec![
         Span::styled("\u{2500} ", style::border(&skin.palette)),
@@ -148,7 +135,9 @@ pub fn framed_decor(
         .border_style(style::border(&skin.palette))
         .padding(Padding::horizontal(1));
     if let Some(caption) = &decor.caption {
-        block = block.title(title_span(skin, caption));
+        // Box captions are bold to set them apart from plain modal titles.
+        let label = style::accent(&skin.palette).add_modifier(Modifier::BOLD);
+        block = block.title(title_line(skin, caption, label));
     }
     if let Some(badge) = decor.badge_text(auto_badge) {
         block = block.title_bottom(badge_line(skin, badge).right_aligned());

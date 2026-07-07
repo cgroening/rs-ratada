@@ -36,7 +36,7 @@ const CATEGORY_WIDTH: usize = 12;
 const LABEL_WIDTH: usize = 16;
 
 /// One selectable command in the palette.
-pub struct PaletteItem<'a> {
+pub struct CommandItem<'a> {
     /// The command name shown to the user, e.g. `"add task"`.
     pub label: &'a str,
     /// The section this command is grouped under, e.g. `"Tasks"`.
@@ -62,7 +62,7 @@ struct PaletteState {
 enum Row<'a> {
     Header(&'a str),
     Item {
-        item: &'a PaletteItem<'a>,
+        item: &'a CommandItem<'a>,
         /// The command's original index into the caller's `items`.
         index: usize,
     },
@@ -84,11 +84,11 @@ struct RowLayout<'a> {
 /// `Esc` cancels. Typing filters the commands fuzzily and re-sorts them by
 /// score; with an empty query they stay grouped and `Tab`/`BackTab` jump
 /// between sections. An empty `items` cancels immediately.
-pub fn palette(
+pub fn command_palette(
     tui: &mut Tui,
     skin: &Skin,
     title: &str,
-    items: &[PaletteItem<'_>],
+    items: &[CommandItem<'_>],
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<usize>> {
     if items.is_empty() {
@@ -169,7 +169,7 @@ fn selected_index(layout: &RowLayout, cursor: usize) -> Option<usize> {
 /// section, wrapping around. A no-op while searching (no sections).
 fn jump_section(
     state: &mut PaletteState,
-    items: &[PaletteItem<'_>],
+    items: &[CommandItem<'_>],
     direction: isize,
 ) {
     let starts = layout_rows(items, &state.query).section_starts;
@@ -187,7 +187,7 @@ fn jump_section(
 
 /// Builds the rows for `items`: grouped under section headers when `query` is
 /// empty, otherwise a flat list ranked by fuzzy score.
-fn layout_rows<'a>(items: &'a [PaletteItem<'a>], query: &str) -> RowLayout<'a> {
+fn layout_rows<'a>(items: &'a [CommandItem<'a>], query: &str) -> RowLayout<'a> {
     if query.trim().is_empty() {
         grouped_rows(items)
     } else {
@@ -197,7 +197,7 @@ fn layout_rows<'a>(items: &'a [PaletteItem<'a>], query: &str) -> RowLayout<'a> {
 
 /// Groups `items` under a header per category, preserving their given order.
 /// Only enabled items are selectable; disabled ones still render (dimmed).
-fn grouped_rows<'a>(items: &'a [PaletteItem<'a>]) -> RowLayout<'a> {
+fn grouped_rows<'a>(items: &'a [CommandItem<'a>]) -> RowLayout<'a> {
     let mut rows: Vec<Row<'a>> = Vec::new();
     let mut selectable: Vec<usize> = Vec::new();
     let mut section_starts: Vec<usize> = Vec::new();
@@ -228,7 +228,7 @@ fn grouped_rows<'a>(items: &'a [PaletteItem<'a>]) -> RowLayout<'a> {
 
 /// Filters `items` to those matching `query` and orders them by score, best
 /// first. Only enabled items are selectable; disabled matches still render.
-fn ranked_rows<'a>(items: &'a [PaletteItem<'a>], query: &str) -> RowLayout<'a> {
+fn ranked_rows<'a>(items: &'a [CommandItem<'a>], query: &str) -> RowLayout<'a> {
     let mut scored: Vec<(u32, usize)> = items
         .iter()
         .enumerate()
@@ -259,7 +259,7 @@ fn render_body(
     frame: &mut Frame,
     inner: Rect,
     skin: &Skin,
-    items: &[PaletteItem<'_>],
+    items: &[CommandItem<'_>],
     state: &PaletteState,
 ) {
     let palette = &skin.palette;
@@ -305,7 +305,16 @@ fn render_body(
         .get(state.cursor.min(layout.selectable.len().saturating_sub(1)))
         .copied()
         .unwrap_or(0);
-    list::render(frame, rows[1], skin, entries, selected, &state.offset);
+    list::render(
+        frame,
+        rows[1],
+        skin,
+        list::ListView {
+            rows: entries,
+            selected,
+            offset: &state.offset,
+        },
+    );
 
     let hint = footer_hint(skin, rows[2].width as usize, grouped);
     frame.render_widget(Paragraph::new(hint), rows[2]);
@@ -314,7 +323,7 @@ fn render_body(
 /// Renders one command row. Enabled commands show the label (with fuzzy match
 /// highlights) and an accented key hint; disabled ones are wholly dimmed.
 fn item_line(
-    item: &PaletteItem<'_>,
+    item: &CommandItem<'_>,
     query: &str,
     palette: &Palette,
     grouped: bool,
@@ -366,21 +375,21 @@ fn footer_hint(skin: &Skin, width: usize, grouped: bool) -> Line<'static> {
 mod tests {
     use super::*;
 
-    fn items() -> Vec<PaletteItem<'static>> {
+    fn items() -> Vec<CommandItem<'static>> {
         vec![
-            PaletteItem {
+            CommandItem {
                 label: "add task",
                 category: "Tasks",
                 key_hint: "a",
                 enabled: true,
             },
-            PaletteItem {
+            CommandItem {
                 label: "delete",
                 category: "Tasks",
                 key_hint: "d",
                 enabled: false,
             },
-            PaletteItem {
+            CommandItem {
                 label: "view summary",
                 category: "Views",
                 key_hint: "2",

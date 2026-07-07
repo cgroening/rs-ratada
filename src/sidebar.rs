@@ -342,15 +342,26 @@ impl Sidebar {
             .collect();
         frame.render_widget(Paragraph::new(lines), body);
 
-        scroll::render_scrollbar(frame, body, skin, rows.len(), offset, height);
+        scroll::render_scrollbar(
+            frame,
+            body,
+            skin,
+            nav::ScrollView {
+                total: rows.len(),
+                offset,
+                viewport: height,
+            },
+        );
         if let Some(hbar) = hbar {
             scroll::render_hscrollbar(
                 frame,
                 hbar,
                 skin,
-                max_width,
-                h_offset,
-                content_width,
+                nav::ScrollView {
+                    total: max_width,
+                    offset: h_offset,
+                    viewport: content_width,
+                },
             );
         }
     }

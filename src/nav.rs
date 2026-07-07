@@ -1,5 +1,17 @@
 //! Reusable list navigation and scroll-offset helpers.
 
+/// A scroll window over a list: `viewport` units (rows or columns) are visible
+/// starting at `offset`, out of `total` units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScrollView {
+    /// The total number of units (rows/columns).
+    pub total: usize,
+    /// The index of the first visible unit.
+    pub offset: usize,
+    /// The number of units visible at once.
+    pub viewport: usize,
+}
+
 /// Moves `cursor` by `delta` within a list of `len`, wrapping at both ends.
 ///
 /// One step past the last entry lands on the first and vice versa. An empty
@@ -21,23 +33,18 @@ pub fn step_clamped(cursor: usize, len: usize, delta: isize) -> usize {
     (cursor as isize + delta).clamp(0, last) as usize
 }
 
-/// Returns a scroll offset that keeps `selected` inside a `viewport`-row window
-/// over `total` rows, scrolling only when the cursor would leave the window.
-pub fn keep_visible(
-    offset: usize,
-    selected: usize,
-    viewport: usize,
-    total: usize,
-) -> usize {
-    if viewport == 0 || total == 0 {
+/// Returns a scroll offset that keeps `selected` inside `view`'s window,
+/// scrolling only when the cursor would leave the currently visible rows.
+pub fn keep_visible(view: ScrollView, selected: usize) -> usize {
+    if view.viewport == 0 || view.total == 0 {
         return 0;
     }
-    let max_offset = total.saturating_sub(viewport);
-    let mut offset = offset.min(max_offset);
+    let max_offset = view.total.saturating_sub(view.viewport);
+    let mut offset = view.offset.min(max_offset);
     if selected < offset {
         offset = selected;
-    } else if selected >= offset + viewport {
-        offset = selected + 1 - viewport;
+    } else if selected >= offset + view.viewport {
+        offset = selected + 1 - view.viewport;
     }
     offset.min(max_offset)
 }
@@ -61,8 +68,29 @@ mod tests {
 
     #[test]
     fn keep_visible_follows_the_cursor() {
-        assert_eq!(keep_visible(0, 5, 3, 10), 3);
-        assert_eq!(keep_visible(5, 2, 3, 10), 2);
-        assert_eq!(keep_visible(0, 0, 3, 10), 0);
+        let view = |offset| ScrollView {
+            total: 10,
+            offset,
+            viewport: 3,
+        };
+        assert_eq!(keep_visible(view(0), 5), 3);
+        assert_eq!(keep_visible(view(5), 2), 2);
+        assert_eq!(keep_visible(view(0), 0), 0);
+    }
+
+    #[test]
+    fn keep_visible_handles_empty_and_zero_viewport() {
+        let empty = ScrollView {
+            total: 0,
+            offset: 0,
+            viewport: 3,
+        };
+        assert_eq!(keep_visible(empty, 0), 0);
+        let no_viewport = ScrollView {
+            total: 10,
+            offset: 4,
+            viewport: 0,
+        };
+        assert_eq!(keep_visible(no_viewport, 5), 0);
     }
 }

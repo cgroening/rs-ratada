@@ -91,6 +91,8 @@ fn body_lines(
     value: i64,
 ) -> Vec<Line<'static>> {
     let palette = &skin.palette;
+    // The bar sits inside the box border (1 cell each side) and one padding
+    // cell each side, so it is 4 columns narrower than the box.
     let bar_width = (BOX_WIDTH as usize).saturating_sub(4).max(1);
     let ratio = if cfg.max > cfg.min {
         (value - cfg.min) as f64 / (cfg.max - cfg.min) as f64

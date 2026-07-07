@@ -1,6 +1,7 @@
 //! The resolved color palette and its construction from a theme plus overrides.
 //!
-//! The full color set is declared once via [`define_palette!`], which generates
+//! The full color set is declared once via the `define_palette!` macro, which
+//! generates
 //! the [`Palette`] struct, the [`ColorOverrides`] struct, [`Palette::entries`]
 //! and [`Palette::KEYS`] from that single list, so the set cannot drift across
 //! the struct, the config keys and the preview. [`Palette::resolve`] holds the
@@ -65,6 +66,7 @@ macro_rules! define_palette {
 }
 
 define_palette! {
+    /// The single accent hue for headers, active tabs and highlights.
     accent,
     /// Muted accent, derived from `accent`.
     accent_dim,
@@ -94,9 +96,13 @@ define_palette! {
     input_bg_active,
     /// Border/line color.
     border,
+    /// Semantic color for success/positive states.
     success,
+    /// Semantic color for warnings.
     warning,
+    /// Semantic color for errors/negative states.
     error,
+    /// Semantic color for informational accents.
     info,
 }
 

@@ -16,7 +16,11 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthChar;
 
-use super::{chrome, clipboard, input::TextCursor, scroll, style};
+use super::{
+    chrome,
+    input::{self, TextCursor},
+    nav, scroll, style,
+};
 use crate::theme::Skin;
 
 /// A wrapped, editable multi-line text buffer.
@@ -139,18 +143,11 @@ impl TextArea {
                 true
             }
             KeyCode::Backspace => {
-                if !self.delete_selection(&mut chars) && self.cursor.pos > 0 {
-                    chars.remove(self.cursor.pos - 1);
-                    self.cursor.pos -= 1;
-                }
+                input::backspace(&mut chars, &mut self.cursor);
                 true
             }
             KeyCode::Delete => {
-                if !self.delete_selection(&mut chars)
-                    && self.cursor.pos < chars.len()
-                {
-                    chars.remove(self.cursor.pos);
-                }
+                input::delete_forward(&mut chars, &mut self.cursor);
                 true
             }
             KeyCode::Char(ch) if !ctrl => {
@@ -197,8 +194,14 @@ impl TextArea {
         let rows = wrap(&chars, width);
         let (caret_row, caret_col) = locate(&rows, self.cursor.pos);
 
-        let scroll =
-            keep_row_visible(self.scroll.get(), caret_row, height, rows.len());
+        let scroll = nav::keep_visible(
+            nav::ScrollView {
+                total: rows.len(),
+                offset: self.scroll.get(),
+                viewport: height,
+            },
+            caret_row,
+        );
         self.scroll.set(scroll);
 
         let selection = self.cursor.selection();
@@ -246,9 +249,11 @@ impl TextArea {
             frame,
             inner,
             skin,
-            rows.len(),
-            scroll,
-            height,
+            nav::ScrollView {
+                total: rows.len(),
+                offset: scroll,
+                viewport: height,
+            },
         );
     }
 
@@ -261,55 +266,28 @@ impl TextArea {
         }
     }
 
+    // The editing primitives below all delegate to the shared `input` core so
+    // the single-line edit behaviour has one home (SSOT); only the multi-line
+    // navigation (`row_bounds`/`vertical`) and dispatch live here.
+
     fn move_to(&mut self, pos: usize, extend: bool) {
-        if extend {
-            self.cursor.anchor.get_or_insert(self.cursor.pos);
-        } else {
-            self.cursor.anchor = None;
-        }
-        self.cursor.pos = pos;
+        input::move_caret(&mut self.cursor, pos, extend);
     }
 
     fn insert(&mut self, chars: &mut Vec<char>, ch: char) {
-        self.delete_selection(chars);
-        if self.max_len.is_some_and(|max| chars.len() >= max) {
-            return;
-        }
-        chars.insert(self.cursor.pos, ch);
-        self.cursor.pos += 1;
-        self.cursor.anchor = None;
+        input::insert_char(chars, &mut self.cursor, ch, self.max_len);
     }
 
     fn delete_selection(&mut self, chars: &mut Vec<char>) -> bool {
-        let Some((start, end)) = self.cursor.selection() else {
-            return false;
-        };
-        chars.drain(start..end);
-        self.cursor.pos = start;
-        self.cursor.anchor = None;
-        true
+        input::delete_selection(chars, &mut self.cursor)
     }
 
     fn copy(&self, chars: &[char]) {
-        if let Some((start, end)) = self.cursor.selection() {
-            let text: String = chars[start..end].iter().collect();
-            clipboard::copy(&text);
-        }
+        input::copy_selection(chars, &self.cursor);
     }
 
     fn paste(&mut self, chars: &mut Vec<char>) {
-        let Some(text) = clipboard::paste() else {
-            return;
-        };
-        self.delete_selection(chars);
-        for ch in text.chars().filter(|ch| *ch == '\n' || !ch.is_control()) {
-            if self.max_len.is_some_and(|max| chars.len() >= max) {
-                break;
-            }
-            chars.insert(self.cursor.pos, ch);
-            self.cursor.pos += 1;
-        }
-        self.cursor.anchor = None;
+        input::paste_multiline(chars, &mut self.cursor, self.max_len);
     }
 
     fn row_bounds(&self, chars: &[char], width: usize) -> (usize, usize) {
@@ -387,25 +365,6 @@ fn locate(rows: &[(usize, usize)], pos: usize) -> (usize, usize) {
     (last, pos - rows[last].0)
 }
 
-fn keep_row_visible(
-    offset: usize,
-    caret_row: usize,
-    height: usize,
-    total: usize,
-) -> usize {
-    if height == 0 || total == 0 {
-        return 0;
-    }
-    let max_offset = total.saturating_sub(height);
-    let mut offset = offset.min(max_offset);
-    if caret_row < offset {
-        offset = caret_row;
-    } else if caret_row >= offset + height {
-        offset = caret_row + 1 - height;
-    }
-    offset.min(max_offset)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,5 +409,33 @@ mod tests {
         assert_eq!(area.text(), "abc");
         area.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
         assert_eq!(area.text(), "abc");
+    }
+
+    #[test]
+    fn backspace_delegates_to_the_shared_edit_core() {
+        let mut area = TextArea::new("ab");
+        area.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert_eq!(area.text(), "a");
+    }
+
+    #[test]
+    fn shift_left_selects_and_typing_replaces_via_the_core() {
+        let mut area = TextArea::new("abc");
+        area.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::SHIFT));
+        assert_eq!(area.cursor.selection(), Some((2, 3)));
+        area.handle_key(KeyEvent::new(KeyCode::Char('X'), KeyModifiers::NONE));
+        assert_eq!(area.text(), "abX");
+    }
+
+    #[test]
+    fn ctrl_a_selects_all_then_backspace_clears() {
+        let mut area = TextArea::new("line 1\nline 2");
+        area.handle_key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        ));
+        assert_eq!(area.cursor.selection(), Some((0, 13)));
+        area.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert_eq!(area.text(), "");
     }
 }

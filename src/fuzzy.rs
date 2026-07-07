@@ -12,18 +12,30 @@ use ratatui::{
 use super::style;
 use crate::theme::Palette;
 
+/// Runs `action` with a matcher and the parsed `query`/`haystack`, the shared
+/// setup behind [`score`] and [`match_indices`].
+fn with_pattern<T>(
+    haystack: &str,
+    query: &str,
+    action: impl FnOnce(&Pattern, Utf32Str, &mut Matcher) -> T,
+) -> T {
+    let mut matcher = Matcher::new(Config::DEFAULT);
+    let pattern =
+        Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+    let mut buffer = Vec::new();
+    let utf32 = Utf32Str::new(haystack, &mut buffer);
+    action(&pattern, utf32, &mut matcher)
+}
+
 /// Returns the fuzzy match score of `query` against `haystack`, or `None` when
 /// it does not match. An empty query matches everything with score `0`.
 pub fn score(haystack: &str, query: &str) -> Option<u32> {
     if query.trim().is_empty() {
         return Some(0);
     }
-    let mut matcher = Matcher::new(Config::DEFAULT);
-    let pattern =
-        Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
-    let mut buffer = Vec::new();
-    let utf32 = Utf32Str::new(haystack, &mut buffer);
-    pattern.score(utf32, &mut matcher)
+    with_pattern(haystack, query, |pattern, utf32, matcher| {
+        pattern.score(utf32, matcher)
+    })
 }
 
 /// Returns the char positions in `haystack` that `query` matches.
@@ -31,16 +43,13 @@ pub fn match_indices(haystack: &str, query: &str) -> Vec<u32> {
     if query.trim().is_empty() {
         return Vec::new();
     }
-    let mut matcher = Matcher::new(Config::DEFAULT);
-    let pattern =
-        Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
-    let mut buffer = Vec::new();
-    let utf32 = Utf32Str::new(haystack, &mut buffer);
-    let mut indices = Vec::new();
-    pattern.indices(utf32, &mut matcher, &mut indices);
-    indices.sort_unstable();
-    indices.dedup();
-    indices
+    with_pattern(haystack, query, |pattern, utf32, matcher| {
+        let mut indices = Vec::new();
+        pattern.indices(utf32, matcher, &mut indices);
+        indices.sort_unstable();
+        indices.dedup();
+        indices
+    })
 }
 
 /// Renders `text` as spans with the chars matched by `query` accented and bold
@@ -73,6 +82,7 @@ pub fn highlight(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::theme::{ColorOverrides, ThemeRegistry};
 
     #[test]
     fn empty_query_matches_with_zero_score() {
@@ -94,5 +104,26 @@ mod tests {
         let indices = match_indices("readme", "rm");
         assert!(indices.windows(2).all(|w| w[0] < w[1]));
         assert!(!indices.is_empty());
+    }
+
+    #[test]
+    fn highlight_splits_into_one_span_per_char_on_a_match() {
+        let palette = ThemeRegistry::builtin().resolve("default");
+        let palette = Palette::resolve(palette, &ColorOverrides::default());
+        let spans = highlight("readme", "rm", Style::default(), &palette);
+        // A match accents individual chars, so every char is its own span.
+        assert_eq!(spans.len(), "readme".chars().count());
+        let joined: String =
+            spans.iter().map(|span| span.content.as_ref()).collect();
+        assert_eq!(joined, "readme");
+    }
+
+    #[test]
+    fn highlight_without_a_match_is_a_single_span() {
+        let palette = ThemeRegistry::builtin().resolve("default");
+        let palette = Palette::resolve(palette, &ColorOverrides::default());
+        let spans = highlight("readme", "xyz", Style::default(), &palette);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].content.as_ref(), "readme");
     }
 }

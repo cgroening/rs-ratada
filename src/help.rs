@@ -19,7 +19,7 @@ use ratatui::{
 
 use super::{
     fuzzy,
-    layout::centered_rect,
+    layout::centered_fraction,
     list,
     modal::ModalSignal,
     nav,
@@ -79,13 +79,7 @@ pub fn show<B: AsRef<str>>(
     popup(
         tui,
         &mut state,
-        |area, _| {
-            centered_rect(
-                (area.width * 2 / 3).clamp(40, area.width),
-                (area.height * 2 / 3).clamp(8, area.height),
-                area,
-            )
-        },
+        |area, _| centered_fraction(area, 2, 3, 40, 8),
         |frame, _| render_bg(frame),
         |frame, rect, state: &Help| {
             let inner = overlay::framed(frame, rect, skin, "Help");
@@ -258,7 +252,16 @@ fn render_body<B: AsRef<str>>(
         .get(state.cursor.min(layout.selectable.len().saturating_sub(1)))
         .copied()
         .unwrap_or(0);
-    list::render(frame, rows[1], skin, entries, selected, &state.offset);
+    list::render(
+        frame,
+        rows[1],
+        skin,
+        list::ListView {
+            rows: entries,
+            selected,
+            offset: &state.offset,
+        },
+    );
 
     let hint = footer_hint(skin, rows[2].width as usize);
     frame.render_widget(Paragraph::new(hint), rows[2]);

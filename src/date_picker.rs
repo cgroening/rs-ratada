@@ -27,6 +27,10 @@ use crate::theme::{Palette, Skin};
 
 const BOX_WIDTH: u16 = 24;
 const INNER_WIDTH: usize = 22;
+/// The Monday-first weekday headers, shared by the calendar pickers.
+const WEEKDAY_NAMES: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+/// The weekday index (Monday = 0) at which the weekend begins (Saturday).
+const WEEKEND_START: u32 = 5;
 
 /// Opens the calendar at `current` (or today). `allow_clear` lets `Del` return
 /// an empty date. Returns `Value(Some(date))` when picked, `Value(None)` when
@@ -140,19 +144,11 @@ fn body_lines(
         style::fg(palette.accent).add_modifier(Modifier::BOLD),
     )));
 
-    let mut header: Vec<Span> = vec![Span::raw(" ")];
-    for (index, name) in ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
-        .into_iter()
-        .enumerate()
-    {
-        if index > 0 {
-            header.push(Span::raw(" "));
-        }
-        header.push(Span::styled(name, style::secondary(palette)));
-    }
-    lines.push(Line::from(header));
+    lines.push(weekday_header(palette));
 
-    lines.extend(day_grid(palette, cursor, today));
+    lines.extend(day_grid(cursor, |day| {
+        day_style(palette, day, cursor, today)
+    }));
 
     let mut hints: Vec<(&str, &str)> = vec![
         ("\u{2190}\u{2192}\u{2191}\u{2193}", "move"),
@@ -169,10 +165,24 @@ fn body_lines(
     lines
 }
 
-fn day_grid(
-    palette: &Palette,
+/// The Monday-first weekday header row (`Mo Tu We Th Fr Sa Su`), shared by the
+/// calendar pickers.
+pub(super) fn weekday_header(palette: &Palette) -> Line<'static> {
+    let mut spans: Vec<Span> = vec![Span::raw(" ")];
+    for (index, name) in WEEKDAY_NAMES.into_iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::raw(" "));
+        }
+        spans.push(Span::styled(name, style::secondary(palette)));
+    }
+    Line::from(spans)
+}
+
+/// The month around `cursor` as week rows, each day styled by `style_of`. Shared
+/// by the calendar pickers, which differ only in how a day is styled.
+pub(super) fn day_grid(
     cursor: NaiveDate,
-    today: NaiveDate,
+    style_of: impl Fn(NaiveDate) -> Style,
 ) -> Vec<Line<'static>> {
     month_cells(cursor)
         .chunks(7)
@@ -185,7 +195,7 @@ fn day_grid(
                 match cell {
                     Some(day) => spans.push(Span::styled(
                         format!("{:>2}", day.day()),
-                        day_style(palette, *day, cursor, today),
+                        style_of(*day),
                     )),
                     None => spans.push(Span::raw("  ")),
                 }
@@ -193,6 +203,11 @@ fn day_grid(
             Line::from(spans)
         })
         .collect()
+}
+
+/// Whether `day` falls on the weekend (Saturday or Sunday).
+pub(super) fn is_weekend(day: NaiveDate) -> bool {
+    day.weekday().num_days_from_monday() >= WEEKEND_START
 }
 
 fn day_style(
@@ -207,7 +222,7 @@ fn day_style(
             .add_modifier(Modifier::BOLD)
     } else if day == today {
         style::fg(palette.accent_dim).add_modifier(Modifier::BOLD)
-    } else if day.weekday().num_days_from_monday() >= 5 {
+    } else if is_weekend(day) {
         style::secondary(palette)
     } else {
         Style::default().fg(Color::Reset)

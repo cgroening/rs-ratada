@@ -1,10 +1,10 @@
 //! A framework-agnostic color type plus parsing and OKLCH-based variants.
 //!
-//! Lightness/chroma operations ([`Color::darken`], [`lighten`](Color::lighten),
-//! [`vivid`](Color::vivid), [`dim`](Color::dim), [`shade`](Color::shade),
-//! [`mix`](Color::mix)) go through the perceptual OKLCH color space, so shades
-//! stay hue-stable and evenly spaced instead of shifting or muddying as naive
-//! RGB scaling would.
+//! Lightness/chroma operations ([`Color::darken`],
+//! [`lighten`](Color::lighten), [`vivid`](Color::vivid), [`dim`](Color::dim),
+//! [`shade`](Color::shade), [`mix`](Color::mix)) go through the perceptual
+//! OKLCH color space, so shades stay hue-stable and evenly spaced instead of
+//! shifting or muddying as naive RGB scaling would.
 
 // The OKLab matrices are copied reference constants at full published
 // precision, and the docs name color spaces (OKLCH, OKLab, sRGB) as prose;
@@ -20,9 +20,13 @@ const SHADE_STEP: f32 = 0.08;
 /// Minimum OKLab lightness gap for [`Color::readable_on`] to keep `self`.
 const READABLE_CONTRAST: f32 = 0.4;
 /// The dark/light fallbacks [`Color::readable_on`] returns when `self` is too
-/// low-contrast for the background.
+/// low-contrast for the background. These are the generic contrast inks, kept
+/// independent of any theme's `background`/`foreground` on purpose.
 const READABLE_DARK: Color = Color::hex("#151515");
 const READABLE_LIGHT: Color = Color::hex("#e5e5e5");
+/// The luminance midpoint above which [`Color::readable_on`] treats a
+/// background as light and picks the dark ink.
+const READABLE_MID_LUMINANCE: f32 = 0.5;
 
 /// A color value, independent of any UI framework. `Default` means "use the
 /// surrounding default" (e.g. the terminal background).
@@ -122,7 +126,7 @@ impl Color {
     }
 
     /// A discrete lightness step: negative darkens, positive lightens, each step
-    /// worth [`SHADE_STEP`] OKLab lightness. `Default` is unchanged.
+    /// worth `SHADE_STEP` OKLab lightness. `Default` is unchanged.
     #[must_use]
     pub fn shade(self, step: i8) -> Color {
         let delta = f32::from(step) * SHADE_STEP;
@@ -187,7 +191,7 @@ impl Color {
         {
             return self;
         }
-        if background >= 0.5 {
+        if background >= READABLE_MID_LUMINANCE {
             READABLE_DARK
         } else {
             READABLE_LIGHT
@@ -500,6 +504,10 @@ fn parse_rgb(value: &str) -> Option<Color> {
     Some(Color::Rgb(red, green, blue))
 }
 
+/// Parses one of the eight soft ANSI-style color names. These are deliberately
+/// muted RGB values (not the literal CSS/ANSI primaries) so `parse_color` inputs
+/// blend with the toolkit's palette; they are independent of the semantic theme
+/// colors, which carry meaning rather than naming a hue.
 fn parse_named(value: &str) -> Option<Color> {
     let (red, green, blue) = match value.to_ascii_lowercase().as_str() {
         "red" => (243, 139, 139),

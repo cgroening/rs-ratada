@@ -510,9 +510,11 @@ fn render_picker_list(
         frame,
         inner,
         skin,
-        total,
-        state.offset(),
-        inner.height as usize,
+        nav::ScrollView {
+            total,
+            offset: state.offset(),
+            viewport: inner.height as usize,
+        },
     );
 }
 

@@ -12,8 +12,9 @@ use ratatui::{
 };
 
 use super::{
-    layout::centered_rect,
+    layout::centered_fraction,
     modal::ModalSignal,
+    nav,
     overlay::{self, PopupFlow, popup},
     scroll, style,
     terminal::Tui,
@@ -137,13 +138,7 @@ pub fn pager(
     popup(
         tui,
         &mut state,
-        |area, _| {
-            centered_rect(
-                (area.width * 3 / 4).clamp(40, area.width),
-                (area.height * 3 / 4).clamp(8, area.height),
-                area,
-            )
-        },
+        |area, _| centered_fraction(area, 3, 4, 40, 8),
         |frame, _| render_bg(frame),
         |frame, rect, state: &Pager| {
             let inner = overlay::framed(frame, rect, skin, title);
@@ -191,7 +186,16 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &Pager) {
         .map(|line| highlight_line(line, query, skin))
         .collect();
     frame.render_widget(Paragraph::new(visible), text_area);
-    scroll::render_scrollbar(frame, text_area, skin, lines.len(), offset, view);
+    scroll::render_scrollbar(
+        frame,
+        text_area,
+        skin,
+        nav::ScrollView {
+            total: lines.len(),
+            offset,
+            viewport: view,
+        },
+    );
 
     let footer = if searching {
         Line::from(vec![

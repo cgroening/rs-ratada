@@ -18,35 +18,36 @@ submodule. Cross-module references use `super::`.
 src/
   lib.rs            crate root: lint config, module decls, prelude, crate example
   theme/            framework-agnostic styling vocabulary (a CLI can share it)
-    color.rs        Color + parse_color / dim_color / lighten
-    palette.rs      Palette (+ resolve) and ColorOverrides
-    skin.rs         Skin = Palette + Glyphs + Mode
+    color.rs        Color + parse_color + OKLCH variants (darken/lighten/...)
+    palette.rs      Palette (+ resolve) and ColorOverrides (define_palette! SSOT)
+    skin.rs         Skin = Palette + Glyphs
     glyphs.rs       GlyphVariant + Glyphs (Unicode / ASCII)
-    mode.rs         Mode: Minimal / Fancy / Panels
-    theme_set.rs    ThemeColors, Surfaces, ThemeRegistry (built-in themes)
+    theme_set.rs    ThemeColors, ThemeRegistry (built-in themes)
 
   # driver / infrastructure
   terminal.rs       Tui RAII guard (raw mode + alt screen) + TuiEvent + hooks
   driver.rs         Screen trait + Flow + generic run() loop (idle tick)
   overlay.rs        popup() driver, dimmed scrim, framed() modal helper
   chrome.rs         panels / modal frame + BoxDecor (caption + badge) box seam
-  layout.rs         centered_rect
-  nav.rs            cycle / step_clamped / keep_visible
-  scroll.rs         overflow-only vertical scrollbar
+  layout.rs         centered_rect / centered_fraction (shared popup sizing)
+  nav.rs            cycle / step_clamped / keep_visible + ScrollView
+  scroll.rs         overflow-only vertical/horizontal scrollbar (ScrollView)
   style.rs          the single theme::Color -> ratatui adapter
   text.rs           unicode-width truncate
 
   # input / editing
-  input.rs          TextCursor, InputField, shared apply_edit_key / render_line
-  textarea.rs       TextArea (wrapped multi-line editor)
+  input.rs          TextCursor, InputField, shared edit core (apply_edit_key)
+  textarea.rs       TextArea (wrapped multi-line editor; reuses input's core)
   autocomplete.rs   inline suggestion dropdown
   editor.rs         launch $EDITOR via Tui::suspend
   clipboard.rs      best-effort copy/paste via platform tools
 
   # data display
-  table.rs          Table (type-aware sort, fuzzy filter, row/cell select)
+  table/            Table (type-aware sort, fuzzy filter, row/cell select),
+                    split into model / interaction / render
   tree.rs           collapsible TreeView
-  list.rs           selectable list + scrollbar (render / render_boxed)
+  list.rs           selectable list + scrollbar (ListView; render/render_boxed)
+  sidebar.rs        sectioned menu column (headers + items, optional filter)
   tabs.rs, pager.rs, gauge.rs, spinner.rs, toast.rs
 
   # pickers / modals
@@ -54,12 +55,15 @@ src/
                     number_input / message
   form.rs           schema-driven form (text/multiline/bool/choice/date)
   finder.rs         fuzzy picker; fuzzy.rs: nucleo score + highlight
-  color_picker.rs, date_picker.rs, date_range_picker.rs, month_picker.rs,
-  path_picker.rs, slider.rs
+  color_picker.rs, swatches.rs, date_picker.rs, date_range_picker.rs,
+  month_picker.rs, path_picker.rs (optional root confinement), slider.rs
 
   # chrome / misc
   help.rs           sectioned, fuzzy help overlay (Tab jumps sections)
-  header.rs, footer.rs, statusbar.rs, double_press.rs
+  command_palette.rs  fuzzy command palette overlay
+  shortcut_hints.rs   footer key-hint lines (flat or grouped)
+  theme_preview.rs    palette/variant preview for a gallery
+  header.rs, statusbar.rs, double_press.rs
 tests/
   render.rs         headless TestBackend render smoke tests
 ```
@@ -76,12 +80,14 @@ than reinventing them:
   (`tree`, `finder`, `help`, `path_picker`) get it for free.
 - **Framing:** `chrome::framed_decor` draws the rounded accent box with a
   caption (top border) and badge (bottom-right); every boxable widget goes
-  through it. Widgets expose `.boxed(decor)` / `.boxed_always(decor)` /
-  `.minimal()`; the frame follows the `Mode` unless forced.
+  through it and exposes `.boxed(decor)`.
+- **Popup sizing:** `layout::centered_fraction` gives every centered popup its
+  size (a fraction of the area, floored at a minimum).
 - **Colors:** only `style.rs` maps `theme::Color` to ratatui; widgets take a
   `&Skin`/`&Palette`, never a raw literal.
-- **Text editing:** `input::TextCursor` + `apply_edit_key` are the shared caret/
-  edit core; widths are measured with `unicode-width` (wide glyphs count as 2).
+- **Text editing:** `input::TextCursor` + the crate-internal `apply_edit_key`
+  are the shared caret/edit core (reused by `textarea`); widths are measured
+  with `unicode-width` (wide glyphs count as 2).
 
 ## Common commands
 
@@ -102,10 +108,10 @@ the `clibase` gallery (`cargo run` in `../../templates/clibase`, view `3`) or a
   (navigation, wrap/width, filtering, selection, badge counts).
 - **Doctests** on the key public items double as compile-checked examples.
 - **`tests/render.rs`** renders the frame-based widgets into a `TestBackend`
-  across every `Mode`, plain/boxed, at a roomy and a cramped size, and with wide
-  characters — a panic-free smoke test (this is how the empty-area scrollbar
-  panic was caught). Popups (`help`/`finder`/`modal`/`path_picker`) need a live
-  `Tui` loop and are covered by their unit tests instead.
+  plain/boxed, at a roomy and a cramped size, and with wide characters — a
+  panic-free smoke test (this is how the empty-area scrollbar panic was caught).
+  Popups (`help`/`finder`/`modal`/`path_picker`) need a live `Tui` loop and are
+  covered by their unit tests instead.
 
 ## Adding a widget
 
@@ -113,7 +119,7 @@ the `clibase` gallery (`cargo run` in `../../templates/clibase`, view `3`) or a
 2. Take a `&Skin` (or `&Palette`) for styling; never depend on host types.
 3. Reuse `nav`/`scroll`/`chrome`/`style` and the `unicode-width` helpers.
 4. If it should support the boxed style, store an `Option<chrome::BoxDecor>` and
-   render through `chrome::framed_decor`; add `.boxed`/`.boxed_always`/`.minimal`.
+   render through `chrome::framed_decor`; add a `.boxed(decor)` builder.
 5. Add unit tests for the logic and a case in `tests/render.rs`; a doctest for
    the constructor.
 6. Keep `README.md`/`API.md`/`CLAUDE.md` in sync when the public API changes.

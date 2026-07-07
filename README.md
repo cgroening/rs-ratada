@@ -4,9 +4,9 @@ A reusable [ratatui](https://ratatui.rs) widget toolkit for Rust terminal apps.
 
 `ratada` provides the generic building blocks for a TUI over `ratatui` and
 `crossterm`: a terminal guard and event loop, modals, forms, text editing,
-pickers, tables, trees, a fuzzy finder, a help overlay, footers and status
-bars, plus a framework-agnostic theming layer (colors, palette, glyphs and
-layout mode) that maps onto ratatui styles.
+pickers, tables, trees, a fuzzy finder, a help overlay, a command palette,
+footers and status bars, plus a framework-agnostic theming layer (colors,
+palette and glyphs) that maps onto ratatui styles.
 
 ## Overview
 
@@ -15,16 +15,17 @@ layout mode) that maps onto ratatui styles.
 - **Widgets** – modals (`confirm`, `select`, `multi_select`, `number_input`,
   `message`), forms, single- and multi-line text editing with a shared editor
   core, autocomplete, tables, trees, tabs, pagers, gauges, spinners, toasts.
-- **Pickers** – color, date, date-range, month and path pickers.
-- **Theming** – a `Skin` bundling a `Palette` (semantic colors), `Glyphs`
-  (Unicode/ASCII variants) and a layout `Mode`; framework-agnostic so a CLI can
-  share it, with a single ratatui adapter in `style`.
+- **Pickers** – color, swatch, date, date-range, month and path pickers (the
+  path picker takes an optional confinement root).
+- **Theming** – a `Skin` bundling a `Palette` (semantic colors) and `Glyphs`
+  (Unicode/ASCII variants); framework-agnostic so a CLI can share it, with a
+  single ratatui adapter in `style`.
 
 ## Usage
 
 ```toml
 [dependencies]
-ratada = "0.0.1"
+ratada = "0.1"
 ```
 
 Implement the `Screen` trait and hand it to `run`, which owns the draw/input

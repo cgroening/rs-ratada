@@ -5,6 +5,10 @@
 //! entries, `Ctrl+H` toggles hidden (dot-prefixed) entries (hidden by default),
 //! `Enter` selects the highlighted entry (a folder, or a file when
 //! `allow_files`), `Esc` cancels.
+//!
+//! An optional confinement root ([`PathPickerConfig::root`]) bounds navigation:
+//! the picker never ascends above it and never follows a symlinked folder out
+//! of it (both are checked with `canonicalize` + `starts_with`).
 
 use std::{
     cell::Cell,
@@ -23,7 +27,7 @@ use ratatui::{
 use super::{
     fuzzy,
     input::InputField,
-    layout::centered_rect,
+    layout::centered_fraction,
     list,
     modal::ModalSignal,
     nav,
@@ -42,6 +46,8 @@ struct Entry {
 
 struct State {
     dir: PathBuf,
+    /// The confinement root (canonicalized), above which navigation is barred.
+    root: Option<PathBuf>,
     allow_files: bool,
     show_hidden: bool,
     entries: Vec<Entry>,
@@ -52,10 +58,14 @@ struct State {
 }
 
 impl State {
-    fn new(start: &Path, allow_files: bool) -> Self {
-        let dir = first_existing(start);
+    fn new(start: &Path, allow_files: bool, root: Option<&Path>) -> Self {
+        let root = root.map(|root| {
+            root.canonicalize().unwrap_or_else(|_| root.to_path_buf())
+        });
+        let dir = confine(first_existing(start), root.as_deref());
         let mut state = Self {
             dir,
+            root,
             allow_files,
             show_hidden: false,
             entries: Vec::new(),
@@ -109,38 +119,87 @@ impl State {
         if let Some(entry) = self.selected()
             && entry.is_dir
         {
-            self.dir = entry.path.clone();
+            // Canonicalize so a symlinked folder cannot escape the root.
+            let target = entry
+                .path
+                .canonicalize()
+                .unwrap_or_else(|_| entry.path.clone());
+            if !within_root(&target, self.root.as_deref()) {
+                return;
+            }
+            self.dir = target;
             self.reload();
         }
     }
 
     fn ascend(&mut self) {
-        if let Some(parent) = self.dir.parent() {
-            self.dir = parent.to_path_buf();
-            self.reload();
+        let Some(parent) = self.dir.parent() else {
+            return;
+        };
+        let parent = parent.to_path_buf();
+        if !within_root(&parent, self.root.as_deref()) {
+            return;
         }
+        self.dir = parent;
+        self.reload();
     }
 }
 
-/// Opens the picker at `start`. Returns `Value(path)` on selection, `Cancelled`
-/// on `Esc`, `Quit` on the global quit chord.
+/// Whether `path` is allowed given an optional confinement `root`: always so
+/// without a root, otherwise only when `path` lies at or below it.
+fn within_root(path: &Path, root: Option<&Path>) -> bool {
+    root.is_none_or(|root| path.starts_with(root))
+}
+
+/// Clamps `dir` into `root` (canonicalizing it first): returns the canonical
+/// `dir` when it lies within `root`, otherwise `root` itself. Without a `root`,
+/// returns `dir` unchanged.
+fn confine(dir: PathBuf, root: Option<&Path>) -> PathBuf {
+    let Some(root) = root else {
+        return dir;
+    };
+    let canonical = dir.canonicalize().unwrap_or(dir);
+    if within_root(&canonical, Some(root)) {
+        canonical
+    } else {
+        root.to_path_buf()
+    }
+}
+
+/// How to open the [`path_picker`]: the modal `title`, the `start` directory,
+/// whether files (not just folders) are selectable, and an optional confinement
+/// `root` that navigation may not leave.
+#[derive(Debug, Clone, Copy)]
+pub struct PathPickerConfig<'a> {
+    /// The modal title shown in the top border.
+    pub title: &'a str,
+    /// The directory to open at (clamped into `root` when set).
+    pub start: &'a Path,
+    /// Whether files, not only folders, may be selected.
+    pub allow_files: bool,
+    /// An optional root the picker may not ascend above or symlink out of.
+    pub root: Option<&'a Path>,
+}
+
+/// Opens the picker per `config`. Returns `Value(path)` on selection,
+/// `Cancelled` on `Esc`, `Quit` on the global quit chord.
 pub fn path_picker(
     tui: &mut Tui,
     skin: &Skin,
-    title: &str,
-    start: &Path,
-    allow_files: bool,
+    config: PathPickerConfig<'_>,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<PathBuf>> {
-    let mut state = State::new(start, allow_files);
+    let PathPickerConfig {
+        title,
+        start,
+        allow_files,
+        root,
+    } = config;
+    let mut state = State::new(start, allow_files, root);
     popup(
         tui,
         &mut state,
-        |area, _| {
-            let width = (area.width * 2 / 3).clamp(36, area.width);
-            let height = (area.height * 2 / 3).clamp(8, area.height);
-            centered_rect(width, height, area)
-        },
+        |area, _| centered_fraction(area, 2, 3, 36, 8),
         |frame, _| render_bg(frame),
         |frame, rect, state: &State| {
             let inner = overlay::framed(frame, rect, skin, title);
@@ -241,7 +300,16 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
             }
         })
         .collect();
-    list::render(frame, rows[2], skin, entries, state.cursor, &state.offset);
+    list::render(
+        frame,
+        rows[2],
+        skin,
+        list::ListView {
+            rows: entries,
+            selected: state.cursor,
+            offset: &state.offset,
+        },
+    );
 
     frame.render_widget(
         Paragraph::new(
@@ -313,7 +381,9 @@ fn is_hidden(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_hidden;
+    use std::path::Path;
+
+    use super::{is_hidden, within_root};
 
     #[test]
     fn dot_prefixed_names_are_hidden() {
@@ -321,5 +391,19 @@ mod tests {
         assert!(is_hidden(".config"));
         assert!(!is_hidden("src"));
         assert!(!is_hidden("Cargo.toml"));
+    }
+
+    #[test]
+    fn within_root_confines_to_the_root_subtree() {
+        let root = Some(Path::new("/a/b"));
+        assert!(within_root(Path::new("/a/b"), root));
+        assert!(within_root(Path::new("/a/b/c/d"), root));
+        assert!(!within_root(Path::new("/a"), root));
+        assert!(!within_root(Path::new("/a/x"), root));
+    }
+
+    #[test]
+    fn no_root_allows_any_path() {
+        assert!(within_root(Path::new("/anywhere/at/all"), None));
     }
 }
