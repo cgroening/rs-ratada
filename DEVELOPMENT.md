@@ -90,6 +90,14 @@ than reinventing them:
 - **Text editing:** `input::TextCursor` + the crate-internal `apply_edit_key`
   are the shared caret/edit core (reused by `textarea`); widths are measured
   with `unicode-width` (wide glyphs count as 2).
+- **Logging:** diagnostics go through the `log` facade, sparingly. `error!` for
+  an unrecoverable, otherwise-silent failure (a failed terminal restore in
+  `Drop`); `warn!` for a noticeable degradation (a missing clipboard tool, an
+  unreadable directory, a canonicalize fallback that weakens the path
+  confinement, an invalid color override, an unknown theme name); `debug!` for
+  per-attempt breadcrumbs. Never log in the hot path (per-frame render, the sort
+  comparator) or on normal control flow (Esc, empty input). The host installs
+  the logger; the library only emits.
 
 ## Common commands
 

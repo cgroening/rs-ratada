@@ -202,8 +202,11 @@ impl ThemeRegistry {
 
     /// The colors for `name`, falling back to the default theme when unknown.
     pub fn resolve(&self, name: &str) -> ThemeColors {
-        self.get(name)
-            .or_else(|| self.get(DEFAULT_THEME))
+        if let Some(colors) = self.get(name) {
+            return colors;
+        }
+        log::warn!("unknown theme {name:?}, falling back to the default");
+        self.get(DEFAULT_THEME)
             .or_else(|| self.themes.first().map(|(_, colors)| *colors))
             .unwrap_or_else(|| {
                 ThemeColors::from_accent(Color::Default, Color::Default)

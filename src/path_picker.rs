@@ -59,8 +59,16 @@ struct State {
 
 impl State {
     fn new(start: &Path, allow_files: bool, root: Option<&Path>) -> Self {
-        let root = root.map(|root| {
-            root.canonicalize().unwrap_or_else(|_| root.to_path_buf())
+        let root = root.map(|root| match root.canonicalize() {
+            Ok(canonical) => canonical,
+            Err(error) => {
+                log::warn!(
+                    "could not canonicalize confinement root {}: {error}; \
+                     using the path as given",
+                    root.display()
+                );
+                root.to_path_buf()
+            }
         });
         let dir = confine(first_existing(start), root.as_deref());
         let mut state = Self {
@@ -120,10 +128,17 @@ impl State {
             && entry.is_dir
         {
             // Canonicalize so a symlinked folder cannot escape the root.
-            let target = entry
-                .path
-                .canonicalize()
-                .unwrap_or_else(|_| entry.path.clone());
+            let target = match entry.path.canonicalize() {
+                Ok(canonical) => canonical,
+                Err(error) => {
+                    log::warn!(
+                        "could not canonicalize {}: {error}; \
+                         checking the path as given",
+                        entry.path.display()
+                    );
+                    entry.path.clone()
+                }
+            };
             if !within_root(&target, self.root.as_deref()) {
                 return;
             }
@@ -158,7 +173,16 @@ fn confine(dir: PathBuf, root: Option<&Path>) -> PathBuf {
     let Some(root) = root else {
         return dir;
     };
-    let canonical = dir.canonicalize().unwrap_or(dir);
+    let canonical = match dir.canonicalize() {
+        Ok(canonical) => canonical,
+        Err(error) => {
+            log::warn!(
+                "could not canonicalize {}: {error}; checking the path as given",
+                dir.display()
+            );
+            dir
+        }
+    };
     if within_root(&canonical, Some(root)) {
         canonical
     } else {
@@ -348,8 +372,12 @@ fn read_entries(
     allow_files: bool,
     show_hidden: bool,
 ) -> Vec<Entry> {
-    let Ok(read) = std::fs::read_dir(dir) else {
-        return Vec::new();
+    let read = match std::fs::read_dir(dir) {
+        Ok(read) => read,
+        Err(error) => {
+            log::warn!("could not read directory {}: {error}", dir.display());
+            return Vec::new();
+        }
     };
     let mut entries: Vec<Entry> = read
         .flatten()

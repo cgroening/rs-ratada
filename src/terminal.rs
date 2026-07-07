@@ -122,7 +122,12 @@ impl Tui {
 
 impl Drop for Tui {
     fn drop(&mut self) {
-        let _ = restore();
+        // Drop cannot return the error, so log it: a failed restore leaves the
+        // terminal in raw mode / the alternate screen, which the user must
+        // otherwise recover blindly.
+        if let Err(error) = restore() {
+            log::error!("failed to restore the terminal on exit: {error}");
+        }
         (self.on_leave)();
     }
 }

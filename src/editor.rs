@@ -51,8 +51,17 @@ pub fn edit_in_editor(
             let text = std::fs::read_to_string(&path)?;
             Some(text.trim_end_matches('\n').to_string())
         }
-        _ => None,
+        Ok(code) => {
+            log::warn!("editor '{editor}' exited with {code}; discarding edit");
+            None
+        }
+        Err(error) => {
+            log::warn!("could not launch editor '{editor}': {error}");
+            None
+        }
     };
-    let _ = std::fs::remove_file(&path);
+    if let Err(error) = std::fs::remove_file(&path) {
+        log::debug!("could not remove temp file {}: {error}", path.display());
+    }
     Ok(result)
 }

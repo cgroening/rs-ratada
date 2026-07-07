@@ -27,6 +27,7 @@ pub fn paste() -> Option<String> {
             return Some(text);
         }
     }
+    log::warn!("clipboard paste failed: no working clipboard tool found");
     None
 }
 
@@ -40,7 +41,10 @@ fn pipe_to(program: &str, args: &[&str], text: &str) -> std::io::Result<()> {
     if let Some(stdin) = child.stdin.as_mut() {
         stdin.write_all(text.as_bytes())?;
     }
-    child.wait()?;
+    let status = child.wait()?;
+    if !status.success() {
+        log::debug!("clipboard tool '{program}' exited with {status}");
+    }
     Ok(())
 }
 
@@ -51,9 +55,18 @@ fn read_from(program: &str, args: &[&str]) -> Option<String> {
         .output()
         .ok()?;
     if !output.status.success() {
+        log::debug!("clipboard tool '{program}' exited with {}", output.status);
         return None;
     }
-    String::from_utf8(output.stdout).ok()
+    match String::from_utf8(output.stdout) {
+        Ok(text) => Some(text),
+        Err(error) => {
+            log::debug!(
+                "clipboard tool '{program}' returned invalid UTF-8: {error}"
+            );
+            None
+        }
+    }
 }
 
 fn copy_candidates() -> &'static [(&'static str, &'static [&'static str])] {

@@ -9,6 +9,11 @@
 //! [`terminal::Tui::with_hooks`]). Theme colors are mapped to ratatui styles in
 //! [`style`].
 //!
+//! Diagnostics for degraded conditions (a missing clipboard tool, an unreadable
+//! directory, an invalid color override, a failed terminal restore on exit) are
+//! emitted through the `log` facade at `warn`/`error`; install a logger to
+//! surface them.
+//!
 //! # Example
 //!
 //! Implement [`Screen`] and hand it to [`run`], which owns the draw/input loop

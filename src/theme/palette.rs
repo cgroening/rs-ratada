@@ -113,7 +113,17 @@ impl Palette {
     /// the resolved base colors before any explicit override is applied.
     pub fn resolve(base: ThemeColors, overrides: &ColorOverrides<'_>) -> Self {
         let get = |value: &str, fallback: Color| {
-            parse_color(value).unwrap_or(fallback)
+            if let Some(color) = parse_color(value) {
+                return color;
+            }
+            // An empty string means "no override"; a non-empty one that does
+            // not parse is a config mistake worth surfacing.
+            if !value.is_empty() {
+                log::warn!(
+                    "invalid color override {value:?}, keeping the theme color"
+                );
+            }
+            fallback
         };
 
         let accent = get(overrides.accent, base.accent);
