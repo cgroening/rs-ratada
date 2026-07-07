@@ -24,9 +24,9 @@ include = [
 
 [dependencies]
 # https://crates.io/crates/ratatui
-ratatui = "0.29"
+ratatui = "0.30"
 # https://crates.io/crates/crossterm
-crossterm = "0.28"
+crossterm = "0.29"
 # https://crates.io/crates/unicode-width
 unicode-width = "0.2"
 # https://crates.io/crates/nucleo-matcher
