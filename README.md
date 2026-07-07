@@ -35,8 +35,17 @@ palette and glyphs) that maps onto ratatui styles.
 
 <!-- TODO: add a screenshot of the widget gallery here (e.g. docs/gallery.png). -->
 
-The `clibase` template renders every widget in a live gallery (run it and open
-`view 3`) – a good way to see the toolkit before wiring it into your own app.
+The `gallery` example renders a static, one-frame dashboard – header, tab bar, a
+boxed table, a tree, a list, a Markdown view, a gauge, shortcut hints and a
+status bar – built to be captured for the screenshot above:
+
+```bash
+cargo run --example gallery
+```
+
+Size the terminal to taste (roughly 100x30 reads well), take the screenshot,
+then press any key (or `Ctrl+Q`) to leave. The `clibase` template additionally
+renders every widget in a live, interactive gallery (run it and open `view 3`).
 
 ## Usage
 

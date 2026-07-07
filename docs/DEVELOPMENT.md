@@ -110,8 +110,14 @@ cargo test            # unit tests + doctests + tests/render.rs
 ```
 
 `ratada` is a library, so there is no binary to run; exercise widgets through
-the `clibase` gallery (`cargo run` in `../../templates/clibase`, view `3`) or a
-`TestBackend` in `tests/render.rs`.
+the bundled examples, the `clibase` gallery (`cargo run` in
+`../../templates/clibase`, view `3`) or a `TestBackend` in `tests/render.rs`.
+
+```bash
+cargo run --example counter   # minimal Screen/run app (space +1, q quits)
+cargo run --example gallery   # static one-frame widget collage for the README
+                              # screenshot; any key quits
+```
 
 ## Testing
 
