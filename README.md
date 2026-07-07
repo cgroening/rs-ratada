@@ -33,7 +33,8 @@ palette and glyphs) that maps onto ratatui styles.
 
 ## Screenshot
 
-<!-- TODO: add a screenshot of the widget gallery here (e.g. docs/gallery.png). -->
+![sparcli output widgets](https://raw.githubusercontent.com/cgroening/rs-ratada/main/images/screenshot.png)
+
 
 The `gallery` example renders a static, one-frame dashboard – header, tab bar, a
 boxed table, a tree, a list, a Markdown view, a gauge, shortcut hints and a
