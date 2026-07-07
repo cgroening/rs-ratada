@@ -19,7 +19,7 @@ cargo test            # unit tests, doctests and tests/
 cargo doc --no-deps   # rustdoc must build warning-free
 ```
 
-`cargo build` must be warning-free too — the crate enables `#![warn(missing_docs)]`,
+`cargo build` must be warning-free too – the crate enables `#![warn(missing_docs)]`,
 so every public item needs a `///` doc comment.
 
 ## Guidelines

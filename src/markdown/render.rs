@@ -33,7 +33,7 @@ type Cell = (char, Style);
 
 /// The enabled CommonMark extensions: strikethrough (`~~`), GFM task lists
 /// (`- [ ]`), GFM callouts (`> [!NOTE]`) and tables; smart punctuation
-/// (`--`→`—`, …) is added only when `smart` (display rendering opts in).
+/// (`--`→`-`, …) is added only when `smart` (display rendering opts in).
 fn options(smart: bool) -> Options {
     let mut options = Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS

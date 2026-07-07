@@ -36,7 +36,7 @@ palette and glyphs) that maps onto ratatui styles.
 <!-- TODO: add a screenshot of the widget gallery here (e.g. docs/gallery.png). -->
 
 The `clibase` template renders every widget in a live gallery (run it and open
-`view 3`) — a good way to see the toolkit before wiring it into your own app.
+`view 3`) – a good way to see the toolkit before wiring it into your own app.
 
 ## Usage
 
@@ -92,11 +92,11 @@ top border, an automatic or fixed badge bottom-right), e.g.
 
 ## Documentation
 
-- [`API.md`](API.md) — a compact index of the public surface (rustdoc via
+- [`API.md`](API.md) – a compact index of the public surface (rustdoc via
   `cargo doc --open` is the authoritative reference).
-- [`DEVELOPMENT.md`](DEVELOPMENT.md) — module layout, conventions and how to add
+- [`DEVELOPMENT.md`](DEVELOPMENT.md) – module layout, conventions and how to add
   a widget.
-- [`CLAUDE.md`](CLAUDE.md) — the binding style guide.
+- [`CLAUDE.md`](CLAUDE.md) – the binding style guide.
 
 ## License
 

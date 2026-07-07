@@ -2,7 +2,7 @@
 
 All notable changes to `ratada` are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html) — while `0.x`, a minor
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) – while `0.x`, a minor
 bump may contain breaking changes.
 
 ## [0.2.0]
@@ -15,7 +15,7 @@ bump may contain breaking changes.
   `StyleSheet` (`Default` plus `StyleSheet::from_skin`), a scrollable
   `MarkdownView` widget with link navigation, and a blocking `viewer` modal.
   Backed by the new `pulldown-cmark` dependency.
-- `text::wrap` — unicode-width-aware word wrapping (hard-splits over-long words).
+- `text::wrap` – unicode-width-aware word wrapping (hard-splits over-long words).
 - `log` diagnostics for degraded conditions (`warn`/`error`): a failed terminal
   restore on exit, a missing clipboard tool, an unreadable directory, a
   `canonicalize` fallback that weakens path confinement, an invalid color

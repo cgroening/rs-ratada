@@ -52,7 +52,7 @@ macro_rules! define_palette {
         impl<'a> ColorOverrides<'a> {
             /// Builds overrides from a `name -> value` lookup (an unknown name
             /// yields the empty string, i.e. "no override"). Keeps the config
-            /// side free of a per-field list — the field set lives only here.
+            /// side free of a per-field list - the field set lives only here.
             pub fn from_lookup(lookup: impl Fn(&str) -> &'a str) -> Self {
                 Self { $( $field: lookup(stringify!($field)), )+ }
             }

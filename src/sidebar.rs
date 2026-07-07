@@ -427,7 +427,7 @@ impl Sidebar {
 
     /// The vertical scroll offset keeping the selected item visible. When
     /// scrolling up it reveals the item's section header too, so the first item
-    /// sits at the very top (offset 0) and the header stays in view — otherwise
+    /// sits at the very top (offset 0) and the header stays in view - otherwise
     /// `keep_visible` would stop at the item and clip the header above it.
     fn scroll_offset(
         &self,

@@ -2,7 +2,7 @@
 //!
 //! [`MarkdownView`] renders a Markdown source into an area, scrolls it and lets
 //! the user cycle its hyperlinks; [`viewer`] wraps it in a popup and returns the
-//! link the user picked (the host opens it — the toolkit stays policy-free).
+//! link the user picked (the host opens it - the toolkit stays policy-free).
 
 use std::{cell::Cell, io};
 

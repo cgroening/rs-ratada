@@ -78,7 +78,7 @@ CLAUDE.md §7.10. When building a widget, reuse the shared building blocks rathe
 than reinventing them:
 
 - **Navigation:** `nav::cycle` (wrapping), `nav::keep_visible` (scroll offset).
-- **Scrollbar:** `scroll::render_scrollbar` — renders only on overflow and
+- **Scrollbar:** `scroll::render_scrollbar` – renders only on overflow and
   skips empty areas; `list::render` already calls it, so list-backed widgets
   (`tree`, `finder`, `help`, `path_picker`) get it for free.
 - **Framing:** `chrome::framed_decor` draws the rounded accent box with a
@@ -119,7 +119,7 @@ the `clibase` gallery (`cargo run` in `../../templates/clibase`, view `3`) or a
   (navigation, wrap/width, filtering, selection, badge counts).
 - **Doctests** on the key public items double as compile-checked examples.
 - **`tests/render.rs`** renders the frame-based widgets into a `TestBackend`
-  plain/boxed, at a roomy and a cramped size, and with wide characters — a
+  plain/boxed, at a roomy and a cramped size, and with wide characters – a
   panic-free smoke test (this is how the empty-area scrollbar panic was caught).
   Popups (`help`/`finder`/`modal`/`path_picker`) need a live `Tui` loop and are
   covered by their unit tests instead.
