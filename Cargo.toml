@@ -4,14 +4,23 @@ version = "0.2.0"
 edition = "2024"
 # Uses `let`-chains, stabilized in Rust 1.88.
 rust-version = "1.88"
+authors = ["Corvin Gröning"]
 description = "A ratatui widget toolkit: driver, modals, forms, pickers, theming"
 license = "MIT"
 repository = "https://github.com/cgroening/rs-ratada"
+documentation = "https://docs.rs/ratada"
 readme = "README.md"
 keywords = ["tui", "ratatui", "widgets", "terminal", "toolkit"]
 categories = ["command-line-interface"]
-# Ship only the crate itself; contributor docs live in the repository.
-include = ["src/**/*.rs", "README.md", "LICENSE"]
+# Ship the crate, the runnable examples and the changelog; contributor-only docs
+# (DEVELOPMENT.md, CONTRIBUTING.md, docs/) stay in the repository.
+include = [
+    "src/**/*.rs",
+    "examples/**/*.rs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+]
 
 [dependencies]
 # https://crates.io/crates/ratatui

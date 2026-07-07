@@ -26,9 +26,13 @@ const TOAST_HEIGHT: u16 = 3;
 /// The severity of a toast, mapped to a semantic palette color.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastKind {
+    /// Neutral information.
     Info,
+    /// A successful action.
     Success,
+    /// A non-fatal warning.
     Warning,
+    /// A failure.
     Error,
 }
 

@@ -40,7 +40,13 @@ macro_rules! define_palette {
         /// keeps the theme/derived color; a parseable value replaces it.
         #[derive(Debug, Default, Clone)]
         pub struct ColorOverrides<'a> {
-            $( pub $field: &'a str, )+
+            $(
+                #[doc = concat!(
+                    "Override for the `", stringify!($field),
+                    "` color (empty string = keep the theme value)."
+                )]
+                pub $field: &'a str,
+            )+
         }
 
         impl<'a> ColorOverrides<'a> {

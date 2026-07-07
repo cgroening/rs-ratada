@@ -26,7 +26,9 @@ const LABEL_GAP: usize = 2;
 /// A titled group of key hints. An empty `label` renders without a label
 /// column, so the group's hints flow like an ungrouped list.
 pub struct HintGroup<'a, S: AsRef<str>> {
+    /// The group label (the `"Name:"` cell); an empty label renders flat.
     pub label: &'a str,
+    /// The `(key, description)` hints in this group.
     pub hints: &'a [(S, S)],
 }
 
@@ -40,7 +42,9 @@ pub struct HintStyle {
     pub key: Style,
     /// Style of each shortcut description.
     pub description: Style,
+    /// Blank rows reserved above the hints.
     pub top_margin: u16,
+    /// Optional background fill behind the hint area.
     pub background: Option<Color>,
 }
 

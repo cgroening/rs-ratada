@@ -32,7 +32,9 @@ const READABLE_MID_LUMINANCE: f32 = 0.5;
 /// surrounding default" (e.g. the terminal background).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
+    /// Inherit the surrounding default (e.g. the terminal background).
     Default,
+    /// A 24-bit `(red, green, blue)` color.
     Rgb(u8, u8, u8),
 }
 

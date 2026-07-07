@@ -71,6 +71,7 @@ impl TextArea {
         self
     }
 
+    /// The current buffer contents.
     pub fn text(&self) -> &str {
         &self.text
     }

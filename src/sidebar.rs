@@ -29,7 +29,9 @@ const H_STEP: usize = 4;
 /// the selection back to its own data.
 #[derive(Debug, Clone)]
 pub struct SidebarItem {
+    /// The text shown for the item.
     pub label: String,
+    /// The caller's identifier, reported back on selection.
     pub id: usize,
 }
 
@@ -46,7 +48,9 @@ impl SidebarItem {
 /// A named group of items. An empty `title` renders no header row.
 #[derive(Debug, Clone)]
 pub struct SidebarSection {
+    /// The header text; an empty title renders no header row.
     pub title: String,
+    /// The items in this section.
     pub items: Vec<SidebarItem>,
 }
 

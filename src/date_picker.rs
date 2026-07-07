@@ -93,14 +93,17 @@ pub fn date_picker(
     )
 }
 
+/// The local date today.
 pub(super) fn today() -> NaiveDate {
     Local::now().date_naive()
 }
 
+/// Moves `date` by `days` (may be negative).
 pub(super) fn shift(date: NaiveDate, days: i64) -> NaiveDate {
     date + Duration::days(days)
 }
 
+/// Moves `date` by `months` (may be negative), clamping to a valid day.
 pub(super) fn add_months(date: NaiveDate, months: i32) -> NaiveDate {
     let step = chrono::Months::new(months.unsigned_abs());
     let shifted = if months >= 0 {

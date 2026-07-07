@@ -31,7 +31,9 @@ use crate::theme::Skin;
 
 /// A titled group of key bindings shown under one header in the overlay.
 pub struct HelpSection<'a, B: AsRef<str>> {
+    /// The section header.
     pub title: &'a str,
+    /// The `(key, description)` bindings listed under the header.
     pub bindings: &'a [(B, B)],
 }
 

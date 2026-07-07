@@ -68,6 +68,7 @@ src/
   header.rs, statusbar.rs, double_press.rs
 tests/
   render.rs         headless TestBackend render smoke tests
+  logging.rs        verifies a `log` diagnostic fires (via a capture logger)
 ```
 
 ## Conventions (SSOT)

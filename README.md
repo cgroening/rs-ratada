@@ -14,21 +14,35 @@ palette and glyphs) that maps onto ratatui styles.
   generic `run` loop over a `Screen` trait.
 - **Widgets** – modals (`confirm`, `select`, `multi_select`, `number_input`,
   `message`), forms, single- and multi-line text editing with a shared editor
-  core, autocomplete, tables, trees, tabs, pagers, gauges, spinners, toasts.
-- **Pickers** – color, swatch, date, date-range, month and path pickers (the
-  path picker takes an optional confinement root).
+  core, autocomplete, tables, trees, selectable lists, sectioned sidebars, tabs,
+  pagers, gauges, spinners, toasts.
+- **Pickers** – color, swatch, date, date-range, month, path (with an optional
+  confinement root) and slider pickers.
+- **Overlays & chrome** – a fuzzy help overlay, a command palette, box framing,
+  header and status bars, and wrapping shortcut-hint footers.
 - **Markdown** – a CommonMark renderer (headings, lists, task lists, code
   blocks, quotes, GFM tables/callouts, links) producing styled lines, plus a
   scrollable `MarkdownView` widget and a viewer modal.
 - **Theming** – a `Skin` bundling a `Palette` (semantic colors) and `Glyphs`
   (Unicode/ASCII variants); framework-agnostic so a CLI can share it, with a
   single ratatui adapter in `style`.
+- **Diagnostics** – degraded conditions (a missing clipboard tool, an unreadable
+  directory, an invalid color override, a failed terminal restore) are emitted
+  through the [`log`](https://crates.io/crates/log) facade at `warn`/`error`;
+  install a logger to surface them.
+
+## Screenshot
+
+<!-- TODO: add a screenshot of the widget gallery here (e.g. docs/gallery.png). -->
+
+The `clibase` template renders every widget in a live gallery (run it and open
+`view 3`) — a good way to see the toolkit before wiring it into your own app.
 
 ## Usage
 
 ```toml
 [dependencies]
-ratada = "0.1"
+ratada = "0.2"
 ```
 
 Implement the `Screen` trait and hand it to `run`, which owns the draw/input

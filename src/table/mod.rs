@@ -37,42 +37,54 @@ const GUTTER: usize = 2;
 /// The data kind of a column, used for type-aware sorting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColumnKind {
+    /// Lexicographic text.
     Text,
+    /// Numeric (sorted by value).
     Number,
+    /// `YYYY-MM-DD` date (sorted chronologically).
     Date,
 }
 
 /// Cell text alignment within its column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Align {
+    /// Left-aligned.
     Left,
+    /// Right-aligned.
     Right,
 }
 
 /// Whether selection acts on whole rows or individual cells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectMode {
+    /// Select whole rows.
     Row,
+    /// Select individual cells.
     Cell,
 }
 
 /// Sort direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortDir {
+    /// Ascending.
     Asc,
+    /// Descending.
     Desc,
 }
 
 /// Which columns the fuzzy filter searches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterScope {
+    /// Match against all columns.
     AllColumns,
+    /// Match against the active column only.
     ActiveColumn,
 }
 
 /// What the host should do after a key press.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TableAction {
+    /// Nothing for the host to do.
     None,
     /// `Enter` was pressed; read the current selection/cursor.
     Activate,
@@ -121,6 +133,7 @@ impl Column {
         }
     }
 
+    /// Sets the minimum and target column widths (in columns).
     #[must_use]
     pub fn widths(mut self, min: usize, target: usize) -> Self {
         self.min = min;
@@ -128,24 +141,28 @@ impl Column {
         self
     }
 
+    /// Sets the cell text alignment.
     #[must_use]
     pub fn align(mut self, align: Align) -> Self {
         self.align = align;
         self
     }
 
+    /// Lets the column's cells wrap across multiple lines.
     #[must_use]
     pub fn wrap(mut self, wrap: bool) -> Self {
         self.wrap = wrap;
         self
     }
 
+    /// Overrides the header style for this column.
     #[must_use]
     pub fn header_style(mut self, style: Style) -> Self {
         self.header_style = Some(style);
         self
     }
 
+    /// Applies a base style to every cell in this column.
     #[must_use]
     pub fn cell_style(mut self, style: Style) -> Self {
         self.cell_style = Some(style);
@@ -162,6 +179,7 @@ pub struct Row {
 }
 
 impl Row {
+    /// A row from its cell strings (one per column).
     pub fn new(cells: Vec<String>) -> Self {
         Self {
             cells,
@@ -170,12 +188,14 @@ impl Row {
         }
     }
 
+    /// Applies a base style to the whole row.
     #[must_use]
     pub fn with_style(mut self, style: Style) -> Self {
         self.style = Some(style);
         self
     }
 
+    /// Tags the row with a host key, reported by [`Table::selected_keys`].
     #[must_use]
     pub fn with_key(mut self, key: impl Into<String>) -> Self {
         self.key = Some(key.into());
@@ -261,24 +281,28 @@ impl Table {
         self
     }
 
+    /// Sets whether selection acts on rows or cells.
     #[must_use]
     pub fn with_select_mode(mut self, mode: SelectMode) -> Self {
         self.mode = mode;
         self
     }
 
+    /// Sets which columns the fuzzy filter searches.
     #[must_use]
     pub fn with_filter_scope(mut self, scope: FilterScope) -> Self {
         self.filter_scope = scope;
         self
     }
 
+    /// Shows or hides the bottom status/filter line.
     #[must_use]
     pub fn with_status(mut self, show: bool) -> Self {
         self.show_status = show;
         self
     }
 
+    /// Sets the base style for the header band.
     #[must_use]
     pub fn with_header_style(mut self, style: Style) -> Self {
         self.header_style = style;

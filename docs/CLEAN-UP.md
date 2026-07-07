@@ -1,5 +1,12 @@
 # Code-Walkthrough & Aufräumen (Checkliste zum Abhaken)
 
+> [!NOTE]
+> Abgeschlossenes, archiviertes Arbeitsdokument – alle Punkte sind erledigt. Es
+> beschreibt den Cleanup-Durchlauf; Modul-/Datei-Nennungen (z. B. `palette`,
+> `table.rs`) spiegeln den Stand **vor** dem Umbau wider. Der finale Stand:
+> `palette` → `command_palette`, `table.rs` → `table/`-Submodul, neues
+> `markdown`-Modul; aktuelle Struktur siehe `DEVELOPMENT.md`.
+
 ## Context
 
 Das Repo ist nach mehreren Feature-Runden stabil und sauber (`cargo fmt --check` grün, `cargo clippy --all-targets -- -D warnings` grün, 142 Unit-/Integrationstests + 7 Doctests, `clippy::pedantic` crate-weit, nur wenige begründete `#[allow]`, keine offenen TODOs, jedes Modul hat einen `//!`-Doc). `ratada` ist die **Bibliothek selbst** – das wiederverwendbare ratatui-Widget-Toolkit plus die framework-agnostische `theme`-Schicht; es gibt kein Binary, keine Domänen-/Persistenz-Schicht. Konsumierende Apps (z. B. `clibase`) hängen als Pfad-Dependency daran. Diese Checkliste betrifft daher das **gesamte Crate**; da es eine öffentliche API ist, sind Sichtbarkeit und Signatur-Stabilität hier besonders wichtig (`pub`-Änderungen sind Breaking Changes).

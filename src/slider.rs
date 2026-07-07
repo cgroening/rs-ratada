@@ -24,9 +24,13 @@ const BOX_WIDTH: u16 = 40;
 /// The bounds and step of a [`slider`].
 #[derive(Debug, Clone, Copy)]
 pub struct SliderConfig {
+    /// The lowest selectable value.
     pub min: i64,
+    /// The highest selectable value.
     pub max: i64,
+    /// The increment per arrow press.
     pub step: i64,
+    /// The value the slider opens on.
     pub initial: i64,
 }
 

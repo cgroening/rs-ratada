@@ -174,8 +174,15 @@ pub fn multi_select(
 /// Outcome of [`select_reorderable`]: a final pick or a reorder request that
 /// the caller applies before reopening.
 pub enum ListAction {
+    /// The user picked the item at this index.
     Pick(usize),
-    Move { index: usize, delta: i32 },
+    /// The user asked to move the item at `index` by `delta` positions.
+    Move {
+        /// The index of the item to move.
+        index: usize,
+        /// The signed number of positions to move it by.
+        delta: i32,
+    },
 }
 
 /// Like [`select`] but `Alt+Up`/`Alt+Down` return a [`ListAction::Move`] so the

@@ -290,7 +290,9 @@ fn palette_entries(palette: &Palette) -> Vec<(&'static str, Color)> {
 /// Which view the [`color_chooser`] starts in (also its current view).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Start {
+    /// Open on the swatch grid.
     Swatches,
+    /// Open on the channel picker.
     Picker,
 }
 

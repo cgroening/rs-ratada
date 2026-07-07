@@ -12,7 +12,9 @@ const TICK: Duration = Duration::from_millis(100);
 
 /// Control-flow signal returned from a screen's key handler.
 pub enum Flow {
+    /// Keep running.
     Continue,
+    /// Exit the loop.
     Quit,
 }
 
@@ -22,10 +24,17 @@ pub enum Flow {
 /// the handler holds `&mut Tui`. The associated `Error` keeps this kit free of
 /// any concrete error crate; it only needs to absorb I/O errors.
 pub trait Screen {
+    /// The host's error type; only needs to absorb I/O errors.
     type Error: From<io::Error>;
 
+    /// Draws the screen into `frame`.
     fn render(&self, frame: &mut Frame);
 
+    /// Handles a key press, returning whether to keep running or quit.
+    ///
+    /// # Errors
+    ///
+    /// Returns the host's error if handling the key fails.
     fn handle_key(
         &mut self,
         key: KeyEvent,

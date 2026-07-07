@@ -35,10 +35,15 @@ const LABEL_WIDTH: u16 = 14;
 /// A read-only snapshot of a field's value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldValue {
+    /// A single-line text value.
     Text(String),
+    /// A multi-line text value.
     Multiline(String),
+    /// A checkbox value.
     Bool(bool),
+    /// The selected choice label.
     Choice(String),
+    /// A date, or `None` when cleared.
     Date(Option<NaiveDate>),
 }
 
@@ -73,6 +78,7 @@ pub struct Field {
 }
 
 impl Field {
+    /// A single-line text field pre-filled with `initial`.
     pub fn text(label: impl Into<String>, initial: &str) -> Self {
         Self {
             label: label.into(),
@@ -83,6 +89,7 @@ impl Field {
         }
     }
 
+    /// A multi-line text field pre-filled with `initial`.
     pub fn multiline(label: impl Into<String>, initial: &str) -> Self {
         Self {
             label: label.into(),
@@ -93,6 +100,7 @@ impl Field {
         }
     }
 
+    /// A checkbox field starting at `initial`.
     pub fn checkbox(label: impl Into<String>, initial: bool) -> Self {
         Self {
             label: label.into(),
@@ -103,6 +111,7 @@ impl Field {
         }
     }
 
+    /// A cycling choice field over `options`, starting at index `initial`.
     pub fn choice(
         label: impl Into<String>,
         options: Vec<String>,
@@ -118,6 +127,7 @@ impl Field {
         }
     }
 
+    /// A date field opening a calendar picker, pre-selecting `initial`.
     pub fn date(label: impl Into<String>, initial: Option<NaiveDate>) -> Self {
         Self {
             label: label.into(),
@@ -128,6 +138,7 @@ impl Field {
         }
     }
 
+    /// The field's label.
     pub fn label(&self) -> &str {
         &self.label
     }
@@ -170,8 +181,11 @@ impl Field {
 
 /// How the form was closed.
 pub enum FormOutcome {
+    /// The user saved (`Ctrl+S`).
     Saved,
+    /// The user cancelled (`Esc`).
     Cancelled,
+    /// The global quit chord was pressed.
     Quit,
 }
 
@@ -183,6 +197,7 @@ pub struct Form {
 }
 
 impl Form {
+    /// A form titled `title` over `fields`, focused on the first field.
     pub fn new(title: impl Into<String>, fields: Vec<Field>) -> Self {
         Self {
             title: title.into(),

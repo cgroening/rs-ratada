@@ -47,15 +47,20 @@ pub use view::{MarkdownView, viewer};
 /// background band (`None` = no band).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeadingStyle {
+    /// Text color (`None` inherits the base).
     pub fg: Option<Color>,
+    /// Optional full-width background band (`None` = no band).
     pub bg: Option<Color>,
+    /// Whether the heading text is bold.
     pub bold: bool,
 }
 
 /// Style of fenced/indented code blocks: a full-width band.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodeBlockStyle {
+    /// Text color of the code (`None` inherits the base).
     pub fg: Option<Color>,
+    /// Background band color (`None` = no band).
     pub bg: Option<Color>,
     /// Colour for a fenced block's language title (reserved for a title bar).
     pub title_fg: Option<Color>,
@@ -86,8 +91,11 @@ impl CodeBlockStyle {
 /// Style of blockquotes: text colours plus a left bar glyph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuoteStyle {
+    /// Text color (`None` inherits the base).
     pub fg: Option<Color>,
+    /// Background band color (`None` = none).
     pub bg: Option<Color>,
+    /// Color of the left bar (`None` inherits the text color).
     pub bar_fg: Option<Color>,
     /// The left-bar glyph (e.g. `▎`).
     pub bar: String,
@@ -96,16 +104,22 @@ pub struct QuoteStyle {
 /// Style of list bullets: a colour and the glyphs cycled by nesting depth.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BulletStyle {
+    /// Bullet color (`None` inherits the base).
     pub fg: Option<Color>,
+    /// Bullet glyphs, cycled by nesting depth.
     pub glyphs: Vec<String>,
 }
 
 /// Style of task-list checkboxes: glyphs and colours per checked state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckboxStyle {
+    /// Glyph for a checked box.
     pub checked: String,
+    /// Glyph for an unchecked box.
     pub unchecked: String,
+    /// Color for a checked box (`None` inherits the base).
     pub checked_fg: Option<Color>,
+    /// Color for an unchecked box (`None` inherits the base).
     pub unchecked_fg: Option<Color>,
 }
 
@@ -122,14 +136,18 @@ impl CheckboxStyle {
 /// Style of horizontal rules: a colour and the glyph repeated full-width.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleStyle {
+    /// Rule color (`None` inherits the base).
     pub fg: Option<Color>,
+    /// The glyph repeated across the full width.
     pub glyph: String,
 }
 
 /// Foreground/background of one GFM callout kind (`> [!NOTE]` …).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CalloutStyle {
+    /// Text color (`None` inherits the base).
     pub fg: Option<Color>,
+    /// Background color (`None` = none).
     pub bg: Option<Color>,
 }
 
@@ -150,10 +168,15 @@ impl CalloutStyle {
 /// Styles for the five GFM callout kinds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CalloutTheme {
+    /// Style for `> [!NOTE]`.
     pub note: CalloutStyle,
+    /// Style for `> [!TIP]`.
     pub tip: CalloutStyle,
+    /// Style for `> [!IMPORTANT]`.
     pub important: CalloutStyle,
+    /// Style for `> [!WARNING]`.
     pub warning: CalloutStyle,
+    /// Style for `> [!CAUTION]`.
     pub caution: CalloutStyle,
 }
 
@@ -272,7 +295,9 @@ impl StyleSheet {
 /// A hyperlink found in a source, with its visible text and destination URL.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Link {
+    /// The link's visible text.
     pub text: String,
+    /// The link's destination URL.
     pub url: String,
 }
 

@@ -67,7 +67,9 @@ pub enum Badge {
 /// [`framed_decor`] so the look stays consistent (SSOT).
 #[derive(Debug, Clone, Default)]
 pub struct BoxDecor {
+    /// The caption inset in the top border, if any.
     pub caption: Option<String>,
+    /// The bottom-right badge (automatic count by default).
     pub badge: Badge,
 }
 

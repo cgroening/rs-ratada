@@ -22,7 +22,9 @@ use crate::theme::{Palette, Skin};
 /// A text caret with an optional selection anchor, both as char indices.
 #[derive(Debug, Clone, Default)]
 pub struct TextCursor {
+    /// The caret position, as a char index.
     pub pos: usize,
+    /// The selection anchor (a char index), or `None` when nothing is selected.
     pub anchor: Option<usize>,
 }
 
@@ -51,7 +53,9 @@ impl TextCursor {
 /// limit and an optional boxed decoration.
 #[derive(Debug, Clone, Default)]
 pub struct InputField {
+    /// The current text.
     pub text: String,
+    /// The caret and selection over `text`.
     pub cursor: TextCursor,
     max_len: Option<usize>,
     decor: Option<chrome::BoxDecor>,

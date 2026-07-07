@@ -25,8 +25,11 @@ type Backend = CrosstermBackend<Stdout>;
 /// `Quit` is produced for the global `Ctrl+Q` so any loop (main or modal) can
 /// exit, instead of threading a quit error through `Result`.
 pub enum TuiEvent {
+    /// A key press.
     Key(KeyEvent),
+    /// The terminal was resized; the surface should redraw.
     Resize,
+    /// The global quit chord (`Ctrl+Q`) was pressed.
     Quit,
 }
 

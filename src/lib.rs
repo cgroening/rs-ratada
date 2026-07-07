@@ -52,6 +52,9 @@
 //! # Ok::<(), std::io::Error>(())
 //! ```
 #![warn(clippy::pedantic)]
+// Every public item carries a doc comment (the library ships to docs.rs); the
+// lint keeps that complete as the API grows.
+#![warn(missing_docs)]
 // Terminal geometry mixes u16 (ratatui areas) and usize (indices/lengths); the
 // conversions are bounded by the screen size, so these pedantic cast lints are
 // allowed crate-wide rather than scattered per call.
