@@ -8,6 +8,8 @@ pickers, tables, trees, a fuzzy finder, a help overlay, a command palette,
 footers and status bars, plus a framework-agnostic theming layer (colors,
 palette and glyphs) that maps onto ratatui styles.
 
+![sparcli output widgets](https://raw.githubusercontent.com/cgroening/rs-ratada/main/images/screenshot.png)
+
 ## Overview
 
 - **Driver** – a `Tui` RAII terminal guard (raw mode + alternate screen) and a
@@ -30,23 +32,6 @@ palette and glyphs) that maps onto ratatui styles.
   directory, an invalid color override, a failed terminal restore) are emitted
   through the [`log`](https://crates.io/crates/log) facade at `warn`/`error`;
   install a logger to surface them.
-
-## Screenshot
-
-![sparcli output widgets](https://raw.githubusercontent.com/cgroening/rs-ratada/main/images/screenshot.png)
-
-
-The `gallery` example renders a static, one-frame dashboard – header, tab bar, a
-boxed table, a tree, a list, a Markdown view, a gauge, shortcut hints and a
-status bar – built to be captured for the screenshot above:
-
-```bash
-cargo run --example gallery
-```
-
-Size the terminal to taste (roughly 100x30 reads well), take the screenshot,
-then press any key (or `Ctrl+Q`) to leave. The `clibase` template additionally
-renders every widget in a live, interactive gallery (run it and open `view 3`).
 
 ## Usage
 

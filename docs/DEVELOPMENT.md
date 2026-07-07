@@ -115,9 +115,24 @@ the bundled examples, the `clibase` gallery (`cargo run` in
 
 ```bash
 cargo run --example counter   # minimal Screen/run app (space +1, q quits)
-cargo run --example gallery   # static one-frame widget collage for the README
-                              # screenshot; any key quits
+cargo run --example gallery   # static one-frame widget collage; any key quits
 ```
+
+See [Screenshot](#screenshot) below for how the `gallery` example is captured.
+
+## Screenshot
+
+The `gallery` example renders a static, one-frame dashboard – header, tab bar, a
+boxed table, a tree, a list, a Markdown view, a gauge, shortcut hints and a
+status bar – built to be captured for the README screenshot:
+
+```bash
+cargo run --example gallery
+```
+
+Size the terminal to taste (roughly 100x30 reads well), take the screenshot,
+then press any key (or `Ctrl+Q`) to leave. The `clibase` template additionally
+renders every widget in a live, interactive gallery (run it and open `view 3`).
 
 ## Testing
 
