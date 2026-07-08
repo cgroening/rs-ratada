@@ -43,7 +43,11 @@ pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
         .border_type(BorderType::Rounded)
         .border_style(style::border(&skin.palette))
         .style(style::bg(skin.palette.background.lighten(MODAL_BG_LIFT)))
-        .title(border_title(skin, title, style::accent(&skin.palette)))
+        .title(border_title(
+            skin,
+            title,
+            style::accent(&skin.palette).add_modifier(Modifier::BOLD),
+        ))
 }
 
 /// The single source of truth for a titled rounded frame: builds the inset
