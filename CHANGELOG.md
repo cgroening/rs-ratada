@@ -7,6 +7,19 @@ bump may contain breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `modal::input_wide` – a single-line text prompt in a box spanning ~90% of the
+  terminal width, so long values (such as file paths) stay visible instead of
+  scrolling in a narrow box.
+- `modal::number_input_bounded` – like `number_input`, but the accepted value is
+  clamped to `[min, max]`.
+
+### Changed
+
+- `modal::number_input` now falls back to the initial value instead of `0` when
+  the entered text cannot be parsed as an integer.
+
 ## [0.2.0] - 2026-07-07
 
 ### Added

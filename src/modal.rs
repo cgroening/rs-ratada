@@ -70,6 +70,31 @@ pub fn input(
     initial: &str,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<String>> {
+    input_impl(tui, skin, title, initial, input_area, render_bg)
+}
+
+/// Like [`input`], but the box spans most of the terminal width, so a long
+/// value (such as a file path) stays visible instead of scrolling in a narrow
+/// box. `Enter` accepts, `Esc` cancels.
+pub fn input_wide(
+    tui: &mut Tui,
+    skin: &Skin,
+    title: &str,
+    initial: &str,
+    render_bg: impl Fn(&mut Frame),
+) -> io::Result<ModalSignal<String>> {
+    input_impl(tui, skin, title, initial, input_area_wide, render_bg)
+}
+
+/// Shared single-line text prompt; `area` sizes the box from the frame.
+fn input_impl(
+    tui: &mut Tui,
+    skin: &Skin,
+    title: &str,
+    initial: &str,
+    area: impl Fn(Rect) -> Rect,
+    render_bg: impl Fn(&mut Frame),
+) -> io::Result<ModalSignal<String>> {
     let mut state = TextField {
         cursor: TextCursor::at_end(initial),
         text: initial.to_string(),
@@ -77,7 +102,7 @@ pub fn input(
     popup(
         tui,
         &mut state,
-        |area, _| input_area(area),
+        |rect, _| area(rect),
         |frame, _| render_bg(frame),
         |frame, rect, field: &TextField| {
             render_input(frame, skin, title, &field.text, &field.cursor, rect);
@@ -311,6 +336,32 @@ pub fn number_input(
     initial: i64,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<i64>> {
+    number_impl(tui, skin, title, initial, None, render_bg)
+}
+
+/// Like [`number_input`], but the accepted value is clamped to `[min, max]`.
+/// `Enter` accepts (clamping), `Esc` cancels.
+pub fn number_input_bounded(
+    tui: &mut Tui,
+    skin: &Skin,
+    title: &str,
+    initial: i64,
+    min: i64,
+    max: i64,
+    render_bg: impl Fn(&mut Frame),
+) -> io::Result<ModalSignal<i64>> {
+    number_impl(tui, skin, title, initial, Some((min, max)), render_bg)
+}
+
+/// Shared integer prompt; `bounds` clamps the accepted value when set.
+fn number_impl(
+    tui: &mut Tui,
+    skin: &Skin,
+    title: &str,
+    initial: i64,
+    bounds: Option<(i64, i64)>,
+    render_bg: impl Fn(&mut Frame),
+) -> io::Result<ModalSignal<i64>> {
     let mut text = initial.to_string();
     popup(
         tui,
@@ -322,7 +373,12 @@ pub fn number_input(
             render_input(frame, skin, title, text, &cursor, rect);
         },
         |text, key| match key.code {
-            KeyCode::Enter => PopupFlow::Done(text.parse::<i64>().unwrap_or(0)),
+            KeyCode::Enter => {
+                let value = text.parse::<i64>().unwrap_or(initial);
+                let value =
+                    bounds.map_or(value, |(min, max)| value.clamp(min, max));
+                PopupFlow::Done(value)
+            }
             KeyCode::Esc => PopupFlow::Cancelled,
             KeyCode::Backspace => {
                 text.pop();
@@ -561,6 +617,12 @@ fn picker_area(area: Rect, item_count: usize) -> Rect {
 /// The popup rect for the single-line text inputs.
 fn input_area(area: Rect) -> Rect {
     let width = area.width.saturating_sub(8).clamp(20, 60);
+    centered_rect(width, 5, area)
+}
+
+/// A wide input box (~90% of the terminal width), for long values.
+fn input_area_wide(area: Rect) -> Rect {
+    let width = (area.width * 9 / 10).clamp(20, area.width);
     centered_rect(width, 5, area)
 }
 
