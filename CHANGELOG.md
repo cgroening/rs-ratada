@@ -17,6 +17,8 @@ bump may contain breaking changes.
 
 ### Changed
 
+- Modal frames now fill with a slightly lightened background, lifting the box
+  above the dimmed backdrop so it reads as an elevated surface.
 - `modal::number_input` now falls back to the initial value instead of `0` when
   the entered text cannot be parsed as an integer.
 
