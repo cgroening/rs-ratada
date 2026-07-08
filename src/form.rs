@@ -19,7 +19,7 @@ use ratatui::{
 };
 
 use super::{
-    date_picker, editor,
+    chrome, date_picker, editor,
     input::InputField,
     layout::centered_rect,
     modal::ModalSignal,
@@ -367,8 +367,9 @@ impl Form {
             .border_type(BorderType::Rounded)
             .border_style(style::border(palette))
             .style(style::bg(palette.background))
-            .title(Span::styled(
-                format!("\u{2500} {} ", self.title),
+            .title(chrome::border_title(
+                skin,
+                &self.title,
                 style::fg(palette.accent)
                     .add_modifier(ratatui::style::Modifier::BOLD),
             ));

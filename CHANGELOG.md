@@ -14,11 +14,16 @@ bump may contain breaking changes.
   scrolling in a narrow box.
 - `modal::number_input_bounded` – like `number_input`, but the accepted value is
   clamped to `[min, max]`.
+- `chrome::border_title` – public helper that builds the inset border-title line
+  (`╭─ Title ───`); the single source of truth every framed box titles with.
 
 ### Changed
 
 - Modal frames now fill with a slightly lightened background, lifting the box
   above the dimmed backdrop so it reads as an elevated surface.
+- Form and toast frames now title via the shared `chrome::border_title`, so
+  their leading `─` connector takes the border color (matching modals) instead
+  of the title/accent color.
 - `modal::number_input` now falls back to the initial value instead of `0` when
   the entered text cannot be parsed as an integer.
 

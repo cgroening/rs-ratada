@@ -43,13 +43,33 @@ pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
         .border_type(BorderType::Rounded)
         .border_style(style::border(&skin.palette))
         .style(style::bg(skin.palette.background.lighten(MODAL_BG_LIFT)))
-        .title(title_line(skin, title, style::accent(&skin.palette)))
+        .title(border_title(skin, title, style::accent(&skin.palette)))
 }
 
-/// Builds the inset title line that reads as part of the top border
-/// (`╭─ Title ───`): the leading `─ ` keeps the border color so the frame stays
-/// uniform, then the trimmed title in `label` style.
-fn title_line(skin: &Skin, title: &str, label: Style) -> Line<'static> {
+/// The single source of truth for a titled rounded frame: builds the inset
+/// title line that reads as part of the top border (`╭─ Title ───`).
+///
+/// The leading `─ ` always keeps the border color so the connecting stroke
+/// blends into the frame; only the trimmed title itself takes `label`. Hand the
+/// result to `Block::title(...)` so every box titles the same way instead of a
+/// flush `╭ Title` — the blessed alternative to a bare `.title("Title")`.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::chrome::border_title;
+/// use ratada::style;
+/// use ratada::theme::{
+///     ColorOverrides, GlyphVariant, Glyphs, Palette, Skin, ThemeRegistry,
+/// };
+///
+/// let base = ThemeRegistry::builtin().resolve("default");
+/// let palette = Palette::resolve(base, &ColorOverrides::default());
+/// let skin = Skin::new(palette, Glyphs::new(GlyphVariant::Unicode));
+/// let line = border_title(&skin, "Info", style::accent(&skin.palette));
+/// assert!(line.to_string().starts_with("\u{2500} Info"));
+/// ```
+pub fn border_title(skin: &Skin, title: &str, label: Style) -> Line<'static> {
     Line::from(vec![
         Span::styled("\u{2500} ", style::border(&skin.palette)),
         Span::styled(format!("{} ", title.trim()), label),
@@ -145,7 +165,7 @@ pub fn framed_decor(
     if let Some(caption) = &decor.caption {
         // Box captions are bold to set them apart from plain modal titles.
         let label = style::accent(&skin.palette).add_modifier(Modifier::BOLD);
-        block = block.title(title_line(skin, caption, label));
+        block = block.title(border_title(skin, caption, label));
     }
     if let Some(badge) = decor.badge_text(auto_badge) {
         block = block.title_bottom(badge_line(skin, badge).right_aligned());

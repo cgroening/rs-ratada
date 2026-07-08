@@ -9,11 +9,10 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::Modifier,
-    text::Span,
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
 };
 
-use super::style;
+use super::{chrome, style};
 use crate::theme::{Color, Skin};
 
 /// How long a toast stays visible by default.
@@ -120,15 +119,13 @@ impl Toasts {
                 height: TOAST_HEIGHT,
             };
             let color = toast.kind.color(skin);
+            let label = style::fg(color).add_modifier(Modifier::BOLD);
             let block = Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(style::fg(color))
                 .style(style::bg(skin.palette.background))
-                .title(Span::styled(
-                    format!("\u{2500} {} ", toast.kind.label()),
-                    style::fg(color).add_modifier(Modifier::BOLD),
-                ));
+                .title(chrome::border_title(skin, toast.kind.label(), label));
             frame.render_widget(Clear, rect);
             frame.render_widget(
                 Paragraph::new(toast.message.clone())
