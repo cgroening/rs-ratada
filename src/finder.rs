@@ -144,7 +144,7 @@ fn render_body(
             Line::from(fuzzy::highlight(
                 &items[index],
                 &state.query,
-                style::secondary(palette),
+                style::primary(palette),
                 palette,
             ))
         })
