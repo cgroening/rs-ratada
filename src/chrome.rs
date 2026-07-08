@@ -16,6 +16,10 @@ use ratatui::{
 use super::style;
 use crate::theme::Skin;
 
+/// How far a modal's fill is lifted above the full-screen `background`, so the
+/// box reads as an elevated surface against the dimmed backdrop behind it.
+const MODAL_BG_LIFT: f32 = 0.06;
+
 /// The container block for a view section: a borderless block that insets its
 /// content by one cell all around, so a filled column (see [`menu_panel`]) keeps
 /// its content off the panel edges.
@@ -30,13 +34,15 @@ pub fn menu_panel(skin: &Skin) -> Block<'static> {
 }
 
 /// The shared modal frame: a rounded, bordered box with a filled background and
-/// an inset title. Used by every blocking modal widget.
+/// an inset title. Used by every blocking modal widget. The fill is lifted
+/// above `background` (see [`MODAL_BG_LIFT`]) so the box stands out from the
+/// dimmed view behind it.
 pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(style::border(&skin.palette))
-        .style(style::bg(skin.palette.background))
+        .style(style::bg(skin.palette.background.lighten(MODAL_BG_LIFT)))
         .title(title_line(skin, title, style::accent(&skin.palette)))
 }
 
