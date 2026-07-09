@@ -17,7 +17,9 @@
 //! inherits it without the host wiring anything up. Hints start out shown.
 //!
 //! A host that needs the key for itself rebinds or unbinds the chord with
-//! [`set_toggle_key`]; unbound, the key reaches its `handle_key` as usual.
+//! [`set_toggle_key`]; unbound, the key reaches its `handle_key` as usual. An
+//! app that drives its own event loop instead of `driver::run` calls
+//! [`consume_toggle`] at the top of its key dispatch to inherit the chord.
 
 use std::cell::Cell;
 
@@ -139,10 +141,30 @@ pub fn footer_height(rows: u16) -> u16 {
 
 /// Consumes `key` when it is the bound hints toggle, flipping the visibility.
 ///
-/// Called by `driver::run` and `overlay::popup` before a key reaches the host
-/// or a modal's handler, so every surface inherits the chord. Only `code` and
-/// `modifiers` are compared: `kind` and `state` vary by terminal.
-pub(crate) fn consume_toggle(key: KeyEvent) -> bool {
+/// `driver::run` and `overlay::popup` call this before a key reaches the host
+/// or a modal's handler, so every `Screen` and every modal inherits the chord.
+/// An app that drives its own event loop calls it at the top of its own key
+/// dispatch — rather than matching [`toggle_key`] by hand, which is how the
+/// modifier comparison gets forgotten.
+///
+/// Only `code` and `modifiers` are compared: `kind` and `state` vary by
+/// terminal.
+///
+/// # Examples
+///
+/// ```
+/// use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+/// use ratada::shortcut_hints::{consume_toggle, default_toggle_key, visible};
+///
+/// // In an app's own `handle_key`, before anything else:
+/// assert!(consume_toggle(default_toggle_key()));
+/// assert!(!visible());
+///
+/// // Every other key passes through untouched.
+/// let other = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+/// assert!(!consume_toggle(other));
+/// ```
+pub fn consume_toggle(key: KeyEvent) -> bool {
     let Some(bound) = toggle_key() else {
         return false;
     };

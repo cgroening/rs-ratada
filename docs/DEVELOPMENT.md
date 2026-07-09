@@ -93,7 +93,9 @@ than reinventing them:
   `shortcut_hints::global_bindings` names them with their current bindings, for
   a host to splice into its footer and help; the host's own conventional keys
   (`q`, `?`) stay with the host, which alone knows when the user rebinds them.
-  A quit confirmation is opt-in via the `quit` module.
+  A quit confirmation is opt-in via the `quit` module. An app that drives its own
+  event loop calls `shortcut_hints::consume_toggle(key)` at the top of its key
+  dispatch — never match the chord by hand, or the modifier check gets forgotten.
 - **Hint footers:** every footer goes through `shortcut_hints::lines` (or
   `group_lines`/`render`), which is why the global `F1` toggle reaches all of
   them at once — never hand-roll a hint line. A layout that reserves a footer

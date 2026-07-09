@@ -495,7 +495,10 @@ werden, wo sie passen.
   `shortcut_hints::set_toggle_key` umbindbar und abschaltbar; `Ctrl+Q` bleibt
   fest verdrahtet, damit der Notausstieg aus dem Alternate Screen nicht
   versehentlich verschwindet. `shortcut_hints::global_bindings` nennt beide, mit
-  der aktuellen Bindung – der Host spleißt sie in Footer und Hilfe-Overlay.
+  der aktuellen Bindung – der Host spleißt sie in Footer und Hilfe-Overlay. Eine
+  App mit eigenem Event-Loop (statt `driver::run`) ruft
+  `shortcut_hints::consume_toggle(key)` ganz vorne in ihrer Tastenbehandlung;
+  den Chord nie von Hand vergleichen.
 - **Quit-Nachfrage (optional):** `quit::set_confirm` legt fest, ob vor dem harten
   `Ctrl+Q`, vor der eigenen Quit-Action des Hosts, vor beidem oder vor keinem
   gefragt wird (Default: keinem). `quit::set_guard` registriert, wie der Dialog

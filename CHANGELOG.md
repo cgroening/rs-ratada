@@ -33,6 +33,9 @@ bump may contain breaking changes.
   – the toggle (named after its current binding) and the hard `Ctrl+Q` – for a
   host to splice into its footer and help overlay; with the hints hidden the
   toggle is nowhere else to be seen.
+- `shortcut_hints::consume_toggle` is now public, so an app that drives its own
+  event loop instead of `driver::run` can inherit the hints toggle with one line
+  at the top of its key dispatch, rather than matching the chord by hand.
 - `quit` – an opt-in confirmation before quitting. `quit::set_confirm` picks
   whether the hard `Ctrl+Q`, the host's own quit action, both or neither are
   questioned (neither, by default); `quit::set_guard` registers how the dialog
