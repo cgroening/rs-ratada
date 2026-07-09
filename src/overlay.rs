@@ -21,6 +21,7 @@ use ratatui::{
 use super::{
     chrome::modal_block,
     modal::ModalSignal,
+    quit::{self, QuitKind},
     shortcut_hints, style,
     terminal::{Tui, TuiEvent},
 };
@@ -44,9 +45,10 @@ pub enum PopupFlow<T> {
 ///
 /// Each frame draws `render_bg` (the view behind), dims it, then draws the box
 /// produced by `render_box` into the rect from `area`. Keys are handed to
-/// `handle_key`; the global quit chord yields [`ModalSignal::Quit`], and the
-/// global hints toggle (`shortcut_hints::TOGGLE_KEY`) is consumed here, so
-/// every modal inherits it and never sees the key.
+/// `handle_key`; the global quit chord yields [`ModalSignal::Quit`] once
+/// [`quit::request`] allows it, and the global hints toggle (see
+/// `shortcut_hints::set_toggle_key`) is consumed here, so every modal inherits
+/// it and never sees the key.
 ///
 /// `state` is threaded explicitly so the render closures borrow it immutably and
 /// `handle_key` borrows it mutably, sequentially, without aliasing. This covers
@@ -61,15 +63,22 @@ pub fn popup<S, T>(
     mut handle_key: impl FnMut(&mut S, KeyEvent) -> PopupFlow<T>,
 ) -> io::Result<ModalSignal<T>> {
     loop {
-        tui.draw(|frame| {
+        // One painter for the frame and for whatever the quit guard draws on
+        // top of it, so its dialog sits over this popup, not over bare ground.
+        let paint = |frame: &mut Frame| {
             render_bg(frame, state);
             dim(frame, SCRIM_FACTOR);
             let rect = area(frame.area(), state);
             frame.render_widget(Clear, rect);
             render_box(frame, rect, state);
-        })?;
+        };
+        tui.draw(paint)?;
         match tui.read_event()? {
-            TuiEvent::Quit => return Ok(ModalSignal::Quit),
+            TuiEvent::Quit => {
+                if quit::request(tui, QuitKind::Hard, &paint) {
+                    return Ok(ModalSignal::Quit);
+                }
+            }
             TuiEvent::Resize => {}
             // The next iteration redraws with the new visibility.
             TuiEvent::Key(key) if shortcut_hints::consume_toggle(key) => {}

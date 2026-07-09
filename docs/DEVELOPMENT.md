@@ -65,7 +65,9 @@ src/
   # chrome / misc
   help.rs           sectioned, fuzzy help overlay (Tab jumps sections)
   command_palette.rs  fuzzy command palette overlay
-  shortcut_hints.rs   footer key-hint lines (flat or grouped)
+  shortcut_hints.rs   footer key-hint lines (flat or grouped) + the global
+                      hints toggle and its binding
+  quit.rs             opt-in confirmation before quitting (policy + guard)
   theme_preview.rs    palette/variant preview for a gallery
   header.rs, statusbar.rs, double_press.rs
 tests/
@@ -86,6 +88,12 @@ than reinventing them:
 - **Framing:** `chrome::framed_decor` draws the rounded accent box with a
   caption (top border) and badge (bottom-right); every boxable widget goes
   through it and exposes `.boxed(decor)`.
+- **Global chords:** the toolkit intercepts exactly two keys – `Ctrl+Q`
+  (`terminal::classify`) and the hints toggle (`driver::run`/`overlay::popup`).
+  `shortcut_hints::global_bindings` names them with their current bindings, for
+  a host to splice into its footer and help; the host's own conventional keys
+  (`q`, `?`) stay with the host, which alone knows when the user rebinds them.
+  A quit confirmation is opt-in via the `quit` module.
 - **Hint footers:** every footer goes through `shortcut_hints::lines` (or
   `group_lines`/`render`), which is why the global `F1` toggle reaches all of
   them at once — never hand-roll a hint line. A layout that reserves a footer

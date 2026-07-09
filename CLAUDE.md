@@ -491,10 +491,21 @@ werden, wo sie passen.
   Speichern der Session). `F1` blendet die Hint-Fußzeilen um (Default: an;
   samt der Leerzeile darüber). Beide setzt das Toolkit selbst: `Ctrl+Q` in
   `terminal::classify`, `F1` in `driver::run` und `overlay::popup` – jeder Screen
-  und jedes Modal erben sie, der Host sieht die Taste nie. `Ctrl+C` bleibt der
-  Zwischenablage vorbehalten. Zahlentasten wählen Top-Level-Views (persistiert).
-  `u` macht die letzte Aktion rückgängig (One-Level-Undo), `y` kopiert in die
-  Zwischenablage. (Diese drei setzt der Host; das Toolkit liefert die Bausteine.)
+  und jedes Modal erben sie, der Host sieht die Taste nie. `F1` ist über
+  `shortcut_hints::set_toggle_key` umbindbar und abschaltbar; `Ctrl+Q` bleibt
+  fest verdrahtet, damit der Notausstieg aus dem Alternate Screen nicht
+  versehentlich verschwindet. `shortcut_hints::global_bindings` nennt beide, mit
+  der aktuellen Bindung – der Host spleißt sie in Footer und Hilfe-Overlay.
+- **Quit-Nachfrage (optional):** `quit::set_confirm` legt fest, ob vor dem harten
+  `Ctrl+Q`, vor der eigenen Quit-Action des Hosts, vor beidem oder vor keinem
+  gefragt wird (Default: keinem). `quit::set_guard` registriert, wie der Dialog
+  gezeichnet wird. Den harten Chord fragt das Toolkit selbst ab; die eigene
+  Quit-Action fragt der Host über `quit::request` – nur er weiß, woher sie kam.
+- `Ctrl+C` bleibt der Zwischenablage vorbehalten. Zahlentasten wählen
+  Top-Level-Views (persistiert). `u` macht die letzte Aktion rückgängig
+  (One-Level-Undo), `y` kopiert in die Zwischenablage. `q`/`Esc` beenden weich,
+  `?` öffnet die Hilfe. (Diese setzt der Host; `q` darf das Toolkit nicht
+  abfangen – es ist ein gewöhnliches Zeichen und wäre in jedem Filter Eingabe.)
 - **Terminal-Guard (RAII):** ein Guard-Typ (`Tui`) aktiviert Raw-Mode +
   Alternate-Screen bei Erzeugung und stellt beide beim Drop wieder her; der
   Event-Wrapper liefert Tasten und `Resize`, die Oberfläche zeichnet bei Resize

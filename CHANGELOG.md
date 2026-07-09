@@ -26,10 +26,19 @@ bump may contain breaking changes.
   `driver::run` and `overlay::popup` consume it, so every screen and every modal
   inherits it and the host wires up nothing. Hiding the hints reclaims their
   rows, the blank spacer above them included, so widget boxes shrink to fit.
-  New: `shortcut_hints::{TOGGLE_KEY, visible, set_visible, toggle,
-  footer_height, global_bindings}`. `global_bindings` yields the toolkit's own
-  chords for a host to splice into its help overlay – with the hints hidden the
+  New: `shortcut_hints::{visible, set_visible, toggle, footer_height,
+  default_toggle_key, toggle_key, set_toggle_key, global_bindings}`. The chord
+  is rebindable, and unbinding it with `set_toggle_key(None)` hands the key back
+  to the host. `global_bindings` yields the chords the toolkit itself intercepts
+  – the toggle (named after its current binding) and the hard `Ctrl+Q` – for a
+  host to splice into its footer and help overlay; with the hints hidden the
   toggle is nowhere else to be seen.
+- `quit` – an opt-in confirmation before quitting. `quit::set_confirm` picks
+  whether the hard `Ctrl+Q`, the host's own quit action, both or neither are
+  questioned (neither, by default); `quit::set_guard` registers how the dialog
+  is drawn. `run` and `popup` ask for the hard chord themselves; a host calls
+  `quit::request` in its own quit action, which is the only place that knows
+  where that quit came from.
 - `input::query_spans` and `InputField::caret_spans` – a text line with a block
   caret and no field background, scrolling horizontally to keep the caret in
   view. The single source every filter/search line now draws its caret with.
@@ -39,6 +48,8 @@ bump may contain breaking changes.
 - `path_picker` shows the block caret in its filter line again. The field is a
   full `InputField`, but the render path drew only its value, so nothing marked
   where typing would insert – including on an empty filter.
+- The hints toggle compared only the key code, so `Shift+F1` toggled the hints
+  as well. Modifiers are now matched exactly.
 
 ### Changed
 

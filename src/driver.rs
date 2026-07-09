@@ -6,6 +6,7 @@ use crossterm::event::KeyEvent;
 use ratatui::Frame;
 
 use super::{
+    quit::{self, QuitKind},
     shortcut_hints,
     terminal::{Tui, TuiEvent},
 };
@@ -53,8 +54,9 @@ pub trait Screen {
 ///
 /// Redraws every iteration; when no event arrives within `TICK`, calls
 /// [`Screen::tick`] so animated widgets keep moving. The global hints toggle
-/// (`shortcut_hints::TOGGLE_KEY`) is consumed here, so every screen inherits it
-/// and never sees the key.
+/// (see `shortcut_hints::set_toggle_key`) is consumed here, so every screen
+/// inherits it and never sees the key. The hard quit chord is put through
+/// [`quit::request`], which asks only when the host opted in.
 ///
 /// # Errors
 ///
@@ -64,7 +66,12 @@ pub fn run<S: Screen>(tui: &mut Tui, screen: &mut S) -> Result<(), S::Error> {
         tui.draw(|frame| screen.render(frame))?;
         match tui.poll_event(TICK)? {
             None => screen.tick(),
-            Some(TuiEvent::Quit) => break,
+            Some(TuiEvent::Quit) => {
+                let repaint = |frame: &mut Frame| screen.render(frame);
+                if quit::request(tui, QuitKind::Hard, &repaint) {
+                    break;
+                }
+            }
             Some(TuiEvent::Resize) => {}
             // The next iteration redraws with the new visibility.
             Some(TuiEvent::Key(key)) if shortcut_hints::consume_toggle(key) => {

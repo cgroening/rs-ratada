@@ -12,13 +12,16 @@
 //! Every hint footer in the toolkit is built here, so hiding hints is a single
 //! switch: while [`visible`] is false, [`lines`] and [`group_lines`] yield
 //! nothing, [`render`] draws nothing (not even its top margin) and [`height`]
-//! reports zero rows. `driver::run` and `overlay::popup` bind the global
-//! [`TOGGLE_KEY`] chord, so every screen and every modal inherits it without
-//! the host wiring anything up. Hints start out shown.
+//! reports zero rows. `driver::run` and `overlay::popup` consume the toggle
+//! chord ([`default_toggle_key`], `F1`), so every screen and every modal
+//! inherits it without the host wiring anything up. Hints start out shown.
+//!
+//! A host that needs the key for itself rebinds or unbinds the chord with
+//! [`set_toggle_key`]; unbound, the key reaches its `handle_key` as usual.
 
 use std::cell::Cell;
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -35,16 +38,10 @@ const SEPARATOR: &str = " \u{00b7} ";
 /// Spaces between the aligned label column and the first hint.
 const LABEL_GAP: usize = 2;
 
-/// The global chord toggling the hint footers.
-///
-/// A function key rather than a `Ctrl+…` chord: it can never be text input, so
-/// it stays free inside every text field and modal. `Ctrl+Q` (quit), `Ctrl+S`,
-/// `Ctrl+G`, `Ctrl+H` and the editing chords are already spoken for.
-pub const TOGGLE_KEY: KeyCode = KeyCode::F(1);
-
-/// The toolkit's global chords, as `(key, description)` tokens.
-const GLOBAL_BINDINGS: &[(&str, &str)] =
-    &[("f1", "toggle hints"), ("ctrl+q", "quit")];
+/// The description shown beside the hints toggle.
+const TOGGLE_LABEL: &str = "toggle hints";
+/// The hard quit chord, wired into `terminal::classify` and not rebindable.
+const HARD_QUIT: (&str, &str) = ("ctrl+q", "force quit");
 
 thread_local! {
     /// Whether the hint footers are shown.
@@ -54,6 +51,9 @@ thread_local! {
     /// through the render calls instead: [`lines`] receives only a `Color`, and
     /// the event loop that flips it has neither a `Skin` nor host state.
     static VISIBLE: Cell<bool> = const { Cell::new(true) };
+
+    /// The chord bound to the hints toggle, or `None` once a host unbound it.
+    static TOGGLE: Cell<Option<KeyEvent>> = Cell::new(Some(default_toggle_key()));
 }
 
 /// Whether shortcut hints are currently shown.
@@ -66,25 +66,69 @@ pub fn set_visible(show: bool) {
     VISIBLE.with(|flag| flag.set(show));
 }
 
-/// Flips the hint visibility; what the global [`TOGGLE_KEY`] chord does.
+/// Flips the hint visibility; what the global toggle chord does.
 pub fn toggle() {
     VISIBLE.with(|flag| flag.set(!flag.get()));
 }
 
-/// The toolkit's global chords, for splicing into a host's help overlay.
+/// The chord bound to the hints toggle out of the box: `F1`, no modifiers.
 ///
-/// With the hints hidden, the toggle appears nowhere else on screen, so a host
-/// that builds a help overlay should list these.
+/// A function key rather than a `Ctrl+…` chord: it can never be text input, so
+/// it stays free inside every text field and modal. `Ctrl+Q` (quit), `Ctrl+S`,
+/// `Ctrl+G`, `Ctrl+H` and the editing chords are already spoken for.
+pub fn default_toggle_key() -> KeyEvent {
+    KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE)
+}
+
+/// The chord currently toggling the hints, or `None` while it is unbound.
+pub fn toggle_key() -> Option<KeyEvent> {
+    TOGGLE.with(Cell::get)
+}
+
+/// Rebinds the global hints toggle, or unbinds it with `None` so the key
+/// reaches the host's own `handle_key` instead. Call it before `run`.
+///
+/// # Examples
+///
+/// ```
+/// use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+/// use ratada::shortcut_hints::{set_toggle_key, toggle_key};
+///
+/// set_toggle_key(None);
+/// assert!(toggle_key().is_none());
+///
+/// let chord = KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE);
+/// set_toggle_key(Some(chord));
+/// assert_eq!(toggle_key(), Some(chord));
+/// ```
+pub fn set_toggle_key(key: Option<KeyEvent>) {
+    TOGGLE.with(|chord| chord.set(key));
+}
+
+/// The chords the toolkit itself intercepts, as `(key, description)` tokens:
+/// the hints toggle (omitted while unbound) and the hard quit.
+///
+/// A host appends its own conventional chords (`?`, `q`) from its keymap: only
+/// it knows them, and only it notices when the user rebinds them. With the
+/// hints hidden the toggle appears nowhere else on screen, so a host that
+/// builds a help overlay should list these.
 ///
 /// # Examples
 ///
 /// ```
 /// use ratada::shortcut_hints::global_bindings;
 ///
-/// assert!(global_bindings().iter().any(|(key, _)| *key == "f1"));
+/// let bindings = global_bindings();
+/// assert!(bindings.iter().any(|(key, _)| key == "f1"));
+/// assert!(bindings.iter().any(|(key, _)| key == "ctrl+q"));
 /// ```
-pub fn global_bindings() -> &'static [(&'static str, &'static str)] {
-    GLOBAL_BINDINGS
+pub fn global_bindings() -> Vec<(String, String)> {
+    let mut bindings = Vec::new();
+    if let Some(chord) = toggle_key() {
+        bindings.push((chord_label(chord), TOGGLE_LABEL.to_string()));
+    }
+    bindings.push((HARD_QUIT.0.to_string(), HARD_QUIT.1.to_string()));
+    bindings
 }
 
 /// The rows a hint footer of `rows` lines occupies: `rows` while hints are
@@ -93,16 +137,61 @@ pub fn footer_height(rows: u16) -> u16 {
     if visible() { rows } else { 0 }
 }
 
-/// Consumes `key` when it is the global hints toggle, flipping the visibility.
+/// Consumes `key` when it is the bound hints toggle, flipping the visibility.
 ///
 /// Called by `driver::run` and `overlay::popup` before a key reaches the host
-/// or a modal's handler, so every surface inherits the chord.
+/// or a modal's handler, so every surface inherits the chord. Only `code` and
+/// `modifiers` are compared: `kind` and `state` vary by terminal.
 pub(crate) fn consume_toggle(key: KeyEvent) -> bool {
-    if key.code != TOGGLE_KEY {
+    let Some(bound) = toggle_key() else {
+        return false;
+    };
+    if key.code != bound.code || key.modifiers != bound.modifiers {
         return false;
     }
     toggle();
     true
+}
+
+/// A chord as a footer token: `"f1"`, `"ctrl+h"`, `"shift+enter"`.
+fn chord_label(key: KeyEvent) -> String {
+    let mut label = String::new();
+    for (modifier, name) in [
+        (KeyModifiers::CONTROL, "ctrl+"),
+        (KeyModifiers::ALT, "alt+"),
+        (KeyModifiers::SHIFT, "shift+"),
+    ] {
+        if key.modifiers.contains(modifier) {
+            label.push_str(name);
+        }
+    }
+    label.push_str(&key_label(key.code));
+    label
+}
+
+/// A key code's own name, without modifiers.
+fn key_label(code: KeyCode) -> String {
+    match code {
+        KeyCode::Char(' ') => "space".to_string(),
+        KeyCode::Char(ch) => ch.to_lowercase().to_string(),
+        KeyCode::F(number) => format!("f{number}"),
+        KeyCode::Enter => "enter".to_string(),
+        KeyCode::Esc => "esc".to_string(),
+        KeyCode::Tab => "tab".to_string(),
+        KeyCode::BackTab => "backtab".to_string(),
+        KeyCode::Backspace => "backspace".to_string(),
+        KeyCode::Delete => "delete".to_string(),
+        KeyCode::Insert => "insert".to_string(),
+        KeyCode::Home => "home".to_string(),
+        KeyCode::End => "end".to_string(),
+        KeyCode::PageUp => "pageup".to_string(),
+        KeyCode::PageDown => "pagedown".to_string(),
+        KeyCode::Up => "up".to_string(),
+        KeyCode::Down => "down".to_string(),
+        KeyCode::Left => "left".to_string(),
+        KeyCode::Right => "right".to_string(),
+        other => format!("{other:?}").to_lowercase(),
+    }
 }
 
 /// A titled group of key hints. An empty `label` renders without a label
@@ -459,10 +548,18 @@ mod tests {
         assert_eq!(footer_height(2), 2);
     }
 
+    /// Runs `body` with `key` bound as the toggle, restoring the binding after.
+    fn with_toggle_key(key: Option<KeyEvent>, body: impl FnOnce()) {
+        let before = toggle_key();
+        set_toggle_key(key);
+        body();
+        set_toggle_key(before);
+    }
+
     #[test]
     fn the_toggle_key_is_consumed_and_flips_the_visibility() {
         let before = visible();
-        let key = KeyEvent::new(TOGGLE_KEY, KeyModifiers::NONE);
+        let key = default_toggle_key();
         assert!(consume_toggle(key));
         assert_eq!(visible(), !before);
         // Restore, which also exercises the round trip.
@@ -479,10 +576,67 @@ mod tests {
     }
 
     #[test]
+    fn the_toggle_chord_matches_its_modifiers_exactly() {
+        let before = visible();
+        // `Shift+F1` is a different chord than the bound `F1`.
+        let shifted = KeyEvent::new(KeyCode::F(1), KeyModifiers::SHIFT);
+        assert!(!consume_toggle(shifted));
+        assert_eq!(visible(), before);
+    }
+
+    #[test]
+    fn an_unbound_toggle_lets_the_key_reach_the_host() {
+        with_toggle_key(None, || {
+            let before = visible();
+            assert!(!consume_toggle(default_toggle_key()));
+            assert_eq!(visible(), before);
+        });
+    }
+
+    #[test]
+    fn a_rebound_toggle_replaces_the_default_chord() {
+        let rebound = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::CONTROL);
+        with_toggle_key(Some(rebound), || {
+            let before = visible();
+            assert!(!consume_toggle(default_toggle_key()));
+            assert_eq!(visible(), before);
+            assert!(consume_toggle(rebound));
+            assert_eq!(visible(), !before);
+            toggle();
+        });
+    }
+
+    #[test]
     fn global_bindings_document_the_toggle_and_the_quit_chord() {
+        let bindings = global_bindings();
         let keys: Vec<&str> =
-            global_bindings().iter().map(|(key, _)| *key).collect();
-        assert!(keys.contains(&"f1"));
-        assert!(keys.contains(&"ctrl+q"));
+            bindings.iter().map(|(key, _)| key.as_str()).collect();
+        assert_eq!(keys, ["f1", "ctrl+q"]);
+    }
+
+    #[test]
+    fn global_bindings_follow_the_toggle_binding() {
+        let rebound = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::CONTROL);
+        with_toggle_key(Some(rebound), || {
+            let bindings = global_bindings();
+            assert_eq!(bindings[0].0, "ctrl+h");
+        });
+        with_toggle_key(None, || {
+            let bindings = global_bindings();
+            // Only the hard quit is left; the toggle has no key to name.
+            assert_eq!(bindings.len(), 1);
+            assert_eq!(bindings[0].0, "ctrl+q");
+        });
+    }
+
+    #[test]
+    fn chord_label_names_modifiers_and_keys() {
+        let label =
+            |code, modifiers| chord_label(KeyEvent::new(code, modifiers));
+        assert_eq!(label(KeyCode::F(1), KeyModifiers::NONE), "f1");
+        assert_eq!(label(KeyCode::Char('h'), KeyModifiers::CONTROL), "ctrl+h");
+        assert_eq!(label(KeyCode::Enter, KeyModifiers::SHIFT), "shift+enter");
+        assert_eq!(label(KeyCode::Esc, KeyModifiers::NONE), "esc");
+        assert_eq!(label(KeyCode::Char(' '), KeyModifiers::NONE), "space");
     }
 }
