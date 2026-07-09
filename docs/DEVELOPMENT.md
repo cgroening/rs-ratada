@@ -86,6 +86,11 @@ than reinventing them:
 - **Framing:** `chrome::framed_decor` draws the rounded accent box with a
   caption (top border) and badge (bottom-right); every boxable widget goes
   through it and exposes `.boxed(decor)`.
+- **Hint footers:** every footer goes through `shortcut_hints::lines` (or
+  `group_lines`/`render`), which is why the global `F1` toggle reaches all of
+  them at once — never hand-roll a hint line. A layout that reserves a footer
+  row sizes it with `shortcut_hints::footer_height(rows)` so the row (and any
+  blank spacer you pair with the hint) collapses when the hints are hidden.
 - **Block caret:** filter/search lines go through `input::query_spans` (caret at
   the end, for widgets keeping a bare `String`), fields with their own cursor
   through `InputField::caret_spans`. Both scroll horizontally and mark a

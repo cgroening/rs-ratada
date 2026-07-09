@@ -21,7 +21,7 @@ use ratatui::{
 use super::{
     chrome::modal_block,
     modal::ModalSignal,
-    style,
+    shortcut_hints, style,
     terminal::{Tui, TuiEvent},
 };
 use crate::theme::Skin;
@@ -44,7 +44,9 @@ pub enum PopupFlow<T> {
 ///
 /// Each frame draws `render_bg` (the view behind), dims it, then draws the box
 /// produced by `render_box` into the rect from `area`. Keys are handed to
-/// `handle_key`; the global quit chord yields [`ModalSignal::Quit`].
+/// `handle_key`; the global quit chord yields [`ModalSignal::Quit`], and the
+/// global hints toggle (`shortcut_hints::TOGGLE_KEY`) is consumed here, so
+/// every modal inherits it and never sees the key.
 ///
 /// `state` is threaded explicitly so the render closures borrow it immutably and
 /// `handle_key` borrows it mutably, sequentially, without aliasing. This covers
@@ -69,6 +71,8 @@ pub fn popup<S, T>(
         match tui.read_event()? {
             TuiEvent::Quit => return Ok(ModalSignal::Quit),
             TuiEvent::Resize => {}
+            // The next iteration redraws with the new visibility.
+            TuiEvent::Key(key) if shortcut_hints::consume_toggle(key) => {}
             TuiEvent::Key(key) => match handle_key(state, key) {
                 PopupFlow::Continue => {}
                 PopupFlow::Done(value) => {

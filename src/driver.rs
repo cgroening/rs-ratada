@@ -5,7 +5,10 @@ use std::{io, time::Duration};
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 
-use super::terminal::{Tui, TuiEvent};
+use super::{
+    shortcut_hints,
+    terminal::{Tui, TuiEvent},
+};
 
 /// Redraw cadence when no input arrives, so [`Screen::tick`] can animate.
 const TICK: Duration = Duration::from_millis(100);
@@ -49,7 +52,9 @@ pub trait Screen {
 /// Runs the draw/read/handle loop until the screen or the user quits.
 ///
 /// Redraws every iteration; when no event arrives within `TICK`, calls
-/// [`Screen::tick`] so animated widgets keep moving.
+/// [`Screen::tick`] so animated widgets keep moving. The global hints toggle
+/// (`shortcut_hints::TOGGLE_KEY`) is consumed here, so every screen inherits it
+/// and never sees the key.
 ///
 /// # Errors
 ///
@@ -61,6 +66,9 @@ pub fn run<S: Screen>(tui: &mut Tui, screen: &mut S) -> Result<(), S::Error> {
             None => screen.tick(),
             Some(TuiEvent::Quit) => break,
             Some(TuiEvent::Resize) => {}
+            // The next iteration redraws with the new visibility.
+            Some(TuiEvent::Key(key)) if shortcut_hints::consume_toggle(key) => {
+            }
             Some(TuiEvent::Key(key)) => {
                 if let Flow::Quit = screen.handle_key(key, tui)? {
                     break;

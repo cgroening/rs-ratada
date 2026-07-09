@@ -24,7 +24,7 @@ use super::{
     modal::ModalSignal,
     nav,
     overlay::{self, PopupFlow, popup},
-    style,
+    shortcut_hints, style,
     terminal::Tui,
 };
 use crate::theme::Skin;
@@ -211,12 +211,14 @@ fn render_body<B: AsRef<str>>(
     let palette = &skin.palette;
     let layout = layout_rows(sections, &state.query);
 
+    // The footer collapses to nothing while the hints are hidden, handing its
+    // row to the list.
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(1),
+            Constraint::Length(shortcut_hints::footer_height(1)),
         ])
         .split(inner);
 
@@ -279,7 +281,7 @@ fn render_body<B: AsRef<str>>(
 
 /// The footer hint line for the overlay.
 fn footer_hint(skin: &Skin, width: usize) -> Line<'static> {
-    super::shortcut_hints::lines(
+    shortcut_hints::lines(
         &[
             ("\u{2191}\u{2193}", "move"),
             ("tab", "section"),

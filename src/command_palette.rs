@@ -275,12 +275,14 @@ fn render_body(
     let grouped = state.query.trim().is_empty();
     let layout = layout_rows(items, &state.query);
 
+    // The footer collapses to nothing while the hints are hidden, handing its
+    // row to the list.
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(1),
+            Constraint::Length(shortcut_hints::footer_height(1)),
         ])
         .split(inner);
 

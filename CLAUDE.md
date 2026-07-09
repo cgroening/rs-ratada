@@ -488,10 +488,13 @@ werden, wo sie passen.
 **Globale Tasten & App-Rahmen**
 
 - **Globale Tasten:** `Ctrl+Q` beendet hart (überall, inkl. Modals, mit
-  Speichern der Session). `Ctrl+C` bleibt der Zwischenablage vorbehalten.
-  Zahlentasten wählen Top-Level-Views (persistiert). `u` macht die letzte Aktion
-  rückgängig (One-Level-Undo), `y` kopiert in die Zwischenablage. (Diese
-  Bindungen setzt der Host; das Toolkit liefert die Bausteine.)
+  Speichern der Session). `F1` blendet die Hint-Fußzeilen um (Default: an;
+  samt der Leerzeile darüber). Beide setzt das Toolkit selbst: `Ctrl+Q` in
+  `terminal::classify`, `F1` in `driver::run` und `overlay::popup` – jeder Screen
+  und jedes Modal erben sie, der Host sieht die Taste nie. `Ctrl+C` bleibt der
+  Zwischenablage vorbehalten. Zahlentasten wählen Top-Level-Views (persistiert).
+  `u` macht die letzte Aktion rückgängig (One-Level-Undo), `y` kopiert in die
+  Zwischenablage. (Diese drei setzt der Host; das Toolkit liefert die Bausteine.)
 - **Terminal-Guard (RAII):** ein Guard-Typ (`Tui`) aktiviert Raw-Mode +
   Alternate-Screen bei Erzeugung und stellt beide beim Drop wieder her; der
   Event-Wrapper liefert Tasten und `Resize`, die Oberfläche zeichnet bei Resize

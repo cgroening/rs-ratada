@@ -117,21 +117,19 @@ fn body_lines(
         format!(" {value}  ({}..{})", cfg.min, cfg.max),
         style::fg(palette.accent).add_modifier(Modifier::BOLD),
     ));
-    let hint = shortcut_hints::lines(
-        &[("\u{2190}/\u{2192}", "adjust"), ("enter", "ok")],
-        palette.accent_dim,
-        bar_width,
-    )
-    .into_iter()
-    .next()
-    .unwrap_or_default();
-    vec![
-        value_line,
-        Line::from(""),
-        Line::from(bar),
-        Line::from(""),
-        hint,
-    ]
+    let mut lines = vec![value_line, Line::from(""), Line::from(bar)];
+    // The spacer belongs to the hint: both go when the hints are hidden, so the
+    // box (sized from these lines) loses exactly the two rows.
+    lines.extend(
+        shortcut_hints::lines(
+            &[("\u{2190}/\u{2192}", "adjust"), ("enter", "ok")],
+            palette.accent_dim,
+            bar_width,
+        )
+        .into_iter()
+        .flat_map(|hint| [Line::from(""), hint]),
+    );
+    lines
 }
 
 #[cfg(test)]

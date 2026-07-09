@@ -284,14 +284,15 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
     let palette = &skin.palette;
     let inner_width = inner.width as usize;
 
-    // Header (current dir), filter line, the scrollable entry list, footer.
+    // Header (current dir), filter line, the scrollable entry list, footer. The
+    // footer collapses to nothing while the hints are hidden.
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(1),
+            Constraint::Length(shortcut_hints::footer_height(1)),
         ])
         .split(inner);
 

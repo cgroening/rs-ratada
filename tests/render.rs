@@ -180,6 +180,48 @@ fn a_box_too_narrow_for_the_badge_keeps_its_border_intact() {
     assert!(row.starts_with('\u{2570}') && row.ends_with('\u{256f}'));
 }
 
+/// Renders `render` and returns whether the frame has any non-blank cell.
+fn draws_anything(
+    width: u16,
+    height: u16,
+    render: impl FnOnce(&mut Frame),
+) -> bool {
+    let mut terminal =
+        Terminal::new(TestBackend::new(width, height)).expect("backend");
+    terminal.draw(render).expect("draw");
+    let buffer = terminal.backend().buffer();
+    buffer.content.iter().any(|cell| cell.symbol() != " ")
+}
+
+#[test]
+fn hidden_hints_leave_no_row_behind_not_even_the_top_margin() {
+    let groups = [HintGroup {
+        label: "File",
+        hints: &[("s", "save")],
+    }];
+    let paint = |frame: &mut Frame| {
+        shortcut_hints::render(
+            frame,
+            frame.area(),
+            &groups,
+            &HintStyle::default(),
+        );
+    };
+
+    assert!(draws_anything(40, 3, paint), "hints should draw when shown");
+
+    shortcut_hints::set_visible(false);
+    let drew = draws_anything(40, 3, paint);
+    shortcut_hints::set_visible(true);
+    assert!(!drew, "hidden hints must draw nothing at all");
+
+    // The row budget collapses with them, margin included.
+    shortcut_hints::set_visible(false);
+    let rows = shortcut_hints::height(&groups, 40, 1);
+    shortcut_hints::set_visible(true);
+    assert_eq!(rows, 0);
+}
+
 #[test]
 fn chrome_widgets_render_across_sizes() {
     let skin = skin();

@@ -28,6 +28,10 @@ use super::{
 };
 use crate::theme::{Palette, Skin};
 
+/// Rows a modal's hint block occupies while the hints are shown: a blank
+/// spacer and the hint line itself.
+const HINT_BLOCK_ROWS: u16 = 2;
+
 /// Outcome of a modal interaction.
 pub enum ModalSignal<T> {
     /// The user confirmed with a value.
@@ -51,7 +55,7 @@ pub fn confirm(
         &mut state,
         |area, (): &()| {
             let width = (prompt.width() as u16 + 6).clamp(28, area.width);
-            centered_rect(width, 5, area)
+            centered_rect(width, hinted_box_height(), area)
         },
         |frame, (): &()| render_bg(frame),
         |frame, rect, (): &()| render_confirm(frame, skin, prompt, rect),
@@ -473,11 +477,12 @@ impl MultiSelect {
 fn render_confirm(frame: &mut Frame, skin: &Skin, prompt: &str, rect: Rect) {
     let inner = overlay::framed(frame, rect, skin, " Confirm ");
     let width = inner.width as usize;
-    let lines = vec![
-        Line::from(prompt.to_string()),
-        Line::from(""),
-        hint(&[("y", "yes"), ("n", "no")], &skin.palette, width),
-    ];
+    let mut lines = vec![Line::from(prompt.to_string())];
+    lines.extend(hint_block(
+        &[("y", "yes"), ("n", "no")],
+        &skin.palette,
+        width,
+    ));
     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: true });
     frame.render_widget(paragraph, inner);
 }
@@ -493,11 +498,12 @@ fn render_input(
     let inner = overlay::framed(frame, rect, skin, title);
     let width = inner.width as usize;
     let line = input::render_line(text, cursor, &skin.palette, width, true);
-    let lines = vec![
-        line,
-        Line::from(""),
-        hint(&[("enter", "ok"), ("esc", "cancel")], &skin.palette, width),
-    ];
+    let mut lines = vec![line];
+    lines.extend(hint_block(
+        &[("enter", "ok"), ("esc", "cancel")],
+        &skin.palette,
+        width,
+    ));
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
@@ -633,22 +639,32 @@ fn picker_area(area: Rect, item_count: usize) -> Rect {
 /// The popup rect for the single-line text inputs.
 fn input_area(area: Rect) -> Rect {
     let width = area.width.saturating_sub(8).clamp(20, 60);
-    centered_rect(width, 5, area)
+    centered_rect(width, hinted_box_height(), area)
 }
 
 /// A wide input box (~90% of the terminal width), for long values.
 fn input_area_wide(area: Rect) -> Rect {
     let width = (area.width * 9 / 10).clamp(20, area.width);
-    centered_rect(width, 5, area)
+    centered_rect(width, hinted_box_height(), area)
 }
 
-fn hint(
+/// The blank spacer and the hint line closing a modal body. Both vanish
+/// together while the hints are hidden, which is why the spacer lives here and
+/// not at the call site.
+fn hint_block(
     items: &[(&str, &str)],
     palette: &Palette,
     width: usize,
-) -> Line<'static> {
+) -> Vec<Line<'static>> {
     shortcut_hints::lines(items, palette.accent, width)
         .into_iter()
-        .next()
-        .unwrap_or_default()
+        .take(1)
+        .flat_map(|hint| [Line::from(""), hint])
+        .collect()
+}
+
+/// The height of a modal box whose body is one row plus a [`hint_block`]:
+/// two border rows, the row itself, and the hint block when shown.
+fn hinted_box_height() -> u16 {
+    3 + shortcut_hints::footer_height(HINT_BLOCK_ROWS)
 }

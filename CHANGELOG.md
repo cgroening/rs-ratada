@@ -22,6 +22,14 @@ bump may contain breaking changes.
   `foreground_dim` and `border`, for chrome annotations that must not compete
   with the content.
 - `nav::scroll_percent` – how far a `ScrollView` is scrolled, in percent.
+- A global `F1` chord toggling every shortcut-hint footer (shown by default).
+  `driver::run` and `overlay::popup` consume it, so every screen and every modal
+  inherits it and the host wires up nothing. Hiding the hints reclaims their
+  rows, the blank spacer above them included, so widget boxes shrink to fit.
+  New: `shortcut_hints::{TOGGLE_KEY, visible, set_visible, toggle,
+  footer_height, global_bindings}`. `global_bindings` yields the toolkit's own
+  chords for a host to splice into its help overlay – with the hints hidden the
+  toggle is nowhere else to be seen.
 - `input::query_spans` and `InputField::caret_spans` – a text line with a block
   caret and no field background, scrolling horizontally to keep the caret in
   view. The single source every filter/search line now draws its caret with.
@@ -45,6 +53,9 @@ bump may contain breaking changes.
   border; the pager's footer no longer repeats it.
 - A boxed `table`'s badge now reads `12/80` (cursor position and row count)
   instead of the bare row count. Its status line is unchanged.
+- `shortcut_hints::height` returns `0` while the hints are hidden (previously at
+  least `1`), and `lines`/`group_lines` return an empty `Vec`, so a host that
+  budgets its footer with `height` reclaims the top margin along with the hints.
 - Filter and search lines (`finder`, `command_palette`, `help`, `swatches`,
   `sidebar`, `table`, `pager`) scroll horizontally and mark a scrolled-off head
   with `…`, instead of being cut off at the line end. They share one caret

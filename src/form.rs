@@ -358,8 +358,10 @@ impl Form {
         let palette = &skin.palette;
         let outer = frame.area();
         let body: u16 = self.fields.iter().map(Field::height).sum();
+        let footer = shortcut_hints::footer_height(1);
         let width = (outer.width * 2 / 3).clamp(40, outer.width);
-        let height = (body + 3).min(outer.height);
+        // Two border rows plus the footer, which vanishes with the hints.
+        let height = (body + 2 + footer).min(outer.height);
         let area = centered_rect(width, height, outer);
         frame.render_widget(Clear, area);
         let block = Block::default()
@@ -383,7 +385,7 @@ impl Form {
             .iter()
             .map(|f| Constraint::Length(f.height()))
             .collect();
-        constraints.push(Constraint::Min(1));
+        constraints.push(Constraint::Length(footer));
         let rects = Layout::default()
             .direction(Direction::Vertical)
             .constraints(constraints)
