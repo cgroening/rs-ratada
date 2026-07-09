@@ -101,6 +101,12 @@ pub fn border(palette: &Palette) -> Style {
     fg(palette.border)
 }
 
+/// The border of a focused box: a lifted `border` that keeps its contrast
+/// against the brighter fill a focused field draws.
+pub fn border_focus(palette: &Palette) -> Style {
+    fg(palette.border_focus)
+}
+
 /// A disabled/unavailable item.
 pub fn disabled(palette: &Palette) -> Style {
     fg(palette.foreground_dim)

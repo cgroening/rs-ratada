@@ -23,7 +23,7 @@ src/
     palette.rs      Palette (+ resolve) and ColorOverrides (define_palette! SSOT)
     skin.rs         Skin = Palette + Glyphs
     glyphs.rs       GlyphVariant + Glyphs (Unicode / ASCII)
-    theme_set.rs    ThemeColors, ThemeRegistry (built-in themes)
+    theme_set.rs    ThemeColors (+ KEYS), ThemeRegistry (built-in themes)
 
   # driver / infrastructure
   terminal.rs       Tui RAII guard (raw mode + alt screen) + TuiEvent + hooks
@@ -117,6 +117,18 @@ than reinventing them:
   size (a fraction of the area, floored at a minimum).
 - **Colors:** only `style.rs` maps `theme::Color` to ratatui; widgets take a
   `&Skin`/`&Palette`, never a raw literal.
+- **Focused frames:** a focused field brightens its own fill, so a fixed border
+  loses most of its contrast against it. Draw such a frame from `border_focus`
+  (`style::border_focus`), not from `border`. It is lifted above `border` and
+  follows it: a theme or a host that sets only `border` gets a matching focus
+  color for free, and an explicit `border_focus` always wins. Because
+  `chrome::border_title` reads the stroke colour from `palette.border`, a widget
+  that titles a focused box hands it a `Skin` copy whose `border` *is* the focus
+  color — styling `border_style` alone would leave that one stroke behind.
+- **Validating a theme table:** check a `[themes.<name>]` against
+  `ThemeColors::KEYS`, never against `Palette::KEYS`. The palette carries derived
+  colors a theme cannot contribute (`selection`, `cursor`, `input_bg`, …);
+  accepting them there drops the value without a word.
 - **Text editing:** `input::TextCursor` + the crate-internal `apply_edit_key`
   are the shared caret/edit core (reused by `textarea`); widths are measured
   with `unicode-width` (wide glyphs count as 2).

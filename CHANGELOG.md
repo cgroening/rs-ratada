@@ -25,6 +25,18 @@ bump may contain breaking changes.
 - `style::muted` and the palette color `foreground_muted` – a text tone between
   `foreground_dim` and `border`, for chrome annotations that must not compete
   with the content.
+- `style::border_focus` and the color `border_focus` – the border of a *focused*
+  box. A focused field brightens its own fill, and a fixed border loses most of
+  its contrast against it; `border_focus` is lifted above `border` so the frame
+  stays legible in both states. It exists both as a `ThemeColors` base color (a
+  `[themes.<name>]` may ship its own) and as a `Palette` color (a host may
+  override it). Left out, it follows `border` – and an override on `border`
+  alone drags it along, so the pair can never drift apart.
+- `ThemeColors::KEYS` – the color names `ThemeColors::from_lookup` actually
+  reads, so a host can validate a `[themes.<name>]` table against them. Checking
+  a theme against `Palette::KEYS` instead accepts derived colors (`selection`,
+  `cursor`, `input_bg`, …) that a theme cannot contribute, and drops them
+  silently.
 - `nav::scroll_percent` – how far a `ScrollView` is scrolled, in percent.
 - A global `F1` chord toggling every shortcut-hint footer (shown by default).
   `driver::run` and `overlay::popup` consume it, so every screen and every modal
@@ -61,6 +73,11 @@ bump may contain breaking changes.
   with the overlay chip, since a frameless widget had nowhere to put one.
 
 ### Changed
+
+- **Breaking:** `ThemeColors` gained a `border_focus` field. Every struct
+  literal has to name it; `ThemeColors::derived`, `from_accent` and
+  `from_lookup` fill it on their own. Hosts building a theme from a color
+  table are unaffected.
 
 - The `position/total` indicator now always sits in a frame's bottom border
   (`─ 3/12 ─╯`) instead of floating over the last list row, and is drawn in the

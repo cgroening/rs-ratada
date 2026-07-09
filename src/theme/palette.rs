@@ -7,7 +7,10 @@
 //! the struct, the config keys and the preview. [`Palette::resolve`] holds the
 //! (hand-written) derivation logic.
 
-use super::{color::Color, color::parse_color, theme_set::ThemeColors};
+use super::{
+    color::Color, color::parse_color, theme_set::BORDER_FOCUS_LIGHTEN,
+    theme_set::ThemeColors,
+};
 
 /// `OKLab` lightness drop for the muted accent.
 const ACCENT_DIM: f32 = 0.15;
@@ -107,6 +110,9 @@ define_palette! {
     input_bg_active,
     /// Border/line color.
     border,
+    /// Border color of a focused box, lifted above `border` so the frame keeps
+    /// its contrast against the brighter fill a focused field draws.
+    border_focus,
     /// Semantic color for success/positive states.
     success,
     /// Semantic color for warnings.
@@ -141,6 +147,14 @@ impl Palette {
         let foreground = get(overrides.foreground, base.foreground);
         let background = get(overrides.background, base.background);
         let surface = get(overrides.surface, base.surface);
+        let border = get(overrides.border, base.border);
+        // An override on `border` alone drags the focus border with it: leaving
+        // the theme's value would sink the focused frame into the new border.
+        let base_border_focus = if overrides.border.is_empty() {
+            base.border_focus
+        } else {
+            border.lighten(BORDER_FOCUS_LIGHTEN)
+        };
 
         Self {
             accent,
@@ -173,7 +187,8 @@ impl Palette {
                 overrides.input_bg_active,
                 surface.lighten(INPUT_BG_ACTIVE),
             ),
-            border: get(overrides.border, base.border),
+            border,
+            border_focus: get(overrides.border_focus, base_border_focus),
             success: get(overrides.success, base.success),
             warning: get(overrides.warning, base.warning),
             error: get(overrides.error, base.error),
@@ -273,6 +288,55 @@ mod tests {
         let palette = Palette::resolve(base(), &overrides);
         assert_eq!(palette.selection, Color::Rgb(1, 2, 3));
         assert_eq!(palette.cursor, Color::Rgb(4, 5, 6));
+    }
+
+    #[test]
+    fn the_focus_border_comes_from_the_theme_by_default() {
+        let palette = Palette::resolve(base(), &ColorOverrides::default());
+        assert_eq!(palette.border_focus, base().border_focus);
+        assert!(palette.border_focus.luminance() > palette.border.luminance());
+    }
+
+    #[test]
+    fn overriding_border_alone_drags_the_focus_border_with_it() {
+        // Otherwise the focused frame would vanish into the new border.
+        let overrides = ColorOverrides {
+            border: "#4a4a4a",
+            ..ColorOverrides::default()
+        };
+        let palette = Palette::resolve(base(), &overrides);
+        assert_eq!(palette.border, Color::hex("#4a4a4a"));
+        assert_eq!(
+            palette.border_focus,
+            Color::hex("#4a4a4a").lighten(BORDER_FOCUS_LIGHTEN),
+        );
+    }
+
+    #[test]
+    fn an_explicit_focus_border_override_wins() {
+        let overrides = ColorOverrides {
+            border: "#4a4a4a",
+            border_focus: "#010203",
+            ..ColorOverrides::default()
+        };
+        let palette = Palette::resolve(base(), &overrides);
+        assert_eq!(palette.border_focus, Color::Rgb(1, 2, 3));
+    }
+
+    #[test]
+    fn a_focus_border_override_alone_leaves_the_border_untouched() {
+        let overrides = ColorOverrides {
+            border_focus: "#010203",
+            ..ColorOverrides::default()
+        };
+        let palette = Palette::resolve(base(), &overrides);
+        assert_eq!(palette.border, base().border);
+        assert_eq!(palette.border_focus, Color::Rgb(1, 2, 3));
+    }
+
+    #[test]
+    fn keys_include_the_focus_border() {
+        assert!(Palette::KEYS.contains(&"border_focus"));
     }
 
     #[test]

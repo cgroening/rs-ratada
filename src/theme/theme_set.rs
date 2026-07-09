@@ -31,6 +31,14 @@ const PANEL_LIGHTEN: f32 = 0.03;
 const SURFACE_LIGHTEN: f32 = 0.10;
 const BORDER_LIGHTEN: f32 = 0.12;
 
+/// How far an omitted `border_focus` is lifted above `border` (`OKLab` L step).
+///
+/// A focused field usually brightens its own fill, and a fixed border loses
+/// most of its contrast against it. Lifting the border with the fill keeps the
+/// frame legible in both states. [`Palette::resolve`](super::Palette::resolve)
+/// applies the same step when a host overrides `border` alone.
+pub(super) const BORDER_FOCUS_LIGHTEN: f32 = 0.15;
+
 /// The base colors a theme contributes before any config override is applied.
 /// Every built-in theme sets all of them explicitly; a custom theme may leave
 /// some to [`ThemeColors::derived`].
@@ -52,6 +60,10 @@ pub struct ThemeColors {
     pub surface: Color,
     /// The border color for boxes and separators.
     pub border: Color,
+    /// The border color of a *focused* box, lifted above `border` so the frame
+    /// keeps its contrast against the brighter fill a focused field draws.
+    /// Omitted, it follows `border`; see [`ThemeColors::from_lookup`].
+    pub border_focus: Color,
     /// The semantic color for success/positive states.
     pub success: Color,
     /// The semantic color for warnings.
@@ -72,6 +84,7 @@ impl ThemeColors {
         foreground: Color,
         background: Color,
     ) -> Self {
+        let border = background.lighten(BORDER_LIGHTEN);
         Self {
             accent,
             foreground,
@@ -80,7 +93,8 @@ impl ThemeColors {
             footer: background.darken(CHROME_DARKEN),
             panel: background.lighten(PANEL_LIGHTEN),
             surface: background.lighten(SURFACE_LIGHTEN),
-            border: background.lighten(BORDER_LIGHTEN),
+            border,
+            border_focus: border.lighten(BORDER_FOCUS_LIGHTEN),
             success: DEFAULT_SUCCESS,
             warning: DEFAULT_WARNING,
             error: DEFAULT_ERROR,
@@ -98,6 +112,12 @@ impl ThemeColors {
     /// `background` (or universal defaults) seed the derived neutrals and
     /// semantics via [`ThemeColors::derived`], then any other present base color
     /// overrides its derived value. Lets a custom theme set only a few colors.
+    ///
+    /// `border_focus` is special: a theme that sets `border` but leaves the
+    /// focus color out gets it re-derived from *its* border, so the pair never
+    /// drifts apart. An explicit `border_focus` always wins.
+    ///
+    /// [`ThemeColors::KEYS`] lists exactly the names read here.
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<Color>) -> Self {
         let accent = lookup("accent").unwrap_or(DEFAULT_ACCENT);
         let foreground = lookup("foreground").unwrap_or(DEFAULT_FOREGROUND);
@@ -113,12 +133,37 @@ impl ThemeColors {
         set("panel", &mut colors.panel);
         set("surface", &mut colors.surface);
         set("border", &mut colors.border);
+        colors.border_focus = lookup("border_focus")
+            .unwrap_or_else(|| colors.border.lighten(BORDER_FOCUS_LIGHTEN));
         set("success", &mut colors.success);
         set("warning", &mut colors.warning);
         set("error", &mut colors.error);
         set("info", &mut colors.info);
         colors
     }
+
+    /// Every color name [`ThemeColors::from_lookup`] reads, in declaration
+    /// order.
+    ///
+    /// A host validating a `[themes.<name>]` table must check against these,
+    /// not against [`Palette::KEYS`](super::Palette::KEYS): the palette carries
+    /// derived colors (`selection`, `cursor`, `input_bg`, …) that a theme
+    /// cannot contribute, and accepting them would silently drop the value.
+    pub const KEYS: &'static [&'static str] = &[
+        "accent",
+        "foreground",
+        "background",
+        "header",
+        "footer",
+        "panel",
+        "surface",
+        "border",
+        "border_focus",
+        "success",
+        "warning",
+        "error",
+        "info",
+    ];
 }
 
 /// The built-in `default` theme (teal accent on a near-black background).
@@ -131,6 +176,9 @@ const DEFAULT_COLORS: ThemeColors = ThemeColors {
     panel: Color::hex("#1c1c1c"),
     surface: Color::hex("#303030"),
     border: Color::hex("#606060"),
+    // `border.lighten(BORDER_FOCUS_LIGHTEN)`, spelled out because `lighten` is
+    // not `const`. Pinned by `built_in_focus_borders_match_the_derivation`.
+    border_focus: Color::hex("#8c8c8c"),
     success: Color::hex("#a3c995"),
     warning: Color::hex("#ded483"),
     error: Color::hex("#d57b76"),
@@ -147,6 +195,7 @@ const MONOCHROME_COLORS: ThemeColors = ThemeColors {
     panel: Color::hex("#1a1a1a"),
     surface: Color::hex("#333333"),
     border: Color::hex("#5a5a5a"),
+    border_focus: Color::hex("#858585"),
     success: Color::hex("#b8b8b8"),
     warning: Color::hex("#d0d0d0"),
     error: Color::hex("#9a9a9a"),
@@ -298,6 +347,77 @@ mod tests {
         assert!(registry.contains("dracula"));
         assert_eq!(registry.next("monochrome"), "dracula");
         assert_eq!(registry.next("dracula"), "default");
+    }
+
+    #[test]
+    fn an_omitted_focus_border_is_lifted_from_the_border() {
+        let theme = ThemeColors::from_lookup(|_| None);
+        assert_eq!(
+            theme.border_focus,
+            theme.border.lighten(BORDER_FOCUS_LIGHTEN),
+        );
+        assert!(theme.border_focus.luminance() > theme.border.luminance());
+    }
+
+    #[test]
+    fn a_theme_that_sets_only_border_drags_the_focus_border_with_it() {
+        // Keeping the derived focus colour here would sink the focused frame
+        // into the theme's own border.
+        let border = Color::hex("#4a4a4a");
+        let theme = ThemeColors::from_lookup(|name| match name {
+            "border" => Some(border),
+            _ => None,
+        });
+        assert_eq!(theme.border, border);
+        assert_eq!(theme.border_focus, border.lighten(BORDER_FOCUS_LIGHTEN));
+    }
+
+    #[test]
+    fn an_explicit_focus_border_wins_over_the_derivation() {
+        let theme = ThemeColors::from_lookup(|name| match name {
+            "border" => Some(Color::hex("#4a4a4a")),
+            "border_focus" => Some(Color::Rgb(1, 2, 3)),
+            _ => None,
+        });
+        assert_eq!(theme.border_focus, Color::Rgb(1, 2, 3));
+    }
+
+    #[test]
+    fn built_in_focus_borders_match_the_derivation() {
+        // `Color::lighten` is not `const`, so the two built-ins spell their
+        // focus border out. They must not drift from the rule.
+        for colors in [DEFAULT_COLORS, MONOCHROME_COLORS] {
+            assert_eq!(
+                colors.border_focus,
+                colors.border.lighten(BORDER_FOCUS_LIGHTEN),
+                "a built-in theme's border_focus drifted",
+            );
+        }
+    }
+
+    #[test]
+    fn keys_name_exactly_the_colors_from_lookup_reads() {
+        use std::cell::RefCell;
+
+        let seen = RefCell::new(Vec::new());
+        let _ = ThemeColors::from_lookup(|name| {
+            seen.borrow_mut().push(name.to_string());
+            None
+        });
+
+        let mut seen = seen.into_inner();
+        seen.sort_unstable();
+        seen.dedup();
+        let mut keys: Vec<String> =
+            ThemeColors::KEYS.iter().map(|k| (*k).to_string()).collect();
+        keys.sort_unstable();
+
+        assert_eq!(seen, keys, "ThemeColors::KEYS drifted from from_lookup");
+    }
+
+    #[test]
+    fn keys_include_the_focus_border() {
+        assert!(ThemeColors::KEYS.contains(&"border_focus"));
     }
 
     #[test]

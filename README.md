@@ -32,7 +32,10 @@ palette and glyphs) that maps onto ratatui styles.
   scrollable `MarkdownView` widget and a viewer modal.
 - **Theming** – a `Skin` bundling a `Palette` (semantic colors) and `Glyphs`
   (Unicode/ASCII variants); framework-agnostic so a CLI can share it, with a
-  single ratatui adapter in `style`.
+  single ratatui adapter in `style`. A theme names a few base colors and the
+  rest is derived: `border_focus` follows `border` unless it is set, and an
+  override on `border` alone drags it along, so a focused frame never sinks
+  into its own border.
 - **Diagnostics** – degraded conditions (a missing clipboard tool, an unreadable
   directory, an invalid color override, a failed terminal restore) are emitted
   through the [`log`](https://crates.io/crates/log) facade at `warn`/`error`;
