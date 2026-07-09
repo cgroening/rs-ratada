@@ -16,7 +16,7 @@ use ratatui::{
 };
 
 use super::{
-    fuzzy,
+    chrome, fuzzy,
     layout::centered_fraction,
     list,
     modal::ModalSignal,
@@ -61,6 +61,12 @@ pub fn finder(
         |frame, rect, state: &Finder| {
             let inner = overlay::framed(frame, rect, skin, title);
             render_body(frame, inner, skin, items, state);
+            // The badge counts the matches, not the whole item list; the
+            // cursor is clamped into them exactly as the body clamps it.
+            let matches = filter(items, &state.query).len();
+            let cursor = state.cursor.min(matches.saturating_sub(1));
+            let badge = chrome::position_badge(cursor, matches);
+            chrome::render_badge(frame, rect, skin, &badge);
         },
         |state, key| match key.code {
             KeyCode::Esc => PopupFlow::Cancelled,

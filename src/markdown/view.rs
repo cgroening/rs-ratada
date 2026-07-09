@@ -126,7 +126,8 @@ impl MarkdownView {
     }
 
     /// Renders the view into `area`, scrolling so the offset stays in range, plus
-    /// a scrollbar on overflow. Boxed when a decoration was set.
+    /// a scrollbar on overflow. Boxed when a decoration was set, in which case
+    /// the box's bottom border carries the scroll percentage.
     pub fn render(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
         let inner = match &self.decor {
             Some(decor) => chrome::framed_decor(frame, area, skin, decor, ""),
@@ -159,6 +160,26 @@ impl MarkdownView {
                 viewport,
             },
         );
+
+        // The line count only exists once the source has been wrapped to the
+        // render width, so an `Auto` badge is painted after the fact rather
+        // than handed to `framed_decor` up front.
+        if let Some(decor) = &self.decor
+            && matches!(decor.badge, chrome::Badge::Auto)
+        {
+            chrome::render_badge(frame, area, skin, &self.percent_badge());
+        }
+    }
+
+    /// The scroll position shown in a frame's bottom border, e.g. `"42%"`.
+    /// Meaningful only after a render has sized the viewport.
+    fn percent_badge(&self) -> String {
+        let percent = nav::scroll_percent(nav::ScrollView {
+            total: self.total.get(),
+            offset: self.offset.get(),
+            viewport: self.viewport.get(),
+        });
+        format!("{percent}%")
     }
 
     /// Clamps `offset` to the scrollable range and stores it.
@@ -199,6 +220,9 @@ pub fn viewer(
         |frame, rect, view: &MarkdownView| {
             let inner = overlay::framed(frame, rect, skin, title);
             render_viewer_body(frame, inner, skin, view);
+            // The body has just wrapped the source, so the percentage matches
+            // what is on screen.
+            chrome::render_badge(frame, rect, skin, &view.percent_badge());
         },
         |view, key| match key.code {
             KeyCode::Esc => PopupFlow::Cancelled,

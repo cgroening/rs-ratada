@@ -375,6 +375,8 @@ impl Form {
             ));
         let inner = block.inner(area);
         frame.render_widget(block, area);
+        let badge = chrome::position_badge(self.focus, self.fields.len());
+        chrome::render_badge(frame, area, skin, &badge);
 
         let mut constraints: Vec<Constraint> = self
             .fields

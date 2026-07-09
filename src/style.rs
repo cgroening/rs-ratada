@@ -55,6 +55,12 @@ pub fn secondary(palette: &Palette) -> Style {
     fg(palette.foreground_dim)
 }
 
+/// Muted chrome text: border badges and similar annotations that sit on a frame
+/// and must not compete with the content. Dimmer than [`secondary`].
+pub fn muted(palette: &Palette) -> Style {
+    fg(palette.foreground_muted)
+}
+
 /// A heading/title: primary text, bold.
 pub fn title(palette: &Palette) -> Style {
     fg(palette.foreground).add_modifier(Modifier::BOLD)

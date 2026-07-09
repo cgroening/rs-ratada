@@ -18,6 +18,7 @@ use ratatui::{
 use unicode_width::UnicodeWidthStr;
 
 use super::{
+    chrome,
     input::{self, TextCursor},
     layout::centered_rect,
     nav,
@@ -531,6 +532,7 @@ fn render_picker(
         })
         .collect();
     render_picker_list(frame, inner, entries, items.len(), cursor, skin);
+    render_picker_badge(frame, rect, skin, items.len(), cursor);
 }
 
 fn render_styled_picker(
@@ -555,6 +557,20 @@ fn render_styled_picker(
         })
         .collect();
     render_picker_list(frame, inner, entries, items.len(), cursor, skin);
+    render_picker_badge(frame, rect, skin, items.len(), cursor);
+}
+
+/// Draws the `position/total` badge into the picker frame's bottom border.
+/// `rect` is the framed box, not the list inside it.
+fn render_picker_badge(
+    frame: &mut Frame,
+    rect: Rect,
+    skin: &Skin,
+    total: usize,
+    cursor: usize,
+) {
+    let badge = chrome::position_badge(cursor, total);
+    chrome::render_badge(frame, rect, skin, &badge);
 }
 
 /// Renders a picker's list into `inner` with the cursor highlighted, then a

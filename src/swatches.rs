@@ -19,7 +19,7 @@ use ratatui::{
 };
 
 use super::{
-    clipboard, color_picker, fuzzy,
+    chrome, clipboard, color_picker, fuzzy,
     layout::centered_rect,
     list,
     modal::ModalSignal,
@@ -543,6 +543,11 @@ fn render_box(
         )),
         rows[index],
     );
+
+    // Both modes walk the same (filtered) cell list, so the badge counts cells
+    // rather than rows or grid columns.
+    let badge = chrome::position_badge(state.cursor, state.cells.len());
+    chrome::render_badge(frame, rect, skin, &badge);
 }
 
 /// The `Names · Grid · Grays · Palette` mode bar, active mode accented.

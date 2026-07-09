@@ -15,6 +15,9 @@ const ACCENT_DIM: f32 = 0.15;
 const ACCENT_VIVID: f32 = 0.25;
 /// `OKLab` lightness drop for secondary (dimmed) text.
 const FOREGROUND_DIM: f32 = 0.30;
+/// `OKLab` lightness drop for muted chrome text (border badges), which must
+/// recede further than secondary text without fading into the border.
+const FOREGROUND_MUTED: f32 = 0.38;
 /// How far the selection background is mixed from `surface` toward `accent`, so
 /// a selected row stands out against the content it sits on.
 const SELECTION_MIX: f32 = 0.35;
@@ -82,6 +85,8 @@ define_palette! {
     foreground,
     /// Secondary/dimmed text, derived from `foreground`.
     foreground_dim,
+    /// Muted chrome text (border badges), derived from `foreground`.
+    foreground_muted,
     /// Full-screen background.
     background,
     /// Header bar background.
@@ -148,6 +153,10 @@ impl Palette {
             foreground_dim: get(
                 overrides.foreground_dim,
                 foreground.darken(FOREGROUND_DIM),
+            ),
+            foreground_muted: get(
+                overrides.foreground_muted,
+                foreground.darken(FOREGROUND_MUTED),
             ),
             background,
             header: get(overrides.header, base.header),
@@ -230,8 +239,21 @@ mod tests {
             palette.foreground_dim,
             base().foreground.darken(FOREGROUND_DIM),
         );
+        assert_eq!(
+            palette.foreground_muted,
+            base().foreground.darken(FOREGROUND_MUTED),
+        );
         assert_eq!(palette.cursor, base().accent);
         assert_ne!(palette.accent_dim, palette.accent);
+    }
+
+    #[test]
+    fn muted_text_is_dimmer_than_secondary_text() {
+        let palette = Palette::resolve(base(), &ColorOverrides::default());
+        assert!(
+            palette.foreground_muted.luminance()
+                < palette.foreground_dim.luminance()
+        );
     }
 
     #[test]

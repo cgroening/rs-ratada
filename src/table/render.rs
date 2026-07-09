@@ -26,7 +26,7 @@ impl Table {
                 area,
                 skin,
                 decor,
-                &self.view.len().to_string(),
+                &chrome::position_badge(self.cursor, self.view.len()),
             ),
             None => area,
         };

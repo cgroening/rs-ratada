@@ -49,6 +49,16 @@ pub fn keep_visible(view: ScrollView, selected: usize) -> usize {
     offset.min(max_offset)
 }
 
+/// How far `view` is scrolled, as a percentage of its scrollable range. Content
+/// that fits entirely is fully scrolled, hence `100`.
+pub fn scroll_percent(view: ScrollView) -> usize {
+    let max_offset = view.total.saturating_sub(view.viewport);
+    if max_offset == 0 {
+        return 100;
+    }
+    view.offset.min(max_offset) * 100 / max_offset
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +102,29 @@ mod tests {
             viewport: 0,
         };
         assert_eq!(keep_visible(no_viewport, 5), 0);
+    }
+
+    #[test]
+    fn scroll_percent_spans_the_scrollable_range() {
+        let view = |total, offset, viewport| ScrollView {
+            total,
+            offset,
+            viewport,
+        };
+        assert_eq!(scroll_percent(view(100, 0, 10)), 0);
+        assert_eq!(scroll_percent(view(100, 45, 10)), 50);
+        assert_eq!(scroll_percent(view(100, 90, 10)), 100);
+    }
+
+    #[test]
+    fn scroll_percent_is_full_when_everything_fits() {
+        assert_eq!(
+            scroll_percent(ScrollView {
+                total: 8,
+                offset: 5,
+                viewport: 20,
+            }),
+            100,
+        );
     }
 }

@@ -19,7 +19,7 @@ use ratatui::{
 };
 
 use super::{
-    fuzzy,
+    chrome, fuzzy,
     layout::centered_rect,
     list,
     modal::ModalSignal,
@@ -113,6 +113,12 @@ pub fn command_palette(
         |frame, rect, state: &PaletteState| {
             let inner = overlay::framed(frame, rect, skin, title);
             render_body(frame, inner, skin, items, state);
+            // Section headers are rows but not positions: the badge counts the
+            // selectable commands.
+            let count = layout_rows(items, &state.query).selectable.len();
+            let cursor = state.cursor.min(count.saturating_sub(1));
+            let badge = chrome::position_badge(cursor, count);
+            chrome::render_badge(frame, rect, skin, &badge);
         },
         |state, key| match key.code {
             KeyCode::Esc => PopupFlow::Cancelled,

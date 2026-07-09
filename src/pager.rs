@@ -12,6 +12,7 @@ use ratatui::{
 };
 
 use super::{
+    chrome,
     layout::centered_fraction,
     modal::ModalSignal,
     nav,
@@ -37,6 +38,16 @@ impl Pager {
     /// The largest first-line offset that still fills the viewport.
     fn max_offset(&self) -> usize {
         self.lines.len().saturating_sub(self.viewport.get().max(1))
+    }
+
+    /// The scroll position shown in the frame's bottom border, e.g. `"42%"`.
+    fn percent_badge(&self) -> String {
+        let percent = nav::scroll_percent(nav::ScrollView {
+            total: self.lines.len(),
+            offset: self.offset,
+            viewport: self.viewport.get().max(1),
+        });
+        format!("{percent}%")
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> PopupFlow<()> {
@@ -143,6 +154,9 @@ pub fn pager(
         |frame, rect, state: &Pager| {
             let inner = overlay::framed(frame, rect, skin, title);
             render_body(frame, inner, skin, state);
+            // `render_body` has just set the viewport, so the percentage in the
+            // border matches the rows actually on screen.
+            chrome::render_badge(frame, rect, skin, &state.percent_badge());
         },
         Pager::handle_key,
     )
@@ -204,11 +218,8 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &Pager) {
             Span::styled(" ", style::bg(palette.cursor)),
         ])
     } else {
-        let percent = scroll_percent(offset, lines.len(), view);
         Line::from(Span::styled(
-            format!(
-                " {percent}%  \u{b7}  j/k scroll \u{b7} / search \u{b7} n/N next \u{b7} q close"
-            ),
+            " j/k scroll \u{b7} / search \u{b7} n/N next \u{b7} q close",
             style::secondary(palette),
         ))
     };
@@ -240,15 +251,6 @@ fn highlight_line(line: &str, query: &str, skin: &Skin) -> Line<'static> {
     Line::from(spans)
 }
 
-/// The scroll position as a percentage (0 when everything fits).
-fn scroll_percent(offset: usize, total: usize, viewport: usize) -> usize {
-    let max_offset = total.saturating_sub(viewport);
-    if max_offset == 0 {
-        return 100;
-    }
-    offset * 100 / max_offset
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,12 +270,5 @@ mod tests {
     #[test]
     fn empty_query_matches_nothing() {
         assert!(search_matches(&lines(), "").is_empty());
-    }
-
-    #[test]
-    fn scroll_percent_is_zero_at_top_and_full_when_fitting() {
-        assert_eq!(scroll_percent(0, 100, 10), 0);
-        assert_eq!(scroll_percent(90, 100, 10), 100);
-        assert_eq!(scroll_percent(5, 8, 20), 100);
     }
 }

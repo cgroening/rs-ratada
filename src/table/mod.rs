@@ -369,6 +369,8 @@ pub fn table_select(
         |frame, rect, table: &Table| {
             let inner = overlay::framed(frame, rect, skin, title);
             table.render(frame, inner, skin);
+            let badge = chrome::position_badge(table.cursor, table.view.len());
+            chrome::render_badge(frame, rect, skin, &badge);
         },
         |table, key| {
             // While the filter input is open every key edits it.

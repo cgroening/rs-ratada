@@ -18,7 +18,7 @@ use ratatui::{
 };
 
 use super::{
-    fuzzy,
+    chrome, fuzzy,
     layout::centered_fraction,
     list,
     modal::ModalSignal,
@@ -86,6 +86,12 @@ pub fn show<B: AsRef<str>>(
         |frame, rect, state: &Help| {
             let inner = overlay::framed(frame, rect, skin, "Help");
             render_body(frame, inner, skin, sections, state);
+            // Section headers are rows but not positions: the badge counts the
+            // selectable bindings.
+            let count = layout_rows(sections, &state.query).selectable.len();
+            let cursor = state.cursor.min(count.saturating_sub(1));
+            let badge = chrome::position_badge(cursor, count);
+            chrome::render_badge(frame, rect, skin, &badge);
         },
         |state, key| match key.code {
             KeyCode::Esc | KeyCode::Char('?') => PopupFlow::Done(()),

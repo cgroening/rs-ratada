@@ -25,7 +25,7 @@ use ratatui::{
 };
 
 use super::{
-    fuzzy,
+    chrome, fuzzy,
     input::InputField,
     layout::centered_fraction,
     list,
@@ -228,6 +228,9 @@ pub fn path_picker(
         |frame, rect, state: &State| {
             let inner = overlay::framed(frame, rect, skin, title);
             render_body(frame, inner, skin, state);
+            let badge =
+                chrome::position_badge(state.cursor, state.visible.len());
+            chrome::render_badge(frame, rect, skin, &badge);
         },
         |state, key| match key.code {
             KeyCode::Esc => PopupFlow::Cancelled,

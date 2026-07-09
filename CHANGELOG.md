@@ -16,8 +16,26 @@ bump may contain breaking changes.
   clamped to `[min, max]`.
 - `chrome::border_title` – public helper that builds the inset border-title line
   (`╭─ Title ───`); the single source of truth every framed box titles with.
+- `chrome::render_badge` and `chrome::position_badge` – the single seam for the
+  bottom-right `position/total` indicator and its 1-based label.
+- `style::muted` and the palette color `foreground_muted` – a text tone between
+  `foreground_dim` and `border`, for chrome annotations that must not compete
+  with the content.
+- `nav::scroll_percent` – how far a `ScrollView` is scrolled, in percent.
 
 ### Changed
+
+- The `position/total` indicator now always sits in a frame's bottom border
+  (`─ 3/12 ─╯`) instead of floating over the last list row, and is drawn in the
+  new, dimmer `foreground_muted`. Popups over a scrollable list – `path_picker`,
+  `finder`, `command_palette`, `help`, `swatches`, `modal::select`,
+  `modal::multi_select` and the `table` modal – gained one; `form` gained a
+  focused-field counter. A frame too narrow for the badge drops it rather than
+  overwriting a corner.
+- `pager` and the `markdown` viewer show their scroll percentage in the bottom
+  border; the pager's footer no longer repeats it.
+- A boxed `table`'s badge now reads `12/80` (cursor position and row count)
+  instead of the bare row count. Its status line is unchanged.
 
 - Modal frames now fill with a slightly lightened background, lifting the box
   above the dimmed backdrop so it reads as an elevated surface.
@@ -26,6 +44,12 @@ bump may contain breaking changes.
   of the title/accent color.
 - `modal::number_input` now falls back to the initial value instead of `0` when
   the entered text cannot be parsed as an integer.
+
+### Removed
+
+- The overlay `position/total` chip `list::render` used to draw over its last
+  row. An unboxed list no longer shows a count; use `list::render_boxed` with a
+  `BoxDecor`, or let the surrounding popup frame carry the badge.
 
 ## [0.2.0] - 2026-07-07
 

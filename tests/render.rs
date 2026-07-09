@@ -43,6 +43,44 @@ fn draw(width: u16, height: u16, render: impl FnOnce(&mut Frame)) {
     terminal.draw(render).expect("draw");
 }
 
+/// Like [`draw`], but returns the terminal's bottom row as a string.
+fn draw_bottom_row(
+    width: u16,
+    height: u16,
+    render: impl FnOnce(&mut Frame),
+) -> String {
+    let mut terminal =
+        Terminal::new(TestBackend::new(width, height)).expect("backend");
+    terminal.draw(render).expect("draw");
+    let buffer = terminal.backend().buffer();
+    (0..width)
+        .map(|x| buffer[(x, height - 1)].symbol())
+        .collect()
+}
+
+/// Draws a twelve-row list with the third row selected, boxed or bare.
+fn draw_list_bottom_row(width: u16, height: u16, boxed: bool) -> String {
+    let skin = skin();
+    let offset = Cell::new(0);
+    draw_bottom_row(width, height, |frame| {
+        let rows: Vec<Line<'static>> =
+            (1..=12).map(|n| Line::from(format!("row {n}"))).collect();
+        let view = list::ListView {
+            rows,
+            selected: 2,
+            offset: &offset,
+        };
+        list::render_boxed(
+            frame,
+            frame.area(),
+            &skin,
+            view,
+            &BoxDecor::new(),
+            boxed,
+        );
+    })
+}
+
 /// A roomy viewport and a cramped one, to exercise overflow and clamping.
 const SIZES: [(u16, u16); 2] = [(80, 24), (4, 3)];
 
@@ -117,6 +155,29 @@ fn widgets_render_across_styles_and_sizes() {
             }
         }
     }
+}
+
+#[test]
+fn boxed_list_puts_the_position_badge_in_the_bottom_border() {
+    let row = draw_list_bottom_row(20, 6, true);
+    let expected =
+        format!("\u{2570}{} 3/12 \u{2500}\u{256f}", "\u{2500}".repeat(11));
+    assert_eq!(row, expected);
+}
+
+#[test]
+fn a_bare_list_draws_no_position_badge() {
+    let row = draw_list_bottom_row(20, 6, false);
+    assert!(!row.contains("3/12"), "unexpected badge in {row:?}");
+}
+
+#[test]
+fn a_box_too_narrow_for_the_badge_keeps_its_border_intact() {
+    // The badge needs its own width plus both corners; below that it is
+    // dropped rather than overwriting the corner.
+    let row = draw_list_bottom_row(9, 6, true);
+    assert!(!row.contains('3'), "badge should be dropped in {row:?}");
+    assert!(row.starts_with('\u{2570}') && row.ends_with('\u{256f}'));
 }
 
 #[test]

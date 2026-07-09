@@ -30,6 +30,7 @@ src/
   driver.rs         Screen trait + Flow + generic run() loop (idle tick)
   overlay.rs        popup() driver, dimmed scrim, framed() modal helper
   chrome.rs         panels / modal frame + BoxDecor (caption + badge) box seam
+                    and the single border-badge renderer
   layout.rs         centered_rect / centered_fraction (shared popup sizing)
   nav.rs            cycle / step_clamped / keep_visible + ScrollView
   scroll.rs         overflow-only vertical/horizontal scrollbar (ScrollView)
@@ -85,6 +86,11 @@ than reinventing them:
 - **Framing:** `chrome::framed_decor` draws the rounded accent box with a
   caption (top border) and badge (bottom-right); every boxable widget goes
   through it and exposes `.boxed(decor)`.
+- **Position badge:** `chrome::render_badge` paints a `position/total` (or
+  percent) indicator into a frame's bottom border – the one seam for it, used
+  by `framed_decor` and by every popup that frames a scrollable list.
+  `chrome::position_badge` formats the 1-based label. Lists never draw it
+  themselves; whoever owns the frame owns the badge.
 - **Popup sizing:** `layout::centered_fraction` gives every centered popup its
   size (a fraction of the area, floored at a minimum).
 - **Colors:** only `style.rs` maps `theme::Color` to ratatui; widgets take a
