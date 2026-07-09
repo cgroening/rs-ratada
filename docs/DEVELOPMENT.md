@@ -86,6 +86,10 @@ than reinventing them:
 - **Framing:** `chrome::framed_decor` draws the rounded accent box with a
   caption (top border) and badge (bottom-right); every boxable widget goes
   through it and exposes `.boxed(decor)`.
+- **Block caret:** filter/search lines go through `input::query_spans` (caret at
+  the end, for widgets keeping a bare `String`), fields with their own cursor
+  through `InputField::caret_spans`. Both scroll horizontally and mark a
+  scrolled-off head with `…`. Never rebuild the caret span inline.
 - **Position badge:** `chrome::render_badge` paints a `position/total` (or
   percent) indicator into a frame's bottom border – the one seam for it, used
   by `framed_decor` and by every popup that frames a scrollable list.

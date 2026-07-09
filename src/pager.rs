@@ -12,7 +12,7 @@ use ratatui::{
 };
 
 use super::{
-    chrome,
+    chrome, input,
     layout::centered_fraction,
     modal::ModalSignal,
     nav,
@@ -212,11 +212,13 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &Pager) {
     );
 
     let footer = if searching {
-        Line::from(vec![
-            Span::styled("/", style::fg(palette.accent)),
-            Span::raw(state.query.clone()),
-            Span::styled(" ", style::bg(palette.cursor)),
-        ])
+        let mut spans = vec![Span::styled("/", style::fg(palette.accent))];
+        spans.extend(input::query_spans(
+            query,
+            palette,
+            (rows[1].width as usize).saturating_sub(1),
+        ));
+        Line::from(spans)
     } else {
         Line::from(Span::styled(
             " j/k scroll \u{b7} / search \u{b7} n/N next \u{b7} q close",

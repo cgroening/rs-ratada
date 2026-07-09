@@ -13,13 +13,13 @@ use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
     widgets::Paragraph,
 };
 
 use super::{
-    chrome, fuzzy,
+    chrome, fuzzy, input,
     layout::centered_rect,
     list,
     modal::ModalSignal,
@@ -32,6 +32,9 @@ use crate::theme::{Palette, Skin};
 
 /// The width of the category column shown while searching.
 const CATEGORY_WIDTH: usize = 12;
+
+/// The prefix of the query line; its width is taken off the caret line's.
+const SEARCH_LABEL: &str = "search ";
 /// The width of the command-label column before the key hint.
 const LABEL_WIDTH: usize = 16;
 
@@ -281,15 +284,14 @@ fn render_body(
         ])
         .split(inner);
 
-    let search = Line::from(vec![
-        Span::styled("search ", style::secondary(palette)),
-        Span::raw(state.query.clone()),
-        Span::styled(
-            " ",
-            Style::default().bg(style::to_ratatui(palette.cursor)),
-        ),
-    ]);
-    frame.render_widget(Paragraph::new(search), rows[0]);
+    let mut search =
+        vec![Span::styled(SEARCH_LABEL, style::secondary(palette))];
+    search.extend(input::query_spans(
+        &state.query,
+        palette,
+        (rows[0].width as usize).saturating_sub(SEARCH_LABEL.len()),
+    ));
+    frame.render_widget(Paragraph::new(Line::from(search)), rows[0]);
 
     let header_style =
         style::fg(palette.accent_dim).add_modifier(Modifier::BOLD);

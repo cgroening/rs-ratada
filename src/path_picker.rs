@@ -38,6 +38,9 @@ use super::{
 };
 use crate::theme::Skin;
 
+/// The prefix of the filter line; its width is taken off the caret line's.
+const FILTER_LABEL: &str = "filter ";
+
 struct Entry {
     name: String,
     path: PathBuf,
@@ -299,13 +302,17 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
         ))),
         rows[0],
     );
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("filter ", style::secondary(palette)),
-            Span::raw(state.filter.value().to_string()),
-        ])),
-        rows[1],
+    // The filter carries a real caret: `Home`/`End`/`Ctrl+A` reach the field
+    // even though `Left`/`Right` are taken by browsing.
+    let mut filter =
+        vec![Span::styled(FILTER_LABEL, style::secondary(palette))];
+    filter.extend(
+        state.filter.caret_spans(
+            palette,
+            inner_width.saturating_sub(FILTER_LABEL.len()),
+        ),
     );
+    frame.render_widget(Paragraph::new(Line::from(filter)), rows[1]);
 
     // The list widget owns the cursor highlight, scroll-to-cursor and the
     // scrollbar on overflow; directories keep their accent color when not

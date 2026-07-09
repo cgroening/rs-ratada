@@ -22,6 +22,15 @@ bump may contain breaking changes.
   `foreground_dim` and `border`, for chrome annotations that must not compete
   with the content.
 - `nav::scroll_percent` – how far a `ScrollView` is scrolled, in percent.
+- `input::query_spans` and `InputField::caret_spans` – a text line with a block
+  caret and no field background, scrolling horizontally to keep the caret in
+  view. The single source every filter/search line now draws its caret with.
+
+### Fixed
+
+- `path_picker` shows the block caret in its filter line again. The field is a
+  full `InputField`, but the render path drew only its value, so nothing marked
+  where typing would insert – including on an empty filter.
 
 ### Changed
 
@@ -36,6 +45,10 @@ bump may contain breaking changes.
   border; the pager's footer no longer repeats it.
 - A boxed `table`'s badge now reads `12/80` (cursor position and row count)
   instead of the bare row count. Its status line is unchanged.
+- Filter and search lines (`finder`, `command_palette`, `help`, `swatches`,
+  `sidebar`, `table`, `pager`) scroll horizontally and mark a scrolled-off head
+  with `…`, instead of being cut off at the line end. They share one caret
+  renderer rather than each rebuilding the caret span inline.
 
 - Modal frames now fill with a slightly lightened background, lifting the box
   above the dimmed backdrop so it reads as an elevated surface.

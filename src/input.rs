@@ -121,6 +121,20 @@ impl InputField {
         render_line(&self.text, &self.cursor, palette, width, focused)
     }
 
+    /// Like [`Self::render_line`], but without the field background: just the
+    /// text and its block caret, on whatever surface the line sits on. For
+    /// filter and search lines that read as plain text rather than a field.
+    ///
+    /// The caret sits at the field's real position; the text scrolls to keep it
+    /// inside `width` display columns, marking a scrolled-off head with `…`.
+    pub fn caret_spans(
+        &self,
+        palette: &Palette,
+        width: usize,
+    ) -> Vec<Span<'static>> {
+        caret_spans(&self.text, &self.cursor, palette, LineView::flat(width)).0
+    }
+
     /// Renders the field into `area`: a filled background (active tint when
     /// `focused`) plus the text line, wrapped in a box when decorated via
     /// [`Self::boxed`].
@@ -230,6 +244,44 @@ pub(crate) fn apply_edit_key(
     consumed
 }
 
+/// The marker standing in for the text scrolled off the left edge.
+const SCROLL_MARKER: &str = "\u{2026}";
+
+/// How one caret-carrying line is drawn: the visible `width` in display
+/// columns, the style every unhighlighted char takes, whether the block caret
+/// shows, and whether a scrolled-off head is marked with [`SCROLL_MARKER`].
+#[derive(Debug, Clone, Copy)]
+struct LineView {
+    width: usize,
+    base: Style,
+    caret: bool,
+    marker: bool,
+}
+
+impl LineView {
+    /// A field line: filled with `base`, caret only while focused. It signals
+    /// its overflow through the filled strip, so it carries no marker.
+    fn field(width: usize, base: Style, focused: bool) -> Self {
+        Self {
+            width,
+            base,
+            caret: focused,
+            marker: false,
+        }
+    }
+
+    /// A flat line on whatever surface it sits on: no fill, always a caret, and
+    /// a marker once the head scrolls out of view.
+    fn flat(width: usize) -> Self {
+        Self {
+            width,
+            base: Style::default(),
+            caret: true,
+            marker: true,
+        }
+    }
+}
+
 /// Renders `text` as a single line that scrolls horizontally to keep the caret
 /// visible, filled with the input background (active tint when `focused`), with
 /// a block caret (only when `focused`) and selection highlight. The line is
@@ -241,20 +293,64 @@ pub(crate) fn render_line(
     width: usize,
     focused: bool,
 ) -> Line<'static> {
-    let chars: Vec<char> = text.chars().collect();
-    let len = chars.len();
-    let pos = cursor.pos.min(len);
     let width = width.max(1);
-    let selection = cursor.selection();
     let base_bg = if focused {
         palette.input_bg_active
     } else {
         palette.input_bg
     };
     let base = style::bg(base_bg);
-    let cursor_style = Style::default()
-        .bg(style::to_ratatui(palette.cursor))
-        .fg(Color::Black);
+    let view = LineView::field(width, base, focused);
+    let (mut spans, used) = caret_spans(text, cursor, palette, view);
+    if used < width {
+        spans.push(Span::styled(" ".repeat(width - used), base));
+    }
+    Line::from(spans)
+}
+
+/// A query line: `text` followed by the block caret, for the filter and search
+/// lines that keep no caret position of their own. Scrolls horizontally so the
+/// caret stays visible, marking a scrolled-off head with `…`.
+///
+/// Prepend the line's own label; the returned spans cover only the text and its
+/// caret, and paint no background of their own.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::input::query_spans;
+/// use ratada::theme::{ColorOverrides, Palette, ThemeRegistry};
+///
+/// let base = ThemeRegistry::builtin().resolve("default");
+/// let palette = Palette::resolve(base, &ColorOverrides::default());
+/// // The trailing span is the caret sitting past the last char.
+/// let spans = query_spans("src", &palette, 20);
+/// assert_eq!(spans.len(), 4);
+/// ```
+pub fn query_spans(
+    text: &str,
+    palette: &Palette,
+    width: usize,
+) -> Vec<Span<'static>> {
+    let cursor = TextCursor::at_end(text);
+    caret_spans(text, &cursor, palette, LineView::flat(width)).0
+}
+
+/// The visible slice of `text`, scrolled so the caret stays inside `view.width`
+/// display columns. Returns the spans and the columns they occupy. The single
+/// source of caret rendering for both the field and the flat line.
+fn caret_spans(
+    text: &str,
+    cursor: &TextCursor,
+    palette: &Palette,
+    view: LineView,
+) -> (Vec<Span<'static>>, usize) {
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+    let pos = cursor.pos.min(len);
+    let width = view.width.max(1);
+    let selection = cursor.selection();
+    let cursor_style = style::cursor(palette).fg(Color::Black);
     let selection_style = style::bg(palette.selection);
 
     // Display columns before each char index, so scrolling and the visible
@@ -266,42 +362,60 @@ pub(crate) fn render_line(
         column_at[index + 1] = column_at[index] + widths[index];
     }
     let caret_column = column_at[pos];
-    // Scroll so the caret column stays inside the last `width` columns.
-    let window = caret_column.saturating_sub(width - 1);
-    let start = (0..=len)
-        .find(|&index| column_at[index] >= window)
-        .unwrap_or(len);
+
+    // The marker eats a column, which can push the window further right, so the
+    // start is resolved once to learn whether the head scrolls off at all.
+    let mut start = scroll_start(&column_at, caret_column, width);
+    let marked = view.marker && start > 0 && width > 1;
+    if marked {
+        start = scroll_start(&column_at, caret_column, width - 1);
+    }
 
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut used = 0usize;
+    if marked {
+        spans.push(Span::styled(SCROLL_MARKER, style::secondary(palette)));
+        used += 1;
+    }
     let mut index = start;
     while index < len {
         let char_width = widths[index];
         if used + char_width > width {
             break;
         }
-        let mut style = base;
+        let mut style = view.base;
         if let Some((from, to)) = selection
             && index >= from
             && index < to
         {
             style = selection_style;
         }
-        if focused && index == pos {
+        if view.caret && index == pos {
             style = cursor_style;
         }
         spans.push(Span::styled(chars[index].to_string(), style));
         used += char_width;
         index += 1;
     }
-    if focused && pos >= len && used < width {
+    if view.caret && pos >= len && used < width {
         spans.push(Span::styled(" ".to_string(), cursor_style));
         used += 1;
     }
-    if used < width {
-        spans.push(Span::styled(" ".repeat(width - used), base));
-    }
-    Line::from(spans)
+    (spans, used)
+}
+
+/// The first char index to draw so that `caret_column` stays inside a window of
+/// `width` display columns.
+fn scroll_start(
+    column_at: &[usize],
+    caret_column: usize,
+    width: usize,
+) -> usize {
+    let last = column_at.len() - 1;
+    let window = caret_column.saturating_sub(width.max(1) - 1);
+    (0..=last)
+        .find(|&index| column_at[index] >= window)
+        .unwrap_or(last)
 }
 
 /// Moves the caret to `to`, extending the selection when `extend` is set (an
@@ -436,11 +550,30 @@ fn paste_filtered(
 #[cfg(test)]
 mod tests {
     use crossterm::event::KeyCode;
+    use unicode_width::UnicodeWidthStr;
 
     use super::*;
+    use crate::theme::{ColorOverrides, ThemeRegistry};
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn palette() -> Palette {
+        Palette::resolve(
+            ThemeRegistry::builtin().resolve("default"),
+            &ColorOverrides::default(),
+        )
+    }
+
+    /// The display columns the spans occupy.
+    fn columns(spans: &[Span<'_>]) -> usize {
+        spans.iter().map(|span| span.content.width()).sum()
+    }
+
+    /// Whether `span` carries the block-caret background.
+    fn is_caret(span: &Span<'_>, palette: &Palette) -> bool {
+        span.style.bg == Some(style::to_ratatui(palette.cursor))
     }
 
     #[test]
@@ -480,22 +613,85 @@ mod tests {
 
     #[test]
     fn render_line_windows_by_display_width_for_wide_chars() {
-        use unicode_width::UnicodeWidthStr;
-
-        use crate::theme::{ColorOverrides, ThemeRegistry};
-
-        let palette = Palette::resolve(
-            ThemeRegistry::builtin().resolve("default"),
-            &ColorOverrides::default(),
-        );
+        let palette = palette();
         // Four width-2 glyphs (8 columns) into a 5-column field.
         let text = "世界世界";
         let cursor = TextCursor::at_end(text);
         let line = render_line(text, &cursor, &palette, 5, true);
         // The rendered line is exactly `width` columns: wide glyphs never
         // overflow the field and the remainder is padded.
-        let columns: usize =
-            line.spans.iter().map(|span| span.content.width()).sum();
-        assert_eq!(columns, 5);
+        assert_eq!(columns(&line.spans), 5);
+    }
+
+    #[test]
+    fn render_line_pads_to_width_and_hides_the_caret_when_unfocused() {
+        let palette = palette();
+        let line =
+            render_line("ab", &TextCursor::at_end("ab"), &palette, 8, false);
+        assert_eq!(columns(&line.spans), 8);
+        assert!(!line.spans.iter().any(|span| is_caret(span, &palette)));
+    }
+
+    #[test]
+    fn query_spans_put_the_caret_past_the_last_char() {
+        let palette = palette();
+        let spans = query_spans("src", &palette, 20);
+        // Three chars plus the caret; a flat line pads nothing.
+        assert_eq!(columns(&spans), 4);
+        let caret = spans.last().expect("caret span");
+        assert_eq!(caret.content, " ");
+        assert!(is_caret(caret, &palette));
+    }
+
+    #[test]
+    fn caret_spans_mark_the_char_under_the_caret() {
+        let mut field = InputField::new("abc");
+        field.cursor.pos = 1;
+        let palette = palette();
+        let spans = field.caret_spans(&palette, 20);
+        assert_eq!(spans.len(), 3, "no trailing caret space mid-text");
+        assert_eq!(spans[1].content, "b");
+        assert!(is_caret(&spans[1], &palette));
+        assert!(!is_caret(&spans[0], &palette));
+    }
+
+    #[test]
+    fn a_flat_line_scrolls_and_marks_the_scrolled_off_head() {
+        let palette = palette();
+        // Ten columns of text into six: the tail plus the caret stay visible.
+        let spans = query_spans("abcdefghij", &palette, 6);
+        assert_eq!(columns(&spans), 6);
+        assert_eq!(spans[0].content, SCROLL_MARKER);
+        // The marker costs a column, so only four chars fit before the caret.
+        let text: String = spans[1..spans.len() - 1]
+            .iter()
+            .map(|s| &*s.content)
+            .collect();
+        assert_eq!(text, "ghij");
+        assert!(is_caret(spans.last().expect("caret span"), &palette));
+    }
+
+    #[test]
+    fn a_flat_line_that_fits_carries_no_marker() {
+        let palette = palette();
+        let spans = query_spans("abc", &palette, 10);
+        assert_ne!(spans[0].content, SCROLL_MARKER);
+    }
+
+    #[test]
+    fn a_flat_line_never_splits_a_wide_glyph_at_the_edge() {
+        let palette = palette();
+        // Wide glyphs are two columns each; an odd width leaves one unused.
+        let spans = query_spans("世界世界", &palette, 5);
+        assert!(columns(&spans) <= 5);
+        assert!(spans.iter().all(|span| span.content != "\u{fffd}"));
+    }
+
+    #[test]
+    fn a_flat_line_survives_an_empty_text_and_a_zero_width() {
+        let palette = palette();
+        let spans = query_spans("", &palette, 0);
+        assert_eq!(spans.len(), 1);
+        assert!(is_caret(&spans[0], &palette));
     }
 }

@@ -14,7 +14,7 @@ use unicode_width::UnicodeWidthStr;
 
 use super::model::{allocate_columns, pad_align, visible_offset, wrap_cell};
 use super::{GUTTER, SEPARATOR, SelectMode, SortDir, Table};
-use crate::{chrome, nav, scroll, style, text::truncate, theme::Skin};
+use crate::{chrome, input, nav, scroll, style, text::truncate, theme::Skin};
 
 impl Table {
     /// Renders the table: header, multi-line body with selection/cursor styling,
@@ -56,10 +56,8 @@ impl Table {
         self.render_body(frame, chunks[1], &widths, skin);
 
         if bottom > 0 {
-            frame.render_widget(
-                Paragraph::new(self.bottom_line(skin)),
-                chunks[2],
-            );
+            let line = self.bottom_line(skin, chunks[2].width as usize);
+            frame.render_widget(Paragraph::new(line), chunks[2]);
         }
     }
 
@@ -290,14 +288,18 @@ impl Table {
         style
     }
 
-    fn bottom_line(&self, skin: &Skin) -> Line<'static> {
+    /// The status line, or the `/query` filter line while filtering; both are
+    /// clipped to `width`.
+    fn bottom_line(&self, skin: &Skin, width: usize) -> Line<'static> {
         let palette = &skin.palette;
         if self.filtering {
-            return Line::from(vec![
-                Span::styled("/", style::fg(palette.accent)),
-                Span::raw(self.filter.clone()),
-                Span::styled(" ", style::bg(palette.cursor)),
-            ]);
+            let mut spans = vec![Span::styled("/", style::fg(palette.accent))];
+            spans.extend(input::query_spans(
+                &self.filter,
+                palette,
+                width.saturating_sub(1),
+            ));
+            return Line::from(spans);
         }
         let count = match self.mode {
             SelectMode::Row => self.selected_rows().len(),

@@ -12,13 +12,13 @@ use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
     widgets::Paragraph,
 };
 
 use super::{
-    chrome, fuzzy,
+    chrome, fuzzy, input,
     layout::centered_fraction,
     list,
     modal::ModalSignal,
@@ -28,6 +28,9 @@ use super::{
     terminal::Tui,
 };
 use crate::theme::Skin;
+
+/// The prefix of the query line; its width is taken off the caret line's.
+const SEARCH_LABEL: &str = "search ";
 
 /// A titled group of key bindings shown under one header in the overlay.
 pub struct HelpSection<'a, B: AsRef<str>> {
@@ -217,15 +220,14 @@ fn render_body<B: AsRef<str>>(
         ])
         .split(inner);
 
-    let search = Line::from(vec![
-        Span::styled("search ", style::secondary(palette)),
-        Span::raw(state.query.clone()),
-        Span::styled(
-            " ",
-            Style::default().bg(style::to_ratatui(palette.cursor)),
-        ),
-    ]);
-    frame.render_widget(Paragraph::new(search), rows[0]);
+    let mut search =
+        vec![Span::styled(SEARCH_LABEL, style::secondary(palette))];
+    search.extend(input::query_spans(
+        &state.query,
+        palette,
+        (rows[0].width as usize).saturating_sub(SEARCH_LABEL.len()),
+    ));
+    frame.render_widget(Paragraph::new(Line::from(search)), rows[0]);
 
     let header_style =
         style::fg(palette.accent_dim).add_modifier(Modifier::BOLD);

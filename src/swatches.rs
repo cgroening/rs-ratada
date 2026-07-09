@@ -19,7 +19,7 @@ use ratatui::{
 };
 
 use super::{
-    chrome, clipboard, color_picker, fuzzy,
+    chrome, clipboard, color_picker, fuzzy, input,
     layout::centered_rect,
     list,
     modal::ModalSignal,
@@ -508,8 +508,9 @@ fn render_box(
     );
     index += 1;
     if filtering {
+        let width = rows[index].width as usize;
         frame.render_widget(
-            Paragraph::new(filter_line(state, &skin.palette)),
+            Paragraph::new(filter_line(state, &skin.palette, width)),
             rows[index],
         );
         index += 1;
@@ -570,13 +571,19 @@ fn mode_bar(state: &State, palette: &Palette) -> Line<'static> {
     Line::from(spans)
 }
 
-/// The `/query` line shown while filtering the named list.
-fn filter_line(state: &State, palette: &Palette) -> Line<'static> {
-    Line::from(vec![
-        Span::styled("/", style::fg(palette.accent)),
-        Span::raw(state.filter.clone()),
-        Span::styled(" ", style::bg(palette.cursor)),
-    ])
+/// The `/query` line shown while filtering the named list, clipped to `width`.
+fn filter_line(
+    state: &State,
+    palette: &Palette,
+    width: usize,
+) -> Line<'static> {
+    let mut spans = vec![Span::styled("/", style::fg(palette.accent))];
+    spans.extend(input::query_spans(
+        &state.filter,
+        palette,
+        width.saturating_sub(1),
+    ));
+    Line::from(spans)
 }
 
 /// Swatch + name + hex rows for the list-style modes.

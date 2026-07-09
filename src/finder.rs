@@ -10,13 +10,12 @@ use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::Style,
     text::{Line, Span},
     widgets::Paragraph,
 };
 
 use super::{
-    chrome, fuzzy,
+    chrome, fuzzy, input,
     layout::centered_fraction,
     list,
     modal::ModalSignal,
@@ -26,6 +25,9 @@ use super::{
     terminal::Tui,
 };
 use crate::theme::Skin;
+
+/// The prefix of the query line; its width is taken off the caret line's.
+const SEARCH_LABEL: &str = "search ";
 
 /// The state of the fuzzy finder: the query, the cursor into the filtered
 /// results, and the persistent list scroll offset.
@@ -134,15 +136,14 @@ fn render_body(
         .constraints([Constraint::Length(1), Constraint::Min(1)])
         .split(inner);
 
-    let search = Line::from(vec![
-        Span::styled("search ", style::secondary(palette)),
-        Span::raw(state.query.clone()),
-        Span::styled(
-            " ",
-            Style::default().bg(style::to_ratatui(palette.cursor)),
-        ),
-    ]);
-    frame.render_widget(Paragraph::new(search), rows[0]);
+    let mut search =
+        vec![Span::styled(SEARCH_LABEL, style::secondary(palette))];
+    search.extend(input::query_spans(
+        &state.query,
+        palette,
+        (rows[0].width as usize).saturating_sub(SEARCH_LABEL.len()),
+    ));
+    frame.render_widget(Paragraph::new(Line::from(search)), rows[0]);
 
     let lines: Vec<Line<'static>> = filtered
         .iter()

@@ -19,7 +19,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use super::{chrome, fuzzy, nav, scroll, style, text};
+use super::{chrome, fuzzy, input, nav, scroll, style, text};
 use crate::theme::Skin;
 
 /// Columns the [`Overflow::Scroll`] mode pans per left/right key press.
@@ -296,12 +296,13 @@ impl Sidebar {
             .constraints([Constraint::Length(1), Constraint::Min(0)])
             .split(inner);
         let palette = &skin.palette;
-        let query = Line::from(vec![
-            Span::styled("/", style::fg(palette.accent)),
-            Span::raw(self.filter.clone()),
-            Span::styled(" ", style::bg(palette.cursor)),
-        ]);
-        frame.render_widget(Paragraph::new(query), split[0]);
+        let mut query = vec![Span::styled("/", style::fg(palette.accent))];
+        query.extend(input::query_spans(
+            &self.filter,
+            palette,
+            (split[0].width as usize).saturating_sub(1),
+        ));
+        frame.render_widget(Paragraph::new(Line::from(query)), split[0]);
         split[1]
     }
 
