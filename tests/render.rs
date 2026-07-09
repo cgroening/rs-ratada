@@ -81,6 +81,41 @@ fn draw_list_bottom_row(width: u16, height: u16, boxed: bool) -> String {
     })
 }
 
+/// Renders `render` and returns every row as a string.
+fn draw_rows(
+    width: u16,
+    height: u16,
+    render: impl FnOnce(&mut Frame),
+) -> Vec<String> {
+    let mut terminal =
+        Terminal::new(TestBackend::new(width, height)).expect("backend");
+    terminal.draw(render).expect("draw");
+    let buffer = terminal.backend().buffer();
+    (0..height)
+        .map(|y| (0..width).map(|x| buffer[(x, y)].symbol()).collect())
+        .collect()
+}
+
+/// Draws a twelve-row list with `render_counted`, which reserves the bottom row.
+fn draw_counted_rows(width: u16, height: u16) -> Vec<String> {
+    let skin = skin();
+    let offset = Cell::new(0);
+    draw_rows(width, height, |frame| {
+        let rows: Vec<Line<'static>> =
+            (1..=12).map(|n| Line::from(format!("row {n}"))).collect();
+        list::render_counted(
+            frame,
+            frame.area(),
+            &skin,
+            list::ListView {
+                rows,
+                selected: 2,
+                offset: &offset,
+            },
+        );
+    })
+}
+
 /// A roomy viewport and a cramped one, to exercise overflow and clamping.
 const SIZES: [(u16, u16); 2] = [(80, 24), (4, 3)];
 
@@ -163,6 +198,74 @@ fn boxed_list_puts_the_position_badge_in_the_bottom_border() {
     let expected =
         format!("\u{2570}{} 3/12 \u{2500}\u{256f}", "\u{2500}".repeat(11));
     assert_eq!(row, expected);
+}
+
+#[test]
+fn a_counted_list_puts_the_badge_in_a_reserved_bottom_row() {
+    let rows = draw_counted_rows(20, 5);
+    // The badge sits alone, right-aligned, in the last row.
+    assert_eq!(rows[4], format!("{}3/12", " ".repeat(16)));
+    // The rows above are the list; the row just over the badge still shows its
+    // entry in full, so nothing is covered.
+    assert!(
+        rows[3].starts_with("row 4"),
+        "unexpected row: {:?}",
+        rows[3]
+    );
+}
+
+#[test]
+fn a_counted_list_gives_the_badge_a_row_of_its_own() {
+    // Four visible entries in a five-row area: the fifth row is the badge's.
+    let rows = draw_counted_rows(20, 5);
+    let entries = rows[..4]
+        .iter()
+        .filter(|row| row.trim_start().starts_with("row "))
+        .count();
+    assert_eq!(entries, 4);
+    assert!(!rows[4].contains("row "), "the badge row carries an entry");
+}
+
+#[test]
+fn a_counted_list_too_narrow_for_the_badge_drops_it() {
+    let rows = draw_counted_rows(3, 3);
+    assert!(
+        !rows[2].contains('3'),
+        "badge should be dropped: {:?}",
+        rows[2]
+    );
+}
+
+#[test]
+fn a_counted_list_too_short_for_a_badge_row_shows_content_instead() {
+    // One row has no room to spare, so the entry wins over the counter. The
+    // list scrolls to keep the selected row (the third) visible.
+    let rows = draw_counted_rows(20, 1);
+    assert!(
+        rows[0].starts_with("row 3"),
+        "unexpected row: {:?}",
+        rows[0]
+    );
+    assert!(!rows[0].contains("3/12"));
+}
+
+#[test]
+fn an_empty_counted_list_has_no_badge() {
+    let skin = skin();
+    let offset = Cell::new(0);
+    let rows = draw_rows(20, 3, |frame| {
+        list::render_counted(
+            frame,
+            frame.area(),
+            &skin,
+            list::ListView {
+                rows: Vec::new(),
+                selected: 0,
+                offset: &offset,
+            },
+        );
+    });
+    assert!(rows.iter().all(|row| row.trim().is_empty()));
 }
 
 #[test]

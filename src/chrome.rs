@@ -223,6 +223,39 @@ pub fn render_badge(frame: &mut Frame, area: Rect, skin: &Skin, text: &str) {
     frame.buffer_mut().set_line(x, y, &line, width);
 }
 
+/// Paints `text` right-aligned into the bottom row of `area`, for a widget with
+/// no border to hang a badge on (`3/12`, in muted chrome text).
+///
+/// The caller keeps that row free of content — exactly as [`render_badge`]
+/// needs a border row. Because the badge sits *below* the content, no scrollbar
+/// reaches into it. See `list::render_counted` for the ready-made list variant.
+///
+/// A no-op for an empty label, an empty area, or an area too narrow to hold the
+/// badge.
+pub fn render_corner_badge(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    text: &str,
+) {
+    if text.trim().is_empty() || area.height == 0 {
+        return;
+    }
+    let line = Line::from(Span::styled(
+        text.trim().to_string(),
+        style::muted(&skin.palette),
+    ));
+    let width = line.width() as u16;
+    if width > area.width {
+        return;
+    }
+    let x = area.right() - width;
+    let y = area.bottom() - 1;
+    // Written straight into the buffer (rather than via a `Paragraph`) so the
+    // surface's own background shows through the badge cells.
+    frame.buffer_mut().set_line(x, y, &line, width);
+}
+
 /// The bottom-right badge line reading as part of the bottom border
 /// (`─ 12/80 ─╯`): the connecting dashes in the border color (one on each side
 /// so it joins the corner), the count in muted chrome text.

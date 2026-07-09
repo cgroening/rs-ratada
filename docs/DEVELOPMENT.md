@@ -30,7 +30,7 @@ src/
   driver.rs         Screen trait + Flow + generic run() loop (idle tick)
   overlay.rs        popup() driver, dimmed scrim, framed() modal helper
   chrome.rs         panels / modal frame + BoxDecor (caption + badge) box seam
-                    and the single border-badge renderer
+                    and the two badge renderers (border / frameless corner)
   layout.rs         centered_rect / centered_fraction (shared popup sizing)
   nav.rs            cycle / step_clamped / keep_visible + ScrollView
   scroll.rs         overflow-only vertical/horizontal scrollbar (ScrollView)
@@ -48,7 +48,7 @@ src/
   table/            Table (type-aware sort, fuzzy filter, row/cell select),
                     split into model / interaction / render
   tree.rs           collapsible TreeView
-  list.rs           selectable list + scrollbar (ListView; render/render_boxed)
+  list.rs           selectable list + scrollbar (ListView; render/_counted/_boxed)
   markdown/         CommonMark renderer (mod/render = engine, theme = StyleSheet
                     default/from_skin, view = MarkdownView + viewer modal)
   sidebar.rs        sectioned menu column (headers + items, optional filter)
@@ -105,11 +105,14 @@ than reinventing them:
   the end, for widgets keeping a bare `String`), fields with their own cursor
   through `InputField::caret_spans`. Both scroll horizontally and mark a
   scrolled-off head with `…`. Never rebuild the caret span inline.
-- **Position badge:** `chrome::render_badge` paints a `position/total` (or
-  percent) indicator into a frame's bottom border – the one seam for it, used
-  by `framed_decor` and by every popup that frames a scrollable list.
-  `chrome::position_badge` formats the 1-based label. Lists never draw it
-  themselves; whoever owns the frame owns the badge.
+- **Position badge:** the `position/total` (or percent) indicator never overlays
+  content. Where there is a frame, `chrome::render_badge` paints it into the
+  bottom border – used by `framed_decor` and by every popup that frames a
+  scrollable list; whoever owns the frame owns the badge. Where there is none,
+  `chrome::render_corner_badge` puts it right-aligned into a reserved bottom row
+  (`list::render_counted` does that for a list, and yields the row back when the
+  area is too short to spare one). Both take their label from
+  `chrome::position_badge` and their colour from `style::muted`.
 - **Popup sizing:** `layout::centered_fraction` gives every centered popup its
   size (a fraction of the area, floored at a minimum).
 - **Colors:** only `style.rs` maps `theme::Color` to ratatui; widgets take a

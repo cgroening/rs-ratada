@@ -18,6 +18,10 @@ bump may contain breaking changes.
   (`╭─ Title ───`); the single source of truth every framed box titles with.
 - `chrome::render_badge` and `chrome::position_badge` – the single seam for the
   bottom-right `position/total` indicator and its 1-based label.
+- `chrome::render_corner_badge` and `list::render_counted` – the same indicator
+  for a widget with **no** frame to hang it on: right-aligned in a reserved
+  bottom row, so it never overlays an entry. An area too short to spare that row
+  keeps its content instead.
 - `style::muted` and the palette color `foreground_muted` – a text tone between
   `foreground_dim` and `border`, for chrome annotations that must not compete
   with the content.
@@ -53,6 +57,8 @@ bump may contain breaking changes.
   where typing would insert – including on an empty filter.
 - The hints toggle compared only the key code, so `Shift+F1` toggled the hints
   as well. Modifiers are now matched exactly.
+- An unboxed `tree` shows its `position/total` counter again. It had vanished
+  with the overlay chip, since a frameless widget had nowhere to put one.
 
 ### Changed
 
@@ -86,8 +92,9 @@ bump may contain breaking changes.
 ### Removed
 
 - The overlay `position/total` chip `list::render` used to draw over its last
-  row. An unboxed list no longer shows a count; use `list::render_boxed` with a
-  `BoxDecor`, or let the surrounding popup frame carry the badge.
+  row. Plain `list::render` no longer shows a count; use `list::render_counted`
+  (a reserved bottom row), `list::render_boxed` with a `BoxDecor`, or let the
+  surrounding popup frame carry the badge.
 
 ## [0.2.0] - 2026-07-07
 

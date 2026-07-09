@@ -203,7 +203,9 @@ impl TreeView {
             Some(decor) => {
                 list::render_boxed(frame, area, skin, view, decor, true);
             }
-            None => list::render(frame, area, skin, view),
+            // Without a box there is no border to hang the badge on, so the
+            // bottom row carries it.
+            None => list::render_counted(frame, area, skin, view),
         }
     }
 }

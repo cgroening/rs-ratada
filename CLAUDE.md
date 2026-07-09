@@ -419,6 +419,11 @@ werden, wo sie passen.
 - **Scrollbar bei Überlauf:** vertikale Scrollbar rechts, sobald Inhalt den
   Viewport überläuft, sonst weggelassen. Dim-Stil ohne Pfeile, gemeinsamer
   Helper (`scroll::render_scrollbar`); Positionszahl ist `total - viewport + 1`.
+- **Positionsanzeige `XX/YY` verdeckt nie Inhalt:** Bei einem gerahmten Widget
+  sitzt sie im unteren Rahmen (`chrome::render_badge`), bei einem rahmenlosen
+  rechtsbündig in einer reservierten letzten Zeile
+  (`chrome::render_corner_badge`, für Listen `list::render_counted`). Ist die
+  Fläche zu niedrig, um die Zeile zu entbehren, gewinnt der Inhalt.
 - **Scroll-Offset folgt dem Cursor:** Liste scrollt erst am Rand, nicht
   seitenweise pro Schritt.
 

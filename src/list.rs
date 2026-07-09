@@ -1,8 +1,10 @@
 //! A selectable, vertically scrollable list with a scrollbar.
 //!
-//! The `position/total` indicator belongs to the surrounding frame, not to the
-//! list: [`render_boxed`] hands it to its own box, and a list inside a popup
-//! gets it from the popup's frame (see [`crate::chrome::render_badge`]).
+//! The `position/total` indicator never overlays a row. Where there is a frame
+//! it lives in its bottom border: [`render_boxed`] hands it to its own box, and
+//! a list inside a popup gets it from the popup's frame (see
+//! [`crate::chrome::render_badge`]). Where there is none, [`render_counted`]
+//! keeps the bottom row free for it. Plain [`render`] draws no indicator at all.
 
 use std::cell::Cell;
 
@@ -31,6 +33,32 @@ pub struct ListView<'a> {
 /// the scrollbar. Whoever owns the surrounding frame owns the position badge.
 pub fn render(frame: &mut Frame, area: Rect, skin: &Skin, view: ListView) {
     render_core(frame, area, skin, view);
+}
+
+/// Like [`render`], but keeps the bottom row free for a `position/total` badge
+/// in its right-hand corner — for a list with no frame to hang one on. The
+/// list's viewport is therefore one row shorter than `area`.
+///
+/// Content wins over the badge: an area too short to spare a row (one row or
+/// less) renders like plain [`render`]. An empty list gets no badge either.
+pub fn render_counted(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    view: ListView,
+) {
+    // A badge row would leave no room for a single entry.
+    if area.height <= 1 {
+        render_core(frame, area, skin, view);
+        return;
+    }
+    let badge = chrome::position_badge(view.selected, view.rows.len());
+    let rows = Rect {
+        height: area.height - 1,
+        ..area
+    };
+    render_core(frame, rows, skin, view);
+    chrome::render_corner_badge(frame, area, skin, &badge);
 }
 
 /// Like [`render`], but wrapped in a rounded box (see [`chrome::BoxDecor`]) when
