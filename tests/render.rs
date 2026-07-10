@@ -58,6 +58,28 @@ fn draw_bottom_row(
         .collect()
 }
 
+/// A toast box is as tall as its wrapped message, so the next box in the stack
+/// is pushed down by that height instead of a constant three rows.
+#[test]
+fn a_wrapped_toast_pushes_the_next_box_down() {
+    let skin = skin();
+    let rows = draw_rows(40, 12, |frame| {
+        let mut toasts = Toasts::new();
+        toasts
+            .push(ToastKind::Warning, "switch to custom order (t) to reorder");
+        toasts.push(ToastKind::Info, "saved");
+        toasts.render(frame, frame.area(), &skin);
+    });
+
+    // Row 0 is the warning's top border, rows 1-2 its two message lines, row 3
+    // its bottom border - so the info box opens on row 4.
+    assert!(rows[0].contains("warning"), "row 0: {}", rows[0]);
+    assert!(rows[1].contains("switch to custom order (t) to"));
+    assert!(rows[2].contains("reorder"));
+    assert!(rows[4].contains("info"), "row 4: {}", rows[4]);
+    assert!(rows[5].contains("saved"), "row 5: {}", rows[5]);
+}
+
 /// Draws a twelve-row list with the third row selected, boxed or bare.
 fn draw_list_bottom_row(width: u16, height: u16, boxed: bool) -> String {
     let skin = skin();
@@ -390,6 +412,12 @@ fn chrome_widgets_render_across_sizes() {
             let mut toasts = Toasts::new();
             toasts.push(ToastKind::Info, "info 世界");
             toasts.push(ToastKind::Error, "error");
+            // Taller than one line, so the stack offsets the next box by the
+            // measured height rather than a constant.
+            toasts.push(
+                ToastKind::Warning,
+                "switch to custom order (t) to reorder",
+            );
             toasts.render(frame, frame.area(), &skin);
         });
 

@@ -23,7 +23,7 @@ palette and glyphs) that maps onto ratatui styles.
   `select`, `multi_select`, `number_input`, `message`), forms, single- and
   multi-line text editing with a shared editor core, autocomplete, tables,
   trees, selectable lists, sectioned sidebars, tabs, pagers, gauges, spinners,
-  toasts.
+  toasts (timed, stacked, each box as tall as its wrapped message).
 - **Pickers** – color, swatch, date, date-range, month, path (with an optional
   confinement root) and slider pickers.
 - **Overlays & chrome** – a fuzzy help overlay, a command palette, box framing,

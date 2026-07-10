@@ -118,6 +118,13 @@ bump may contain breaking changes.
 
 ### Fixed
 
+- A `toast` box grows to its message. Every box was drawn three rows tall
+  ("border + one wrapped line"), so anything longer than the inner width was cut
+  off after the first line - the message wrapped, but the rows were not there.
+  `render` now measures the message with `text::wrap` and sizes the box to it,
+  capped at six lines with a trailing `…`. The wrapped lines are handed to the
+  `Paragraph` directly instead of re-wrapping them with `Wrap`, so measuring and
+  drawing cannot disagree.
 - A caret line no longer overflows its width. With both a head and a tail `…`
   marker, a window of two columns drew three: the markers were taken before the
   text was given a column. Markers are now dropped, tail first, until the text
