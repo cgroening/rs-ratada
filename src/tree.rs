@@ -12,17 +12,33 @@ use super::{chrome, list, nav};
 use crate::theme::{GlyphVariant, Skin};
 
 /// A node in a tree: a label plus zero or more children.
+///
+/// A leaf may carry a caller-defined `id`, which [`TreeView::selected_id`]
+/// hands back for the node under the cursor. Labels are not unique, so an `id`
+/// is the only reliable way to map a selection back to the caller's data.
 #[derive(Debug, Clone)]
 pub struct TreeItem {
     label: String,
+    id: Option<usize>,
     children: Vec<TreeItem>,
 }
 
 impl TreeItem {
-    /// A leaf node with no children.
+    /// A leaf node with no children and no id.
     pub fn leaf(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
+            id: None,
+            children: Vec::new(),
+        }
+    }
+
+    /// A leaf node carrying `id`, so the caller can map a selection back to
+    /// whatever the leaf stands for.
+    pub fn leaf_with_id(label: impl Into<String>, id: usize) -> Self {
+        Self {
+            label: label.into(),
+            id: Some(id),
             children: Vec::new(),
         }
     }
@@ -31,6 +47,7 @@ impl TreeItem {
     pub fn node(label: impl Into<String>, children: Vec<TreeItem>) -> Self {
         Self {
             label: label.into(),
+            id: None,
             children,
         }
     }
@@ -45,6 +62,7 @@ struct Flat {
     index: usize,
     depth: usize,
     label: String,
+    id: Option<usize>,
     has_children: bool,
     expanded: bool,
 }
@@ -84,6 +102,20 @@ impl TreeView {
         self.flatten()
             .get(self.cursor)
             .map(|node| node.label.clone())
+    }
+
+    /// The id of the node under the cursor, or `None` when the tree is empty or
+    /// the node was built without one (see [`TreeItem::leaf_with_id`]).
+    pub fn selected_id(&self) -> Option<usize> {
+        self.flatten().get(self.cursor).and_then(|node| node.id)
+    }
+
+    /// Whether the node under the cursor is a leaf. An empty tree has no
+    /// cursor node and so reports `false`.
+    pub fn selected_is_leaf(&self) -> bool {
+        self.flatten()
+            .get(self.cursor)
+            .is_some_and(|node| !node.has_children)
     }
 
     /// Handles a key: navigate, expand/collapse or toggle the current node.
@@ -172,6 +204,7 @@ impl TreeView {
                 index,
                 depth,
                 label: item.label.clone(),
+                id: item.id,
                 has_children: item.has_children(),
                 expanded,
             });
@@ -269,5 +302,45 @@ mod tests {
         let mut view = sample();
         view.handle_key(key(KeyCode::Up)); // wrap to last
         assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
+    }
+
+    /// A folder holding two identically labelled leaves, so only the ids can
+    /// tell them apart.
+    fn sample_with_ids() -> TreeView {
+        TreeView::new(vec![
+            TreeItem::node(
+                "decks",
+                vec![
+                    TreeItem::leaf_with_id("rust", 7),
+                    TreeItem::leaf_with_id("rust", 9),
+                ],
+            ),
+            TreeItem::leaf_with_id("geography", 3),
+        ])
+    }
+
+    #[test]
+    fn selected_id_survives_expanding_and_collapsing() {
+        let mut view = sample_with_ids();
+        assert_eq!(view.selected_id(), None); // the folder carries no id
+        view.handle_key(key(KeyCode::Right)); // expand decks
+        view.handle_key(key(KeyCode::Down));
+        assert_eq!(view.selected_id(), Some(7));
+        view.handle_key(key(KeyCode::Down));
+        assert_eq!(view.selected_id(), Some(9));
+        view.handle_key(key(KeyCode::Up));
+        view.handle_key(key(KeyCode::Up));
+        view.handle_key(key(KeyCode::Left)); // collapse decks
+        view.handle_key(key(KeyCode::Down));
+        assert_eq!(view.selected_id(), Some(3));
+    }
+
+    #[test]
+    fn selected_is_leaf_separates_folders_from_leaves() {
+        let mut view = sample_with_ids();
+        assert!(!view.selected_is_leaf()); // on "decks"
+        view.handle_key(key(KeyCode::Down));
+        assert!(view.selected_is_leaf()); // on "geography"
+        assert!(!TreeView::new(Vec::new()).selected_is_leaf());
     }
 }

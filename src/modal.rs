@@ -20,7 +20,7 @@ use unicode_width::UnicodeWidthStr;
 use super::{
     chrome,
     input::{self, TextCursor},
-    layout::centered_rect,
+    layout::{centered_rect, fit},
     nav,
     overlay::{self, PopupFlow, popup},
     scroll, shortcut_hints, style,
@@ -54,7 +54,7 @@ pub fn confirm(
         tui,
         &mut state,
         |area, (): &()| {
-            let width = (prompt.width() as u16 + 6).clamp(28, area.width);
+            let width = fit(prompt.width() as u16 + 6, 28, area.width);
             centered_rect(width, hinted_box_height(), area)
         },
         |frame, (): &()| render_bg(frame),
@@ -413,7 +413,7 @@ pub fn message(
         tui,
         &mut state,
         |area, (): &()| {
-            let width = (body.width() as u16 + 6).clamp(28, area.width);
+            let width = fit(body.width() as u16 + 6, 28, area.width);
             centered_rect(width, 5, area)
         },
         |frame, (): &()| render_bg(frame),
@@ -630,9 +630,8 @@ fn picker_state(cursor: usize) -> ListState {
 
 /// The popup rect for the list pickers: half the width, one row per item.
 fn picker_area(area: Rect, item_count: usize) -> Rect {
-    let height =
-        (item_count as u16 + 2).clamp(5, area.height.saturating_sub(2));
-    let width = (area.width / 2).clamp(30, area.width.saturating_sub(4));
+    let height = fit(item_count as u16 + 2, 5, area.height.saturating_sub(2));
+    let width = fit(area.width / 2, 30, area.width.saturating_sub(4));
     centered_rect(width, height, area)
 }
 
@@ -644,7 +643,7 @@ fn input_area(area: Rect) -> Rect {
 
 /// A wide input box (~90% of the terminal width), for long values.
 fn input_area_wide(area: Rect) -> Rect {
-    let width = (area.width * 9 / 10).clamp(20, area.width);
+    let width = fit(area.width * 9 / 10, 20, area.width);
     centered_rect(width, hinted_box_height(), area)
 }
 
@@ -667,4 +666,35 @@ fn hint_block(
 /// two border rows, the row itself, and the hint block when shown.
 fn hinted_box_height() -> u16 {
     3 + shortcut_hints::footer_height(HINT_BLOCK_ROWS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every popup wants a minimum width or height. A terminal smaller than
+    /// that must shrink the popup, not panic: these helpers used to reach
+    /// `clamp(min, max)` with `max < min`.
+    #[test]
+    fn popup_geometry_survives_a_terminal_below_its_minimum() {
+        for (width, height) in [(1, 1), (4, 2), (20, 6), (27, 10)] {
+            let area = Rect::new(0, 0, width, height);
+            for rect in [
+                picker_area(area, 40),
+                input_area(area),
+                input_area_wide(area),
+            ] {
+                assert!(rect.width <= area.width, "{rect:?} in {area:?}");
+                assert!(rect.height <= area.height, "{rect:?} in {area:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_roomy_terminal_still_gets_the_preferred_size() {
+        let area = Rect::new(0, 0, 100, 40);
+        let picker = picker_area(area, 4);
+        assert_eq!(picker.width, 50); // half the width
+        assert_eq!(picker.height, 6); // one row per item, plus borders
+    }
 }

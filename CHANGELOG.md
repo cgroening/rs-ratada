@@ -9,6 +9,13 @@ bump may contain breaking changes.
 
 ### Added
 
+- `tree::TreeItem::leaf_with_id` plus `tree::TreeView::selected_id` and
+  `selected_is_leaf` – a leaf may now carry a caller-defined id, and the view
+  hands it back for the node under the cursor. Labels are not unique, so an id
+  is the only reliable way to map a selection back to the caller's data.
+  `TreeItem::leaf`/`node` keep their signatures and simply carry no id.
+- `layout::fit` – grows a size to a preferred minimum, then caps it at the
+  available space. The single seam for popup sizing.
 - `modal::input_wide` – a single-line text prompt in a box spanning ~90% of the
   terminal width, so long values (such as file paths) stay visible instead of
   scrolling in a narrow box.
@@ -64,6 +71,13 @@ bump may contain breaking changes.
 
 ### Fixed
 
+- Opening a popup in a terminal narrower or shorter than the popup's preferred
+  minimum panicked with `assertion failed: min <= max`. `modal::confirm`,
+  `message`, the list pickers, `input_wide`, `command_palette` and
+  `layout::centered_fraction` reached `Ord::clamp(min, max)` with `max < min`.
+  They now use `layout::fit`, where the available space wins over the preferred
+  minimum. A `confirm` dialog in a 20x6 terminal used to crash the host
+  application.
 - `path_picker` shows the block caret in its filter line again. The field is a
   full `InputField`, but the render path drew only its value, so nothing marked
   where typing would insert – including on an empty filter.

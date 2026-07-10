@@ -31,7 +31,7 @@ src/
   overlay.rs        popup() driver, dimmed scrim, framed() modal helper
   chrome.rs         panels / modal frame + BoxDecor (caption + badge) box seam
                     and the two badge renderers (border / frameless corner)
-  layout.rs         centered_rect / centered_fraction (shared popup sizing)
+  layout.rs         fit / centered_rect / centered_fraction (shared popup sizing)
   nav.rs            cycle / step_clamped / keep_visible + ScrollView
   scroll.rs         overflow-only vertical/horizontal scrollbar (ScrollView)
   style.rs          the single theme::Color -> ratatui adapter
@@ -55,8 +55,8 @@ src/
   tabs.rs, pager.rs, gauge.rs, spinner.rs, toast.rs
 
   # pickers / modals
-  modal.rs          confirm / select(+styled,reorderable) / multi_select /
-                    number_input / message
+  modal.rs          confirm / input(+wide) / select(+styled,reorderable) /
+                    multi_select(+styled) / number_input(+bounded) / message
   form.rs           schema-driven form (text/multiline/bool/choice/date)
   finder.rs         fuzzy picker; fuzzy.rs: nucleo score + highlight
   color_picker.rs, swatches.rs, date_picker.rs, date_range_picker.rs,
@@ -114,7 +114,11 @@ than reinventing them:
   area is too short to spare one). Both take their label from
   `chrome::position_badge` and their colour from `style::muted`.
 - **Popup sizing:** `layout::centered_fraction` gives every centered popup its
-  size (a fraction of the area, floored at a minimum).
+  size (a fraction of the area, grown to a preferred minimum). It and every
+  hand-rolled popup rect derive that size through `layout::fit(wanted, min,
+  max)`, never through `clamp(min, max)`: a terminal below the popup's minimum
+  makes `max < min`, and `Ord::clamp` panics on that. The available space is
+  the hard limit; the minimum is only a preference.
 - **Colors:** only `style.rs` maps `theme::Color` to ratatui; widgets take a
   `&Skin`/`&Palette`, never a raw literal.
 - **Focused frames:** a focused field brightens its own fill, so a fixed border

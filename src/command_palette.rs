@@ -20,7 +20,7 @@ use ratatui::{
 
 use super::{
     chrome, fuzzy, input,
-    layout::centered_rect,
+    layout::{centered_rect, fit},
     list,
     modal::ModalSignal,
     nav,
@@ -107,8 +107,8 @@ pub fn command_palette(
         &mut state,
         |area, _| {
             centered_rect(
-                (area.width * 2 / 3).clamp(40, area.width),
-                (area.height * 2 / 3).clamp(8, area.height),
+                fit(area.width * 2 / 3, 40, area.width),
+                fit(area.height * 2 / 3, 8, area.height),
                 area,
             )
         },
