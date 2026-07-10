@@ -158,14 +158,22 @@ impl Autocomplete {
         lines
     }
 
+    /// Moves the highlight by `delta`, wrapping around the ends so `Up` on the
+    /// first row lands on the last and `Down` on the last returns to the first.
+    /// With nothing highlighted yet, `Down` enters at the top and `Up` at the
+    /// bottom.
     fn move_selection(&mut self, delta: isize) {
-        let last = self.matches.len().saturating_sub(1);
-        self.selected = match (self.selected, delta) {
-            (None, step) if step > 0 => Some(0),
-            (Some(index), step) if step < 0 => index.checked_sub(1),
-            (Some(index), _) => Some((index + 1).min(last)),
-            (None, _) => None,
-        };
+        let len = self.matches.len();
+        if len == 0 {
+            self.selected = None;
+            return;
+        }
+        self.selected = Some(match (self.selected, delta) {
+            (None, step) if step > 0 => 0,
+            (None, _) => len - 1,
+            (Some(index), step) if step > 0 => (index + 1) % len,
+            (Some(index), _) => (index + len - 1) % len,
+        });
     }
 
     fn accepted(&self) -> Option<String> {
@@ -240,6 +248,26 @@ mod tests {
         assert!(!ac.is_open());
         ac.refresh("rewe s");
         assert!(ac.is_open());
+    }
+
+    #[test]
+    fn navigation_wraps_around_both_ends() {
+        let mut ac = ac();
+        ac.refresh("rewe"); // two matches: index 0 and 1
+        ac.on_key(key(KeyCode::Down)); // -> 0
+        assert_eq!(ac.selected, Some(0));
+        ac.on_key(key(KeyCode::Up)); // wraps 0 -> last
+        assert_eq!(ac.selected, Some(1));
+        ac.on_key(key(KeyCode::Down)); // wraps last -> 0
+        assert_eq!(ac.selected, Some(0));
+    }
+
+    #[test]
+    fn up_from_nothing_selected_enters_at_the_bottom() {
+        let mut ac = ac();
+        ac.refresh("rewe");
+        ac.on_key(key(KeyCode::Up));
+        assert_eq!(ac.selected, Some(1));
     }
 
     #[test]

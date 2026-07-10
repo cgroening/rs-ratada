@@ -9,6 +9,10 @@ bump may contain breaking changes.
 
 ### Added
 
+- `opener::open` opens a file in the operating system's default application,
+  joining `clipboard` and `editor` as the OS-integration helpers. It invokes the
+  platform opener (`open`/`start`/`xdg-open`) with an argument list, never a
+  shell, and reports a missing file as `io::ErrorKind::NotFound`.
 - **Embeddable editing primitives.** `input` now exposes the pieces a host needs
   to lay out its own text and still get the toolkit's caret behaviour, instead
   of copying it: `LineCaret`, `LinePaint` and `line_spans` (paint one

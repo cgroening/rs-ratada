@@ -94,6 +94,7 @@ pub mod markdown;
 pub mod modal;
 pub mod month_picker;
 pub mod nav;
+pub mod opener;
 pub mod overlay;
 pub mod pager;
 pub mod path_picker;
