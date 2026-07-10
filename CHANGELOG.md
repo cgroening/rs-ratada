@@ -9,6 +9,46 @@ bump may contain breaking changes.
 
 ### Added
 
+- **Embeddable editing primitives.** `input` now exposes the pieces a host needs
+  to lay out its own text and still get the toolkit's caret behaviour, instead
+  of copying it: `LineCaret`, `LinePaint` and `line_spans` (paint one
+  already-windowed line), `ScrollPaint` and `scrolled_line_spans` (a scrolled
+  single line marking *both* clipped ends with `…`), `query_spans_at` (like
+  `query_spans` but with a movable caret and a painted selection), `intersect`,
+  `is_command`, `replace_selection`, `insert_str`, `selected_text` and
+  `handle_clipboard`. `LinePaint::content` carries a **per-character style
+  overlay** patched under the caret and selection, so a host can render styled
+  source text - Markdown with its markers kept - inside an editable field.
+- `input::EditMode` plus a public, mode-aware `input::apply_edit_key`. It is now
+  the single edit core: `InputField` drives it with `SingleLine` and
+  `TextArea::handle_key` with `Multiline { width }`. `TextArea` thereby gains
+  `Ctrl+U`/`Ctrl+K`, which act on the **display** line.
+- `input::TextCursor` gained `at`, `move_to`, `extend_to`, `select_all` and
+  `has_selection`, and now derives `Copy`/`PartialEq`/`Eq`.
+- `textarea::wrap_offsets`, `cursor_to_display` and `display_to_cursor` - the
+  wrap and caret mapping are public, so a host can measure and render a wrapped
+  box itself.
+- `modal::confirm_default` and `modal::Question`: a yes/no dialog whose `Enter`
+  answer the caller picks. `Question::declining` is the safe default for a
+  destructive prompt, where a stray `Enter` must not confirm the deletion. The
+  footer hint binds `enter` to whichever answer it gives.
+- `fuzzy::score_indices` returns the score **and** the matched char positions
+  from one matcher pass; `score`/`match_indices` delegate to it. A search view
+  that ranks and highlights no longer builds the matcher twice per candidate.
+- `fuzzy::Fuzzy` - a reusable matcher that keeps its scratch buffers alive and
+  caches the last parsed pattern. The free functions rebuild both on every call,
+  which dominates the work when a whole corpus is scored on each keystroke.
+- `scroll::row_indicator` - the right-edge thumb/track cell for one visual row
+  of a box that wraps its own text. A `Scrollbar` owns a whole `Rect`; this
+  rides along inside a `Line` instead of overdrawing the content.
+- `chrome::border_title_lead` - the leading `─ ` span that blends a box title
+  into its top border. For a title line that carries more than a label (a dirty
+  marker, a badge) or a box that tints its own border.
+- `editor::edit_in_editor_as` - like `edit_in_editor`, but the temp file carries
+  a caller-chosen extension, so `$EDITOR` picks the right syntax and filetype
+  settings. The extension must be a bare ASCII-alphanumeric suffix; anything
+  else is rejected with `InvalidInput` rather than escaping the temp directory.
+
 - `tree::TreeItem::leaf_with_id` plus `tree::TreeView::selected_id` and
   `selected_is_leaf` – a leaf may now carry a caller-defined id, and the view
   hands it back for the node under the cursor. Labels are not unique, so an id
@@ -69,7 +109,26 @@ bump may contain breaking changes.
   caret and no field background, scrolling horizontally to keep the caret in
   view. The single source every filter/search line now draws its caret with.
 
+### Changed
+
+- `textarea` wraps **word-aware**: a soft break falls on the last space that
+  fits and consumes it, instead of hard-splitting mid-word at the column. A word
+  longer than the width is still hard-split. `TextArea::render` and the new
+  `wrap_offsets` share the one implementation.
+
 ### Fixed
+
+- A caret line no longer overflows its width. With both a head and a tail `…`
+  marker, a window of two columns drew three: the markers were taken before the
+  text was given a column. Markers are now dropped, tail first, until the text
+  and its block caret keep at least one column (`input::caret_spans`).
+
+- `AltGr` characters are typed again instead of being swallowed as command
+  chords. `input::apply_edit_key` and `textarea::TextArea::handle_key` tested
+  `KeyModifiers::CONTROL` alone, but crossterm reports `AltGr` as
+  `Control + Alt` – so on a German keyboard `\ @ [ ] { } | ~` never reached the
+  buffer. Both now go through the new `input::is_command` (`Control` *without*
+  `Alt`), which is public so hosts with their own key dispatch can share it.
 
 - Opening a popup in a terminal narrower or shorter than the popup's preferred
   minimum panicked with `assertion failed: min <= max`. `modal::confirm`,

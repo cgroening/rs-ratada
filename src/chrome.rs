@@ -36,7 +36,7 @@ pub fn menu_panel(skin: &Skin) -> Block<'static> {
 
 /// The shared modal frame: a rounded, bordered box with a filled background and
 /// an inset title. Used by every blocking modal widget. The fill is lifted
-/// above `background` (see [`MODAL_BG_LIFT`]) so the box stands out from the
+/// above `background` (see `MODAL_BG_LIFT`) so the box stands out from the
 /// dimmed view behind it.
 pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
     Block::default()
@@ -76,9 +76,36 @@ pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
 /// ```
 pub fn border_title(skin: &Skin, title: &str, label: Style) -> Line<'static> {
     Line::from(vec![
-        Span::styled("\u{2500} ", style::border(&skin.palette)),
+        border_title_lead(style::border(&skin.palette)),
         Span::styled(format!("{} ", title.trim()), label),
     ])
+}
+
+/// The leading `─ ` span that blends a box title into its top border, drawn in
+/// `border`.
+///
+/// [`border_title`] is the usual way in. Reach for this when the title line has
+/// more than a label - a dirty marker, a badge - or when the box tints its own
+/// border (an active pane in the accent) and the lead must follow suit.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::chrome::border_title_lead;
+/// use ratatui::style::{Color, Style};
+/// use ratatui::text::{Line, Span};
+///
+/// let border = Style::default().fg(Color::Magenta);
+/// let line = Line::from(vec![
+///     border_title_lead(border),
+///     Span::styled("*", border),
+///     Span::styled("Description ", border),
+/// ]);
+/// assert!(line.to_string().starts_with("\u{2500} *"));
+/// ```
+#[must_use]
+pub fn border_title_lead(border: Style) -> Span<'static> {
+    Span::styled("\u{2500} ", border)
 }
 
 /// The bottom-right badge shown inside a boxed widget's border.

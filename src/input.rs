@@ -1,10 +1,20 @@
-//! Shared single-line text editing: one caret with an optional selection
-//! anchor over a `String`. This is the single source of editing behaviour for
-//! every text field, so shortcuts stay consistent.
+//! Shared text editing: one caret with an optional selection anchor over a
+//! `String`. This is the single source of editing behaviour for every text
+//! field, so shortcuts stay consistent.
+//!
+//! [`apply_edit_key`] is that core, and [`EditMode`] picks the geometry it
+//! works in: [`InputField`] drives it with [`EditMode::SingleLine`], and
+//! `textarea::TextArea` with [`EditMode::Multiline`], where the line-oriented
+//! keys follow the wrap. Both therefore share one set of shortcuts.
 //!
 //! The editor handles only editing keys. A field's control keys (`Esc`, a
 //! confirming `Enter`, other chords) belong to the caller and must be handled
 //! before delegating here.
+//!
+//! A host that lays out its own text can still borrow the caret behaviour
+//! instead of copying it: [`line_spans`] paints one already-windowed line,
+//! [`scrolled_line_spans`] scrolls a single line, and [`query_spans_at`] draws
+//! a movable caret over a filter line.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -16,11 +26,11 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthChar;
 
-use super::{chrome, clipboard, style};
+use super::{chrome, clipboard, style, textarea};
 use crate::theme::{Palette, Skin};
 
 /// A text caret with an optional selection anchor, both as char indices.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TextCursor {
     /// The caret position, as a char index.
     pub pos: usize,
@@ -29,15 +39,39 @@ pub struct TextCursor {
 }
 
 impl TextCursor {
+    /// A caret at `pos` with no selection.
+    #[must_use]
+    pub fn at(pos: usize) -> Self {
+        Self { pos, anchor: None }
+    }
+
     /// A caret placed at the end of `text`.
+    #[must_use]
     pub fn at_end(text: &str) -> Self {
-        Self {
-            pos: text.chars().count(),
-            anchor: None,
-        }
+        Self::at(text.chars().count())
+    }
+
+    /// Moves the caret to `pos`, dropping any selection (a plain cursor move).
+    pub fn move_to(&mut self, pos: usize) {
+        self.pos = pos;
+        self.anchor = None;
+    }
+
+    /// Moves the caret to `pos`, seeding the anchor at the old caret when no
+    /// selection is active (a Shift-extended move).
+    pub fn extend_to(&mut self, pos: usize) {
+        self.anchor.get_or_insert(self.pos);
+        self.pos = pos;
+    }
+
+    /// Selects the whole value of `len` characters.
+    pub fn select_all(&mut self, len: usize) {
+        self.anchor = Some(0);
+        self.pos = len;
     }
 
     /// The current selection as an ordered `(start, end)` range, if any.
+    #[must_use]
     pub fn selection(&self) -> Option<(usize, usize)> {
         let anchor = self.anchor?;
         let (start, end) = if anchor <= self.pos {
@@ -47,6 +81,66 @@ impl TextCursor {
         };
         (start != end).then_some((start, end))
     }
+
+    /// Whether a non-empty selection is active.
+    #[must_use]
+    pub fn has_selection(&self) -> bool {
+        self.selection().is_some()
+    }
+}
+
+/// Where to paint the caret and selection within one already-windowed line, in
+/// local (per-line) character columns.
+///
+/// A caller that lays out its own text - a wrapped multiline box, a scrolled
+/// field - maps the global caret into line-local columns and hands the result
+/// to [`line_spans`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LineCaret {
+    /// The caret column on this line, or `None` when the caret is elsewhere.
+    pub cursor: Option<usize>,
+    /// The selected column range on this line as a half-open `(start, end)`.
+    pub selection: Option<(usize, usize)>,
+}
+
+/// Whether an input is a single line or a word-wrapped box of the given width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditMode {
+    /// One line: `Home`/`End` jump to the value's start/end, `Enter` is free
+    /// for the caller and a paste drops its line breaks.
+    SingleLine,
+    /// A box wrapped at `width` columns: `Home`/`End` act on the display line,
+    /// `Up`/`Down` walk them, `Enter` inserts a newline and a paste keeps them.
+    Multiline {
+        /// The wrap width in columns.
+        width: usize,
+    },
+}
+
+/// The overlap of the half-open range `[s, e)` with the window `[lo, hi)`, or
+/// `None` when they don't meet.
+///
+/// Maps a global selection into the visible window of a scrolled single line or
+/// one wrapped display line.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::input::intersect;
+///
+/// assert_eq!(intersect(2, 8, 4, 6), Some((4, 6)));
+/// assert_eq!(intersect(0, 3, 5, 9), None);
+/// ```
+#[must_use]
+pub fn intersect(
+    s: usize,
+    e: usize,
+    lo: usize,
+    hi: usize,
+) -> Option<(usize, usize)> {
+    let start = s.max(lo);
+    let end = e.min(hi);
+    (start < end).then_some((start, end))
 }
 
 /// A single-line input field bundling text with its caret, an optional length
@@ -101,7 +195,13 @@ impl InputField {
 
     /// Handles one editing key; returns whether it was consumed.
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
-        apply_edit_key(&mut self.text, &mut self.cursor, key, self.max_len)
+        apply_edit_key(
+            &mut self.text,
+            &mut self.cursor,
+            key,
+            EditMode::SingleLine,
+            self.max_len,
+        )
     }
 
     /// The current text.
@@ -127,6 +227,9 @@ impl InputField {
     ///
     /// The caret sits at the field's real position; the text scrolls to keep it
     /// inside `width` display columns, marking a scrolled-off head with `…`.
+    ///
+    /// Reach for [`scrolled_line_spans`] to paint a line this field does not
+    /// own - it marks *both* clipped ends and takes the caret as an argument.
     pub fn caret_spans(
         &self,
         palette: &Palette,
@@ -166,48 +269,99 @@ impl InputField {
     }
 }
 
-/// Applies one editing key to `text`/`cursor`, respecting an optional
-/// `max_len`. Returns whether it was consumed.
-pub(crate) fn apply_edit_key(
+/// Whether `key` is a Ctrl **command** chord rather than a typed character.
+///
+/// A command requires Control *without* Alt: on many keyboards (e.g. German)
+/// `AltGr` is reported as `Control + Alt` and produces real characters (`\`,
+/// `@`, `[`, `]`, `|`, ...), so those must type, not be swallowed as a chord.
+///
+/// # Examples
+///
+/// ```
+/// use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+/// use ratada::input::is_command;
+///
+/// let ctrl_s = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL);
+/// assert!(is_command(ctrl_s));
+///
+/// let alt_gr = KeyEvent::new(
+///     KeyCode::Char('\\'),
+///     KeyModifiers::CONTROL | KeyModifiers::ALT,
+/// );
+/// assert!(!is_command(alt_gr));
+/// ```
+#[must_use]
+pub fn is_command(key: KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL)
+        && !key.modifiers.contains(KeyModifiers::ALT)
+}
+
+/// Applies one editing key to `text`/`cursor`, returning whether it was
+/// consumed (so the caller stops handling it). Steering keys the caller owns -
+/// `Esc`, a confirming `Enter` in [`EditMode::SingleLine`], other chords - must
+/// be handled before delegating here.
+///
+/// A `Shift`-modified motion key (arrows, `Home`/`End`) extends the selection;
+/// the same key without `Shift` moves and clears it. `Ctrl+A` selects the whole
+/// value, `Ctrl+U`/`Ctrl+K` delete from the line start to the caret / from the
+/// caret to the line end, and `Ctrl+C`/`X`/`V` drive the clipboard. Typing,
+/// `Backspace` and `Delete` replace an active selection.
+///
+/// In [`EditMode::Multiline`] the line-oriented keys act on the **display**
+/// line (the wrap at `width`), `Up`/`Down` walk display lines, `Enter` inserts
+/// a newline and a paste keeps its line breaks. `max_len` caps the character
+/// count on typing and paste.
+///
+/// # Examples
+///
+/// ```
+/// use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+/// use ratada::input::{EditMode, TextCursor, apply_edit_key};
+///
+/// let mut text = String::from("ab");
+/// let mut cursor = TextCursor::at_end(&text);
+/// let key = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
+/// assert!(apply_edit_key(
+///     &mut text,
+///     &mut cursor,
+///     key,
+///     EditMode::SingleLine,
+///     None,
+/// ));
+/// assert_eq!(text, "a");
+/// ```
+pub fn apply_edit_key(
     text: &mut String,
     cursor: &mut TextCursor,
     key: KeyEvent,
+    mode: EditMode,
     max_len: Option<usize>,
 ) -> bool {
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let ctrl = is_command(key);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+    let multiline = matches!(mode, EditMode::Multiline { .. });
     let mut chars: Vec<char> = text.chars().collect();
     let len = chars.len();
     cursor.pos = cursor.pos.min(len);
 
+    if let Some(target) = motion_target(text, cursor.pos, key, mode) {
+        move_caret(cursor, target, shift);
+        return true;
+    }
+
     let consumed = match key.code {
-        KeyCode::Left => {
-            move_caret(cursor, cursor.pos.saturating_sub(1), shift);
-            true
-        }
-        KeyCode::Right => {
-            move_caret(cursor, (cursor.pos + 1).min(len), shift);
-            true
-        }
-        KeyCode::Home => {
-            move_caret(cursor, 0, shift);
-            true
-        }
-        KeyCode::End => {
-            move_caret(cursor, len, shift);
-            true
-        }
         KeyCode::Char('a') if ctrl => {
-            cursor.anchor = Some(0);
-            cursor.pos = len;
+            cursor.select_all(len);
             true
         }
         KeyCode::Char('u') if ctrl => {
-            delete_range(&mut chars, cursor, 0, cursor.pos);
+            let start = line_start(text, cursor.pos, mode);
+            delete_range(&mut chars, cursor, start, cursor.pos);
             true
         }
         KeyCode::Char('k') if ctrl => {
-            delete_range(&mut chars, cursor, cursor.pos, len);
+            let end = line_end(text, cursor.pos, mode);
+            delete_range(&mut chars, cursor, cursor.pos, end);
             true
         }
         KeyCode::Char('c') if ctrl => {
@@ -220,7 +374,11 @@ pub(crate) fn apply_edit_key(
             true
         }
         KeyCode::Char('v') if ctrl => {
-            paste(&mut chars, cursor, max_len);
+            if multiline {
+                paste_multiline(&mut chars, cursor, max_len);
+            } else {
+                paste(&mut chars, cursor, max_len);
+            }
             true
         }
         KeyCode::Backspace => {
@@ -229,6 +387,10 @@ pub(crate) fn apply_edit_key(
         }
         KeyCode::Delete => {
             delete_forward(&mut chars, cursor);
+            true
+        }
+        KeyCode::Enter if multiline => {
+            insert_char(&mut chars, cursor, '\n', max_len);
             true
         }
         KeyCode::Char(ch) if !ctrl => {
@@ -244,29 +406,167 @@ pub(crate) fn apply_edit_key(
     consumed
 }
 
-/// The marker standing in for the text scrolled off the left edge.
+/// Handles the clipboard chords against `(text, cursor)`, returning whether the
+/// key was one of them: `Ctrl+C` copies the selection, `Ctrl+X` cuts it and
+/// `Ctrl+V` replaces the selection (or inserts at the caret) with the clipboard.
+///
+/// [`apply_edit_key`] already covers these; this is for hosts that dispatch the
+/// clipboard separately from the rest of their editing keys. A paste strips
+/// control characters, keeping newlines only in [`EditMode::Multiline`].
+pub fn handle_clipboard(
+    text: &mut String,
+    cursor: &mut TextCursor,
+    key: KeyEvent,
+    mode: EditMode,
+) -> bool {
+    if !is_command(key) {
+        return false;
+    }
+    if !matches!(key.code, KeyCode::Char('c' | 'x' | 'v')) {
+        return false;
+    }
+    apply_edit_key(text, cursor, key, mode, None)
+}
+
+/// Replaces the active selection - or, with none, inserts at the caret - with
+/// `s`, leaving the caret after the inserted text and no selection.
+///
+/// The seam every host mutation goes through, so no stale anchor outlives an
+/// edit.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::input::{TextCursor, replace_selection};
+///
+/// let mut text = String::from("hello");
+/// let mut cursor = TextCursor { pos: 5, anchor: Some(1) };
+/// replace_selection(&mut text, &mut cursor, "i");
+/// assert_eq!((text.as_str(), cursor.pos), ("hi", 2));
+/// ```
+pub fn replace_selection(text: &mut String, cursor: &mut TextCursor, s: &str) {
+    let mut chars: Vec<char> = text.chars().collect();
+    delete_selection(&mut chars, cursor);
+    cursor.anchor = None;
+    let mut at = cursor.pos.min(chars.len());
+    for ch in s.chars() {
+        chars.insert(at, ch);
+        at += 1;
+    }
+    cursor.pos = at;
+    *text = chars.into_iter().collect();
+}
+
+/// Inserts `to_insert` at the caret, replacing an active selection first.
+///
+/// An alias of [`replace_selection`] that reads right at an insertion site.
+pub fn insert_str(text: &mut String, cursor: &mut TextCursor, to_insert: &str) {
+    replace_selection(text, cursor, to_insert);
+}
+
+/// The selected substring, or `None` when nothing is selected.
+#[must_use]
+pub fn selected_text(text: &str, cursor: &TextCursor) -> Option<String> {
+    let (start, end) = cursor.selection()?;
+    let chars: Vec<char> = text.chars().collect();
+    let end = end.min(chars.len());
+    let start = start.min(end);
+    Some(chars[start..end].iter().collect())
+}
+
+/// The motion target for a navigation key, or `None` when `key` is not one. A
+/// vertical move that cannot go further returns the unchanged `pos`, so a plain
+/// `Up`/`Down` still clears the selection.
+fn motion_target(
+    text: &str,
+    pos: usize,
+    key: KeyEvent,
+    mode: EditMode,
+) -> Option<usize> {
+    let multiline = matches!(mode, EditMode::Multiline { .. });
+    let target = match key.code {
+        KeyCode::Left => pos.saturating_sub(1),
+        KeyCode::Right => (pos + 1).min(text.chars().count()),
+        KeyCode::Home => line_start(text, pos, mode),
+        KeyCode::End => line_end(text, pos, mode),
+        KeyCode::Up if multiline => display_line_target(text, pos, mode, -1),
+        KeyCode::Down if multiline => display_line_target(text, pos, mode, 1),
+        _ => return None,
+    };
+    Some(target)
+}
+
+/// The caret index for `Home`: the value's start, or the display line's start.
+fn line_start(text: &str, pos: usize, mode: EditMode) -> usize {
+    let EditMode::Multiline { width } = mode else {
+        return 0;
+    };
+    let lines = textarea::wrap_offsets(text, width);
+    let (line, _) =
+        textarea::cursor_to_display(&lines, text.chars().count(), pos);
+    textarea::display_to_cursor(&lines, line, 0)
+}
+
+/// The caret index for `End`: the value's end, or the display line's end.
+fn line_end(text: &str, pos: usize, mode: EditMode) -> usize {
+    let EditMode::Multiline { width } = mode else {
+        return text.chars().count();
+    };
+    let lines = textarea::wrap_offsets(text, width);
+    let (line, _) =
+        textarea::cursor_to_display(&lines, text.chars().count(), pos);
+    let col = lines[line].0.chars().count();
+    textarea::display_to_cursor(&lines, line, col)
+}
+
+/// The caret index one display line up/down, keeping the column where possible;
+/// returns `pos` unchanged when there is no line in that direction.
+fn display_line_target(
+    text: &str,
+    pos: usize,
+    mode: EditMode,
+    delta: isize,
+) -> usize {
+    let EditMode::Multiline { width } = mode else {
+        return pos;
+    };
+    let lines = textarea::wrap_offsets(text, width);
+    let (line, col) =
+        textarea::cursor_to_display(&lines, text.chars().count(), pos);
+    let target = line as isize + delta;
+    if target < 0 || target >= lines.len() as isize {
+        return pos;
+    }
+    textarea::display_to_cursor(&lines, target as usize, col)
+}
+
+/// The marker standing in for the text scrolled off an edge.
 const SCROLL_MARKER: &str = "\u{2026}";
 
 /// How one caret-carrying line is drawn: the visible `width` in display
 /// columns, the style every unhighlighted char takes, whether the block caret
-/// shows, and whether a scrolled-off head is marked with [`SCROLL_MARKER`].
+/// shows, and whether a clipped head/tail is marked with [`SCROLL_MARKER`].
 #[derive(Debug, Clone, Copy)]
-struct LineView {
+struct LineView<'a> {
     width: usize,
     base: Style,
+    content: Option<&'a [Style]>,
     caret: bool,
-    marker: bool,
+    head_marker: bool,
+    tail_marker: bool,
 }
 
-impl LineView {
+impl<'a> LineView<'a> {
     /// A field line: filled with `base`, caret only while focused. It signals
-    /// its overflow through the filled strip, so it carries no marker.
+    /// its overflow through the filled strip, so it carries no markers.
     fn field(width: usize, base: Style, focused: bool) -> Self {
         Self {
             width,
             base,
+            content: None,
             caret: focused,
-            marker: false,
+            head_marker: false,
+            tail_marker: false,
         }
     }
 
@@ -276,10 +576,164 @@ impl LineView {
         Self {
             width,
             base: Style::default(),
+            content: None,
             caret: true,
-            marker: true,
+            head_marker: true,
+            tail_marker: false,
         }
     }
+
+    /// An embedded line that marks **both** clipped ends, painted on `base`
+    /// with an optional per-character overlay.
+    fn embedded(
+        width: usize,
+        base: Style,
+        content: Option<&'a [Style]>,
+    ) -> Self {
+        Self {
+            width,
+            base,
+            content,
+            caret: true,
+            head_marker: true,
+            tail_marker: true,
+        }
+    }
+}
+
+/// The paint of one already-windowed line: where the caret and selection sit,
+/// the style every unhighlighted cell takes, and an optional per-character
+/// style overlay aligned to `visible`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LinePaint<'a> {
+    /// The caret column and selection range, in line-local columns.
+    pub caret: LineCaret,
+    /// The style every unhighlighted cell takes.
+    pub base: Style,
+    /// A per-character style overlay, patched onto `base` before the caret and
+    /// selection backgrounds compose on top. Aligned to `visible`'s characters.
+    pub content: Option<&'a [Style]>,
+}
+
+/// Paints one **already-windowed** line: the selection background, the block
+/// caret and, where given, a per-character style overlay.
+///
+/// The caret cell wins over the selection so the two stay distinct, and a caret
+/// sitting past the last character becomes a trailing block. Runs of equal style
+/// are coalesced into one [`Span`].
+///
+/// This is the single source of caret/selection painting. A caller that lays out
+/// its own text - a wrapped multiline box - maps the global caret into
+/// line-local columns and calls this directly; a single scrolled line goes
+/// through [`scrolled_line_spans`] instead.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::input::{LineCaret, LinePaint, line_spans};
+/// use ratada::theme::{ColorOverrides, Palette, ThemeRegistry};
+///
+/// let base = ThemeRegistry::builtin().resolve("default");
+/// let palette = Palette::resolve(base, &ColorOverrides::default());
+/// let paint = LinePaint {
+///     caret: LineCaret { cursor: Some(2), selection: None },
+///     ..LinePaint::default()
+/// };
+/// // "ab" | the caret cell "c" | "d"
+/// assert_eq!(line_spans("abcd", paint, &palette).len(), 3);
+/// ```
+#[must_use]
+pub fn line_spans(
+    visible: &str,
+    paint: LinePaint<'_>,
+    palette: &Palette,
+) -> Vec<Span<'static>> {
+    let chars: Vec<char> = visible.chars().collect();
+    let cursor_style = style::cursor(palette).fg(Color::Black);
+    let selection_style = style::bg(palette.selection);
+
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut run = String::new();
+    let mut run_style = paint.base;
+    for (index, ch) in chars.iter().enumerate() {
+        let cell_base = match paint.content.and_then(|over| over.get(index)) {
+            Some(over) => paint.base.patch(*over),
+            None => paint.base,
+        };
+        let style = cell_style(
+            index,
+            paint.caret,
+            cell_base,
+            cursor_style,
+            selection_style,
+        );
+        if !run.is_empty() && style != run_style {
+            spans.push(Span::styled(std::mem::take(&mut run), run_style));
+        }
+        if run.is_empty() {
+            run_style = style;
+        }
+        run.push(*ch);
+    }
+    if !run.is_empty() {
+        spans.push(Span::styled(run, run_style));
+    }
+    if paint.caret.cursor == Some(chars.len()) {
+        spans.push(Span::styled(" ".to_string(), cursor_style));
+    }
+    spans
+}
+
+/// The style of one rendered cell: the caret cell, a selected cell, or `base`.
+fn cell_style(
+    index: usize,
+    caret: LineCaret,
+    base: Style,
+    cursor_style: Style,
+    selection_style: Style,
+) -> Style {
+    if caret.cursor == Some(index) {
+        return base.patch(cursor_style);
+    }
+    if let Some((start, end)) = caret.selection
+        && index >= start
+        && index < end
+    {
+        return base.patch(selection_style);
+    }
+    base
+}
+
+/// How a scrolled single line is painted: the caret, the visible `width` in
+/// display columns, the base style and an optional per-character overlay.
+#[derive(Debug, Clone, Copy)]
+pub struct ScrollPaint<'a> {
+    /// The caret and selection over the whole value.
+    pub cursor: TextCursor,
+    /// The visible width in display columns.
+    pub width: usize,
+    /// The style every unhighlighted cell takes.
+    pub base: Style,
+    /// A per-character style overlay aligned to the whole value; the visible
+    /// window slices it to match.
+    pub content: Option<&'a [Style]>,
+}
+
+/// Paints `value` as a single line of at most `paint.width` display columns,
+/// scrolling to keep the caret visible and marking **both** clipped ends with a
+/// `…`.
+///
+/// Use this for a value embedded in a larger layout (a form field's cell, a
+/// list row). A boxed input field pads to its width instead and goes through
+/// [`InputField::caret_spans`]; a bare query line uses [`query_spans`].
+#[must_use]
+pub fn scrolled_line_spans(
+    value: &str,
+    paint: ScrollPaint<'_>,
+    palette: &Palette,
+) -> Vec<Span<'static>> {
+    let view = LineView::embedded(paint.width, paint.base, paint.content);
+    caret_spans(value, &paint.cursor, palette, view).0
 }
 
 /// Renders `text` as a single line that scrolls horizontally to keep the caret
@@ -323,35 +777,48 @@ pub(crate) fn render_line(
 ///
 /// let base = ThemeRegistry::builtin().resolve("default");
 /// let palette = Palette::resolve(base, &ColorOverrides::default());
-/// // The trailing span is the caret sitting past the last char.
+/// // Equally styled characters coalesce into one span; the trailing span is
+/// // the caret sitting past the last char.
 /// let spans = query_spans("src", &palette, 20);
-/// assert_eq!(spans.len(), 4);
+/// assert_eq!(spans.len(), 2);
 /// ```
 pub fn query_spans(
     text: &str,
     palette: &Palette,
     width: usize,
 ) -> Vec<Span<'static>> {
-    let cursor = TextCursor::at_end(text);
+    query_spans_at(text, TextCursor::at_end(text), palette, width)
+}
+
+/// Like [`query_spans`], but the caret sits wherever `cursor` says and its
+/// selection is painted.
+///
+/// Use this for a filter or search line that keeps its own movable caret; pass
+/// [`TextCursor::at_end`] to get [`query_spans`]' append-only behaviour.
+#[must_use]
+pub fn query_spans_at(
+    text: &str,
+    cursor: TextCursor,
+    palette: &Palette,
+    width: usize,
+) -> Vec<Span<'static>> {
     caret_spans(text, &cursor, palette, LineView::flat(width)).0
 }
 
 /// The visible slice of `text`, scrolled so the caret stays inside `view.width`
-/// display columns. Returns the spans and the columns they occupy. The single
-/// source of caret rendering for both the field and the flat line.
+/// display columns. Returns the spans and the columns they occupy.
+///
+/// Windowing lives here; the per-cell painting is [`line_spans`]'.
 fn caret_spans(
     text: &str,
     cursor: &TextCursor,
     palette: &Palette,
-    view: LineView,
+    view: LineView<'_>,
 ) -> (Vec<Span<'static>>, usize) {
     let chars: Vec<char> = text.chars().collect();
     let len = chars.len();
     let pos = cursor.pos.min(len);
     let width = view.width.max(1);
-    let selection = cursor.selection();
-    let cursor_style = style::cursor(palette).fg(Color::Black);
-    let selection_style = style::bg(palette.selection);
 
     // Display columns before each char index, so scrolling and the visible
     // window are measured in columns (wide glyphs count as two), not chars.
@@ -361,47 +828,98 @@ fn caret_spans(
     for index in 0..len {
         column_at[index + 1] = column_at[index] + widths[index];
     }
-    let caret_column = column_at[pos];
 
-    // The marker eats a column, which can push the window further right, so the
-    // start is resolved once to learn whether the head scrolls off at all.
-    let mut start = scroll_start(&column_at, caret_column, width);
-    let marked = view.marker && start > 0 && width > 1;
-    if marked {
-        start = scroll_start(&column_at, caret_column, width - 1);
-    }
+    let (start, end, head, tail) = window(&column_at, pos, width, view);
 
+    let marker_style = style::secondary(palette);
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut used = 0usize;
-    if marked {
-        spans.push(Span::styled(SCROLL_MARKER, style::secondary(palette)));
+    if head {
+        spans.push(Span::styled(SCROLL_MARKER, marker_style));
         used += 1;
     }
-    let mut index = start;
-    while index < len {
-        let char_width = widths[index];
-        if used + char_width > width {
-            break;
-        }
-        let mut style = view.base;
-        if let Some((from, to)) = selection
-            && index >= from
-            && index < to
-        {
-            style = selection_style;
-        }
-        if view.caret && index == pos {
-            style = cursor_style;
-        }
-        spans.push(Span::styled(chars[index].to_string(), style));
-        used += char_width;
-        index += 1;
+
+    let visible: String = chars[start..end].iter().collect();
+    let caret_col = (view.caret && pos >= start && pos <= end)
+        .then(|| pos.saturating_sub(start));
+    let selection = cursor
+        .selection()
+        .and_then(|(from, to)| intersect(from, to, start, end))
+        .map(|(from, to)| (from - start, to - start));
+    let paint = LinePaint {
+        caret: LineCaret {
+            cursor: caret_col,
+            selection,
+        },
+        base: view.base,
+        content: view.content.map(|over| &over[start..end.min(over.len())]),
+    };
+    spans.extend(line_spans(&visible, paint, palette));
+    used += column_at[end] - column_at[start];
+    if caret_col == Some(end - start) {
+        used += 1; // the trailing block caret
     }
-    if view.caret && pos >= len && used < width {
-        spans.push(Span::styled(" ".to_string(), cursor_style));
+
+    if tail {
+        spans.push(Span::styled(SCROLL_MARKER, marker_style));
         used += 1;
     }
     (spans, used)
+}
+
+/// The visible char range `[start, end)` plus whether a head/tail `…` marker is
+/// needed, for a caret at `pos` in a window of `width` display columns.
+///
+/// Each marker eats a column, which can push the window further along, so the
+/// three are resolved together by iterating to a fixed point. A marker is only
+/// taken while [`afford`] leaves the text a column, so the whole line - markers,
+/// characters and the block caret - never exceeds `width`.
+fn window(
+    column_at: &[usize],
+    pos: usize,
+    width: usize,
+    view: LineView<'_>,
+) -> (usize, usize, bool, bool) {
+    let len = column_at.len() - 1;
+    let caret_column = column_at[pos];
+    let (mut head, mut tail) = (false, false);
+    loop {
+        // `afford` keeps at least one column, so `avail` is never zero.
+        let avail = width - usize::from(head) - usize::from(tail);
+        let start = scroll_start(column_at, caret_column, avail);
+        // Fill the window with whole characters. `scroll_start` guarantees the
+        // caret's column lies within `avail - 1` of `start`, so a caret sitting
+        // past the last visible character always has room for its own cell.
+        let mut end = start;
+        while end < len && column_at[end + 1] - column_at[start] <= avail {
+            end += 1;
+        }
+        let next = afford(
+            width,
+            view.head_marker && start > 0,
+            view.tail_marker && end < len,
+        );
+        if next == (head, tail) {
+            return (start, end, head, tail);
+        }
+        (head, tail) = next;
+    }
+}
+
+/// Drops the markers a `width`-column line cannot pay for, tail first: the text
+/// and its caret always keep at least one column.
+fn afford(width: usize, head: bool, tail: bool) -> (bool, bool) {
+    let (mut head, mut tail) = (head, tail);
+    while usize::from(head) + usize::from(tail) + 1 > width {
+        if tail {
+            tail = false;
+        } else if head {
+            head = false;
+        } else {
+            break;
+        }
+    }
+    (head, tail)
 }
 
 /// The first char index to draw so that `caret_column` stays inside a window of
@@ -550,6 +1068,7 @@ fn paste_filtered(
 #[cfg(test)]
 mod tests {
     use crossterm::event::KeyCode;
+    use ratatui::style::Modifier;
     use unicode_width::UnicodeWidthStr;
 
     use super::*;
@@ -557,6 +1076,343 @@ mod tests {
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL)
+    }
+
+    /// `AltGr`, as crossterm reports it on a German keyboard.
+    fn altgr(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL | KeyModifiers::ALT)
+    }
+
+    fn shift(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::SHIFT)
+    }
+
+    /// Applies one key in the given mode and returns the new `(text, cursor)`.
+    fn edit(
+        text: &str,
+        cursor: TextCursor,
+        key: KeyEvent,
+        mode: EditMode,
+    ) -> (String, TextCursor) {
+        let mut text = text.to_string();
+        let mut cursor = cursor;
+        apply_edit_key(&mut text, &mut cursor, key, mode, None);
+        (text, cursor)
+    }
+
+    #[test]
+    fn ctrl_u_and_ctrl_k_delete_before_and_after_the_caret() {
+        let single = EditMode::SingleLine;
+        let (text, cursor) = edit(
+            "abcdef",
+            TextCursor::at(3),
+            ctrl(KeyCode::Char('u')),
+            single,
+        );
+        assert_eq!((text.as_str(), cursor.pos), ("def", 0));
+        let (text, cursor) = edit(
+            "abcdef",
+            TextCursor::at(3),
+            ctrl(KeyCode::Char('k')),
+            single,
+        );
+        assert_eq!((text.as_str(), cursor.pos), ("abc", 3));
+        // Ctrl+U at the start is a no-op.
+        let (text, cursor) =
+            edit("abc", TextCursor::at(0), ctrl(KeyCode::Char('u')), single);
+        assert_eq!((text.as_str(), cursor.pos), ("abc", 0));
+    }
+
+    #[test]
+    fn ctrl_u_and_ctrl_k_act_on_the_display_line_when_multiline() {
+        // "alpha beta gamma" word-wraps to "alpha beta" / "gamma" at width 11.
+        let mode = EditMode::Multiline { width: 11 };
+        let caret = TextCursor::at(13); // inside "gamma"
+        let (text, cursor) =
+            edit("alpha beta gamma", caret, ctrl(KeyCode::Char('k')), mode);
+        assert_eq!((text.as_str(), cursor.pos), ("alpha beta ga", 13));
+        let (text, cursor) =
+            edit("alpha beta gamma", caret, ctrl(KeyCode::Char('u')), mode);
+        assert_eq!((text.as_str(), cursor.pos), ("alpha beta mma", 11));
+    }
+
+    #[test]
+    fn multiline_home_end_and_vertical_move_on_display_lines() {
+        let mode = EditMode::Multiline { width: 11 };
+        let text = "alpha beta gamma";
+        let caret = TextCursor::at(13); // line 1, column 2
+        assert_eq!(edit(text, caret, press(KeyCode::Home), mode).1.pos, 11);
+        assert_eq!(edit(text, caret, press(KeyCode::End), mode).1.pos, 16);
+        // Up keeps the column, landing on the first display line.
+        assert_eq!(edit(text, caret, press(KeyCode::Up), mode).1.pos, 2);
+        // Shift+Up extends instead of moving.
+        let (_, cursor) = edit(text, caret, shift(KeyCode::Up), mode);
+        assert_eq!(cursor.selection(), Some((2, 13)));
+    }
+
+    #[test]
+    fn enter_inserts_a_newline_only_in_multiline() {
+        let (text, _) = edit(
+            "ab",
+            TextCursor::at(2),
+            press(KeyCode::Enter),
+            EditMode::Multiline { width: 8 },
+        );
+        assert_eq!(text.as_str(), "ab\n");
+        // In a single line the caller owns `Enter`, so it is not consumed.
+        let mut text = String::from("ab");
+        let mut cursor = TextCursor::at(2);
+        let consumed = apply_edit_key(
+            &mut text,
+            &mut cursor,
+            press(KeyCode::Enter),
+            EditMode::SingleLine,
+            None,
+        );
+        assert!(!consumed);
+        assert_eq!(text.as_str(), "ab");
+    }
+
+    #[test]
+    fn replace_selection_swaps_the_range_and_clears_the_anchor() {
+        let mut text = String::from("abcd");
+        let mut cursor = TextCursor {
+            pos: 3,
+            anchor: Some(1),
+        };
+        replace_selection(&mut text, &mut cursor, "X");
+        assert_eq!((text.as_str(), cursor.pos), ("aXd", 2));
+        assert_eq!(cursor.selection(), None);
+    }
+
+    #[test]
+    fn selected_text_reads_the_ordered_range() {
+        let cursor = TextCursor {
+            pos: 13,
+            anchor: Some(6),
+        };
+        assert_eq!(
+            selected_text("alpha beta gamma", &cursor).as_deref(),
+            Some("beta ga"),
+        );
+        assert_eq!(selected_text("abc", &TextCursor::at(1)), None);
+    }
+
+    #[test]
+    fn intersect_clips_to_the_window() {
+        assert_eq!(intersect(0, 2, 5, 9), None);
+        assert_eq!(intersect(10, 14, 5, 9), None);
+        assert_eq!(intersect(3, 7, 5, 9), Some((5, 7)));
+        assert_eq!(intersect(7, 12, 5, 9), Some((7, 9)));
+    }
+
+    #[test]
+    fn line_spans_paint_the_caret_and_selection_distinctly() {
+        let palette = palette();
+        let paint = LinePaint {
+            caret: LineCaret {
+                cursor: Some(2),
+                selection: Some((1, 3)),
+            },
+            ..LinePaint::default()
+        };
+        let spans = line_spans("abcd", paint, &palette);
+        // The caret cell (col 2) carries the cursor bg; the other selected cell
+        // (col 1) carries the selection bg - two distinct runs.
+        let cursor_bg = Some(style::to_ratatui(palette.cursor));
+        let selection_bg = Some(style::to_ratatui(palette.selection));
+        let caret_run = spans.iter().find(|span| span.style.bg == cursor_bg);
+        let selected = spans.iter().find(|span| span.style.bg == selection_bg);
+        assert_eq!(caret_run.map(|span| span.content.as_ref()), Some("c"));
+        assert_eq!(selected.map(|span| span.content.as_ref()), Some("b"));
+    }
+
+    #[test]
+    fn line_spans_patch_a_per_character_overlay_under_the_caret() {
+        let palette = palette();
+        let bold = Style::default().add_modifier(Modifier::BOLD);
+        let overlay = [bold, bold, Style::default(), Style::default()];
+        let paint = LinePaint {
+            caret: LineCaret {
+                cursor: Some(0),
+                selection: None,
+            },
+            content: Some(&overlay),
+            ..LinePaint::default()
+        };
+        let spans = line_spans("abcd", paint, &palette);
+        // The caret cell keeps the overlay's bold *and* takes the cursor bg.
+        let caret = &spans[0];
+        assert_eq!(caret.content.as_ref(), "a");
+        assert!(caret.style.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(caret.style.bg, Some(style::to_ratatui(palette.cursor)));
+        // The un-overlaid tail stays unstyled and coalesces into one run.
+        assert_eq!(spans.last().map(|s| s.content.as_ref()), Some("cd"));
+    }
+
+    /// Every text/width/caret/marker combination worth worrying about.
+    fn line_views(width: usize) -> [LineView<'static>; 4] {
+        let base = Style::default();
+        let of = |caret, head_marker, tail_marker| LineView {
+            width,
+            base,
+            content: None,
+            caret,
+            head_marker,
+            tail_marker,
+        };
+        [
+            of(true, false, false),
+            of(true, true, false),
+            of(true, true, true),
+            of(false, true, true),
+        ]
+    }
+
+    #[test]
+    fn a_rendered_line_never_exceeds_its_width() {
+        // A marker costs a column, so a narrow window must drop it rather than
+        // overflow: at width 2 there is no room for a head *and* a tail `…`.
+        let palette = palette();
+        let texts = ["", "a", "abcdefghij", "世界a", "hello world foo"];
+        for text in texts {
+            for width in 1..=14 {
+                for pos in 0..=text.chars().count() {
+                    for view in line_views(width) {
+                        let cursor = TextCursor::at(pos);
+                        let (spans, used) =
+                            caret_spans(text, &cursor, &palette, view);
+                        let cols = columns(&spans);
+                        assert!(
+                            cols <= width,
+                            "{text:?} w={width} pos={pos} drew {cols}",
+                        );
+                        assert_eq!(cols, used, "{text:?} w={width} pos={pos}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_focused_caret_is_always_inside_the_window() {
+        let palette = palette();
+        let cursor_bg = Some(style::to_ratatui(palette.cursor));
+        for text in ["abcdefghij", "a世b界c", "hello world"] {
+            for width in 2..=14 {
+                for pos in 0..=text.chars().count() {
+                    let view =
+                        LineView::embedded(width, Style::default(), None);
+                    let cursor = TextCursor::at(pos);
+                    let (spans, _) = caret_spans(text, &cursor, &palette, view);
+                    assert!(
+                        spans.iter().any(|span| span.style.bg == cursor_bg),
+                        "caret lost: {text:?} w={width} pos={pos}",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn scrolled_line_spans_mark_both_clipped_ends() {
+        let palette = palette();
+        // A caret in the middle of a long value clips head *and* tail.
+        let paint = ScrollPaint {
+            cursor: TextCursor::at(5),
+            width: 5,
+            base: Style::default(),
+            content: None,
+        };
+        let spans = scrolled_line_spans("abcdefghij", paint, &palette);
+        let text: String =
+            spans.iter().map(|span| span.content.as_ref()).collect();
+        assert!(text.starts_with(SCROLL_MARKER), "{text:?}");
+        assert!(text.ends_with(SCROLL_MARKER), "{text:?}");
+        assert_eq!(columns(&spans), 5);
+    }
+
+    #[test]
+    fn scrolled_line_spans_paint_only_the_visible_selection_slice() {
+        let palette = palette();
+        let paint = ScrollPaint {
+            cursor: TextCursor {
+                pos: 9,
+                anchor: Some(0),
+            },
+            width: 5,
+            base: Style::default(),
+            content: None,
+        };
+        let spans = scrolled_line_spans("abcdefghij", paint, &palette);
+        let selection_bg = Some(style::to_ratatui(palette.selection));
+        let selected: String = spans
+            .iter()
+            .filter(|span| span.style.bg == selection_bg)
+            .map(|span| span.content.as_ref())
+            .collect();
+        // Only a slice is visible, never the whole 10-char selection.
+        assert!(!selected.is_empty());
+        assert!(selected.chars().count() < 10, "{selected:?}");
+        assert!(columns(&spans) <= 5);
+    }
+
+    #[test]
+    fn query_spans_at_honours_a_mid_string_caret_and_selection() {
+        let palette = palette();
+        let cursor = TextCursor {
+            pos: 1,
+            anchor: Some(3),
+        };
+        let spans = query_spans_at("abcd", cursor, &palette, 20);
+        let cursor_bg = Some(style::to_ratatui(palette.cursor));
+        let caret = spans.iter().find(|span| span.style.bg == cursor_bg);
+        assert_eq!(caret.map(|span| span.content.as_ref()), Some("b"));
+        let selection_bg = Some(style::to_ratatui(palette.selection));
+        let selected: String = spans
+            .iter()
+            .filter(|span| span.style.bg == selection_bg)
+            .map(|span| span.content.as_ref())
+            .collect();
+        assert_eq!(selected, "c");
+    }
+
+    #[test]
+    fn is_command_requires_control_without_alt() {
+        assert!(is_command(ctrl(KeyCode::Char('s'))));
+        assert!(!is_command(altgr(KeyCode::Char('\\'))));
+        assert!(!is_command(press(KeyCode::Char('a'))));
+    }
+
+    #[test]
+    fn altgr_char_is_typed_not_swallowed() {
+        // German keyboards emit `\` as AltGr (Control + Alt); it must insert.
+        let mut text = String::from("C:");
+        let mut cursor = TextCursor::at_end(&text);
+        assert!(apply_edit_key(
+            &mut text,
+            &mut cursor,
+            altgr(KeyCode::Char('\\')),
+            EditMode::SingleLine,
+            None,
+        ));
+        assert_eq!((text.as_str(), cursor.pos), ("C:\\", 3));
+
+        // A genuine Ctrl chord still does not type a character.
+        let mut text = String::from("C:");
+        let mut cursor = TextCursor::at_end(&text);
+        apply_edit_key(
+            &mut text,
+            &mut cursor,
+            ctrl(KeyCode::Char('s')),
+            EditMode::SingleLine,
+            None,
+        );
+        assert_eq!(text.as_str(), "C:");
     }
 
     fn palette() -> Palette {

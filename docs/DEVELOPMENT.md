@@ -55,8 +55,9 @@ src/
   tabs.rs, pager.rs, gauge.rs, spinner.rs, toast.rs
 
   # pickers / modals
-  modal.rs          confirm / input(+wide) / select(+styled,reorderable) /
-                    multi_select(+styled) / number_input(+bounded) / message
+  modal.rs          confirm(+default) / input(+wide) /
+                    select(+styled,reorderable) / multi_select(+styled) /
+                    number_input(+bounded) / message
   form.rs           schema-driven form (text/multiline/bool/choice/date)
   finder.rs         fuzzy picker; fuzzy.rs: nucleo score + highlight
   color_picker.rs, swatches.rs, date_picker.rs, date_range_picker.rs,
@@ -133,9 +134,11 @@ than reinventing them:
   `ThemeColors::KEYS`, never against `Palette::KEYS`. The palette carries derived
   colors a theme cannot contribute (`selection`, `cursor`, `input_bg`, …);
   accepting them there drops the value without a word.
-- **Text editing:** `input::TextCursor` + the crate-internal `apply_edit_key`
-  are the shared caret/edit core (reused by `textarea`); widths are measured
-  with `unicode-width` (wide glyphs count as 2).
+- **Text editing:** `input::TextCursor` + the public `input::apply_edit_key`
+  are the shared caret/edit core. `EditMode` picks the geometry: `InputField`
+  drives it with `SingleLine`, `textarea::TextArea` with `Multiline`, so both
+  carry one set of shortcuts. Widths are measured with `unicode-width` (wide
+  glyphs count as 2).
 - **Logging:** diagnostics go through the `log` facade, sparingly. `error!` for
   an unrecoverable, otherwise-silent failure (a failed terminal restore in
   `Drop`); `warn!` for a noticeable degradation (a missing clipboard tool, an

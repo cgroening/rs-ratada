@@ -426,12 +426,22 @@ werden, wo sie passen.
   Fläche zu niedrig, um die Zeile zu entbehren, gewinnt der Inhalt.
 - **Scroll-Offset folgt dem Cursor:** Liste scrollt erst am Rand, nicht
   seitenweise pro Schritt.
+- **Box mit eigenem Umbruch:** Ein Widget, das seinen Text selbst umbricht, hat
+  keine Spalte für eine `Scrollbar` über einem eigenen `Rect` übrig. Es holt
+  sich die Thumb-/Track-Zelle pro sichtbarer Zeile über `scroll::row_indicator`
+  und hängt sie an die `Line`, statt den Inhalt zu überzeichnen.
 
 **Modals & Widgets**
 
-- **Wiederverwendbare Modal-Widgets:** gemeinsamer Satz – `confirm`, `select`,
-  `multi_select`, `number_input`, `message` – nicht pro Aufrufstelle nachgebaut.
-  Destruktive Aktionen gehen über `confirm`.
+- **Wiederverwendbare Modal-Widgets:** gemeinsamer Satz – `confirm`,
+  `confirm_default`, `select`, `multi_select`, `number_input`, `message` – nicht
+  pro Aufrufstelle nachgebaut.
+- **Destruktive Aktionen sind per Default abschlägig:** Eine gewöhnliche Ja/Nein-
+  Frage geht über `confirm`, wo `Enter` bestätigt. Löschen und andere nicht
+  umkehrbare Aktionen gehen über `confirm_default` mit `Question::declining` –
+  dort antwortet ein versehentliches `Enter` "nein". `y`/`n` antworten immer
+  explizit, `Esc` lehnt ab; die Footer-Hint bindet `enter` an die Antwort, die
+  sie tatsächlich gibt.
 - **Kalender-Date-Picker (optional):** gemeinsames Kalender-Modal mit
   einheitlichem Look/Shortcuts.
 - **Fuzzy-Matching:** Filter- und Auswahl-Picker matchen fuzzy (`fuzzy`, backed
@@ -451,17 +461,27 @@ werden, wo sie passen.
 **Textfelder**
 
 - **Vollständige Editier-Shortcuts:** ein- und mehrzeilige Felder teilen
-  denselben Satz Shortcuts über die geteilte `text_edit`-Logik (ein Caret mit
-  optionalem Selektions-Anker) – einzige Quelle (SSOT/DRY). Der Editor-Kern
-  behandelt nur Editier-Tasten; Steuertasten des Feldes (`Esc`, bestätigendes
-  `Enter`, andere Chords) gehören dem Aufrufer.
+  denselben Satz Shortcuts über den geteilten Editier-Kern
+  `input::apply_edit_key` (ein Caret mit optionalem Selektions-Anker) – einzige
+  Quelle (SSOT/DRY). `input::EditMode` wählt die Geometrie: `SingleLine` treibt
+  `InputField`, `Multiline { width }` die `TextArea`. Der Editor-Kern behandelt
+  nur Editier-Tasten; Steuertasten des Feldes (`Esc`, bestätigendes `Enter`,
+  andere Chords) gehören dem Aufrufer.
   - **Bewegung:** Pfeile zeichenweise; `Home`/`End`; `Up`/`Down` nur mehrzeilig.
   - **Selektion:** `Shift`+Bewegung erweitert, ohne `Shift` hebt auf; `Ctrl+A`
     alles.
-  - **Löschen:** `Backspace`/`Delete`; `Ctrl+U`/`Ctrl+K` bis Zeilenanfang/-ende.
+  - **Löschen:** `Backspace`/`Delete`; `Ctrl+U`/`Ctrl+K` bis Zeilenanfang/-ende
+    (mehrzeilig: bis Anfang/Ende der **Display**-Zeile, nicht der logischen).
   - **Zwischenablage:** `Ctrl+C`/`X`/`V`; Tippen/Einfügen ersetzen Selektion.
+    Ein Command-Chord ist `Control` **ohne** `Alt` (`input::is_command`) – sonst
+    verschluckt ein Feld die `AltGr`-Zeichen, die crossterm als `Control+Alt`
+    meldet.
   - **Rendering:** Block-Cursor (Farbe optional via Config); einzeilig
-    horizontal scrollend mit `…`-Clipping, mehrzeilig wortweise umgebrochen.
+    horizontal scrollend mit `…`-Clipping, mehrzeilig wortweise umgebrochen
+    (weicher Umbruch am letzten passenden Leerzeichen, überlange Wörter hart).
+  - **Einbettbar:** Ein Host, der sein Text-Layout selbst macht, nutzt
+    `input::line_spans` / `scrolled_line_spans` / `query_spans_at` samt
+    `LinePaint`-Stil-Overlay, statt die Caret-Logik nachzubauen.
 
 **Darstellung**
 

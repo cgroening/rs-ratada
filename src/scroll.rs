@@ -1,8 +1,14 @@
 //! Scrollbar rendering (vertical and horizontal).
+//!
+//! [`render_scrollbar`] owns a whole [`Rect`] and is the usual way in. A box
+//! that wraps its own text has no spare column to give away: [`row_indicator`]
+//! hands back the thumb/track cell for one visual row, to ride along inside a
+//! `Line` instead of overdrawing the content.
 
 use ratatui::{
     Frame,
     layout::Rect,
+    text::Span,
     widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
@@ -40,6 +46,63 @@ pub fn render_hscrollbar(
     );
 }
 
+/// The thumb and track glyphs of an inline row indicator.
+const THUMB: &str = "\u{2588}";
+const TRACK: &str = "\u{2502}";
+
+/// The right-edge indicator cell for one visual `row` of a scrollable box: the
+/// thumb where `row` maps onto the current offset, a track elsewhere, and a
+/// blank when the content fits.
+///
+/// A [`Scrollbar`] owns a whole [`Rect`]; a box that word-wraps its own text
+/// instead builds each row as a [`Line`](ratatui::text::Line) and appends this
+/// cell to it, so the indicator rides along with the content rather than
+/// overdrawing it.
+///
+/// `row` is the visual row, `view.offset` the first content row shown and
+/// `view.viewport` the number of rows on screen.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::nav::ScrollView;
+/// use ratada::scroll::row_indicator;
+/// use ratada::theme::{
+///     ColorOverrides, GlyphVariant, Glyphs, Palette, Skin, ThemeRegistry,
+/// };
+///
+/// let base = ThemeRegistry::builtin().resolve("default");
+/// let palette = Palette::resolve(base, &ColorOverrides::default());
+/// let skin = Skin::new(palette, Glyphs::new(GlyphVariant::Unicode));
+///
+/// let fits = ScrollView { total: 2, offset: 0, viewport: 4 };
+/// assert_eq!(row_indicator(0, fits, &skin).content.as_ref(), " ");
+///
+/// // Scrolled to the top: the thumb sits on the first row.
+/// let view = ScrollView { total: 10, offset: 0, viewport: 4 };
+/// assert_eq!(row_indicator(0, view, &skin).content.as_ref(), "\u{2588}");
+/// assert_eq!(row_indicator(1, view, &skin).content.as_ref(), "\u{2502}");
+/// ```
+#[must_use]
+pub fn row_indicator(
+    row: usize,
+    view: ScrollView,
+    skin: &Skin,
+) -> Span<'static> {
+    if scrollable_length(view).is_none() {
+        return Span::raw(" ".to_string());
+    }
+    let rows = view.viewport.max(1);
+    // Map the thumb across the visible rows proportionally to the offset.
+    let max_offset = view.total.saturating_sub(rows).max(1);
+    let thumb = view.offset * rows.saturating_sub(1) / max_offset;
+    if row == thumb {
+        Span::styled(THUMB.to_string(), style::fg(skin.palette.foreground_dim))
+    } else {
+        Span::styled(TRACK.to_string(), style::fg(skin.palette.border))
+    }
+}
+
 /// The scrollable range for a `view`, or `None` when the content fits and no
 /// scrollbar should be drawn.
 ///
@@ -68,7 +131,11 @@ fn render(
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let mut state = ScrollbarState::new(content_length).position(view.offset);
+    // Without the viewport length ratatui draws a minimal thumb; feeding it
+    // sizes the thumb in proportion to how much of the content is on screen.
+    let mut state = ScrollbarState::new(content_length)
+        .viewport_content_length(view.viewport)
+        .position(view.offset);
     let scrollbar = Scrollbar::new(orientation)
         .begin_symbol(None)
         .end_symbol(None)

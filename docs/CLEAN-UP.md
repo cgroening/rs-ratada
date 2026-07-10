@@ -81,7 +81,7 @@ Der App-Rahmen: RAII-Guard und Event-Loop.
 
 ## Phase 6 – Text-Eingabe & Editieren (`input`, `textarea`, `autocomplete`, `clipboard`, `editor`)
 
-- [x] `input.rs` (**geteilter Editier-Kern**: `apply_edit_key`, `TextCursor`, `render_line`): SSOT/DRY der Editier-Shortcuts (ein Caret + optionaler Selektions-Anker). Kern behandelt nur Editier-Tasten, Steuertasten gehören dem Aufrufer; horizontales Scrollen mit `…`-Clipping; `unicode-width`-korrekte Caret-Position; Sichtbarkeit (`pub(crate)`) prüfen.
+- [x] `input.rs` (**geteilter Editier-Kern**: `apply_edit_key`, `TextCursor`, `render_line`): SSOT/DRY der Editier-Shortcuts (ein Caret + optionaler Selektions-Anker). Kern behandelt nur Editier-Tasten, Steuertasten gehören dem Aufrufer; horizontales Scrollen mit `…`-Clipping; `unicode-width`-korrekte Caret-Position. `apply_edit_key` ist inzwischen `pub` (mode-aware über `EditMode`), damit ein Host mit eigenem Layout dieselbe Caret-Logik nutzt statt sie nachzubauen.
 - [x] `textarea.rs`: mehrzeilig, teilt `input::TextCursor` – prüfen, dass die Editier-Logik nicht dupliziert ist; wortweiser Umbruch; Block-Cursor; `Up/Down` nur mehrzeilig.
 - [x] `autocomplete.rs`: Inline-Dropdown für Vorschläge; Navigation zyklisch über `nav`; Scrollbar über `scroll`.
 - [x] `clipboard.rs`: externe Tools über `Command` mit `.arg()`/`.args()` – **kein `sh -c` mit zusammengesetzten Strings** (§7.9 Command-Injection); Fehlerpfade kontrolliert.

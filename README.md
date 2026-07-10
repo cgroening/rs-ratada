@@ -19,10 +19,11 @@ palette and glyphs) that maps onto ratatui styles.
 
 - **Driver** – a `Tui` RAII terminal guard (raw mode + alternate screen) and a
   generic `run` loop over a `Screen` trait.
-- **Widgets** – modals (`confirm`, `input`, `input_wide`, `select`,
-  `multi_select`, `number_input`, `message`), forms, single- and multi-line text
-  editing with a shared editor core, autocomplete, tables, trees, selectable
-  lists, sectioned sidebars, tabs, pagers, gauges, spinners, toasts.
+- **Widgets** – modals (`confirm`, `confirm_default`, `input`, `input_wide`,
+  `select`, `multi_select`, `number_input`, `message`), forms, single- and
+  multi-line text editing with a shared editor core, autocomplete, tables,
+  trees, selectable lists, sectioned sidebars, tabs, pagers, gauges, spinners,
+  toasts.
 - **Pickers** – color, swatch, date, date-range, month, path (with an optional
   confinement root) and slider pickers.
 - **Overlays & chrome** – a fuzzy help overlay, a command palette, box framing,
