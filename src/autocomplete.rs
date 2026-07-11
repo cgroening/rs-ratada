@@ -7,7 +7,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
-    style::Style,
+    style::{Modifier, Style},
     text::{Line, Span},
 };
 
@@ -37,7 +37,13 @@ pub struct Autocomplete {
     overflow: usize,
     selected: Option<usize>,
     dismissed: bool,
-    empty_query: bool,
+    /// When set, an empty query lists every candidate instead of hiding the
+    /// dropdown (a "press the trigger to see all options" affordance).
+    open_on_empty: bool,
+    /// When set, the selected row renders as a bright, full-width accent bar
+    /// with a `▸` marker (for a menu-style popup); otherwise only its text is
+    /// tinted (the inline-suggestion look).
+    strong_highlight: bool,
 }
 
 impl Autocomplete {
@@ -50,22 +56,43 @@ impl Autocomplete {
             overflow: 0,
             selected: None,
             dismissed: true,
-            empty_query: true,
+            open_on_empty: false,
+            strong_highlight: false,
         }
     }
 
+    /// Makes the dropdown open on an empty query, listing every candidate (for a
+    /// trigger-to-open menu). Chainable on [`new`](Self::new).
+    #[must_use]
+    pub fn open_on_empty(mut self) -> Self {
+        self.open_on_empty = true;
+        self
+    }
+
+    /// Renders the selected row as a bright, full-width accent bar with a `▸`
+    /// marker (for a menu-style popup over a dark backdrop, where the plain
+    /// text-tinted highlight is hard to see). Chainable on [`new`](Self::new).
+    #[must_use]
+    pub fn strong_highlight(mut self) -> Self {
+        self.strong_highlight = true;
+        self
+    }
+
     /// Recomputes the matches for `query`: candidates that contain it
-    /// (case-insensitive) but are not exactly it, newest first, capped.
+    /// (case-insensitive) but are not exactly it, newest first, capped. An empty
+    /// query hides the dropdown unless [`open_on_empty`](Self::open_on_empty)
+    /// was set, in which case every candidate is listed with the first row
+    /// pre-highlighted (so `↑/↓` and `Enter` work as a menu straight away).
     pub fn refresh(&mut self, query: &str) {
         self.dismissed = false;
-        self.empty_query = query.trim().is_empty();
         let needle = query.trim().to_lowercase();
+        let empty = needle.is_empty();
         self.matches.clear();
         self.overflow = 0;
-        if !self.empty_query {
+        if !empty || self.open_on_empty {
             for (index, candidate) in self.candidates.iter().enumerate() {
                 let lower = candidate.to_lowercase();
-                if lower.contains(&needle) && lower != needle {
+                if empty || (lower.contains(&needle) && lower != needle) {
                     if self.matches.len() < MAX_SUGGESTIONS {
                         self.matches.push(index);
                     } else {
@@ -75,14 +102,17 @@ impl Autocomplete {
             }
         }
         self.selected = match self.selected {
+            // Keep a still-valid highlight (so navigation sticks across a
+            // refresh); a menu-style dropdown pre-selects the first row.
             Some(index) if index < self.matches.len() => Some(index),
+            _ if self.open_on_empty && !self.matches.is_empty() => Some(0),
             _ => None,
         };
     }
 
     /// Whether the dropdown is currently shown.
     pub fn is_open(&self) -> bool {
-        !self.dismissed && !self.empty_query && !self.matches.is_empty()
+        !self.dismissed && !self.matches.is_empty()
     }
 
     /// Interprets `key` against the dropdown state.
@@ -119,7 +149,9 @@ impl Autocomplete {
     }
 
     /// The rendered dropdown lines, each indented by `indent` columns; the
-    /// highlighted row uses the selection style. Empty when closed.
+    /// highlighted row uses the selection style. Empty when closed. In
+    /// [`strong_highlight`](Self::strong_highlight) mode `indent` is ignored and
+    /// the rows render as a full-width menu (see [`menu_lines`](Self::menu_lines)).
     pub fn lines(
         &self,
         palette: &Palette,
@@ -128,6 +160,9 @@ impl Autocomplete {
     ) -> Vec<Line<'static>> {
         if !self.is_open() {
             return Vec::new();
+        }
+        if self.strong_highlight {
+            return self.menu_lines(palette, base);
         }
         let pad = " ".repeat(indent);
         let mut lines: Vec<Line<'static>> = self
@@ -151,6 +186,58 @@ impl Autocomplete {
                 Span::raw(pad),
                 Span::styled(
                     format!("+{} more", self.overflow),
+                    style::secondary(palette),
+                ),
+            ]));
+        }
+        lines
+    }
+
+    /// Full-width menu rows: a 2-col marker column (`▸ ` on the selected row,
+    /// blanks otherwise) and each candidate padded to a common width, so the
+    /// selected row fills as a bright accent bar with dark bold text.
+    fn menu_lines(&self, palette: &Palette, base: Style) -> Vec<Line<'static>> {
+        const MARKER_SELECTED: &str = "\u{25b8} ";
+        const MARKER_NONE: &str = "  ";
+        let overflow_label =
+            (self.overflow > 0).then(|| format!("+{} more", self.overflow));
+        let width = self
+            .matches
+            .iter()
+            .map(|&candidate| self.candidates[candidate].chars().count())
+            .chain(overflow_label.iter().map(|label| label.chars().count()))
+            .max()
+            .unwrap_or(0);
+        let highlight = Style::default()
+            .bg(style::to_ratatui(palette.accent))
+            .fg(style::to_ratatui(palette.background))
+            .add_modifier(Modifier::BOLD);
+        let mut lines: Vec<Line<'static>> = self
+            .matches
+            .iter()
+            .enumerate()
+            .map(|(row, &candidate)| {
+                let text = &self.candidates[candidate];
+                let filler = " ".repeat(width - text.chars().count());
+                if Some(row) == self.selected {
+                    Line::from(Span::styled(
+                        format!("{MARKER_SELECTED}{text}{filler}"),
+                        highlight,
+                    ))
+                } else {
+                    Line::from(vec![
+                        Span::styled(MARKER_NONE, base),
+                        Span::styled(format!("{text}{filler}"), base),
+                    ])
+                }
+            })
+            .collect();
+        if let Some(label) = overflow_label {
+            let filler = " ".repeat(width - label.chars().count());
+            lines.push(Line::from(vec![
+                Span::styled(MARKER_NONE, base),
+                Span::styled(
+                    format!("{label}{filler}"),
                     style::secondary(palette),
                 ),
             ]));
@@ -222,6 +309,57 @@ mod tests {
         ac.refresh("Edeka");
         assert!(matched(&ac).is_empty());
         assert!(!ac.is_open());
+    }
+
+    #[test]
+    fn empty_query_hides_by_default_but_lists_all_when_open_on_empty() {
+        let mut plain = ac();
+        plain.refresh("");
+        assert!(!plain.is_open());
+
+        let mut menu = ac().open_on_empty();
+        menu.refresh("");
+        assert!(menu.is_open());
+        assert_eq!(matched(&menu).len(), 3);
+        // The first row is pre-highlighted, so Enter confirms it right away and
+        // arrows cycle from there.
+        assert_eq!(menu.selected, Some(0));
+        menu.on_key(key(KeyCode::Up)); // wraps 0 -> last
+        assert_eq!(menu.selected, Some(2));
+        assert!(matches!(
+            menu.on_key(key(KeyCode::Enter)),
+            AcOutcome::Accepted(_)
+        ));
+        // Typing still filters, and an exact match is still excluded.
+        menu.refresh("edeka");
+        assert!(matched(&menu).is_empty());
+    }
+
+    #[test]
+    fn strong_highlight_marks_and_fills_the_selected_row() {
+        use crate::theme::{ColorOverrides, ThemeRegistry};
+        let palette = Palette::resolve(
+            ThemeRegistry::builtin().resolve("default"),
+            &ColorOverrides::default(),
+        );
+        let mut menu =
+            Autocomplete::new(vec!["short".into(), "a longer entry".into()])
+                .open_on_empty()
+                .strong_highlight();
+        menu.refresh(""); // opens with the first row pre-selected
+        let lines = menu.lines(&palette, 0, Style::default());
+        let text = |row: usize| {
+            lines[row]
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>()
+        };
+        // The selected row carries the ▸ marker; the others a blank gutter.
+        assert!(text(0).starts_with("\u{25b8} "));
+        assert!(text(1).starts_with("  "));
+        // Rows are padded to a common width (a solid bar).
+        assert_eq!(text(0).chars().count(), text(1).chars().count());
     }
 
     #[test]
