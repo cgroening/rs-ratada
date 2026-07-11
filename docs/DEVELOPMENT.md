@@ -1,19 +1,12 @@
 # Development
 
-Developer notes for working on `ratada`. For a usage overview see
-[`README.md`](../README.md); for coding conventions see
-[`CLAUDE.md`](../CLAUDE.md); the authoritative API reference is the rustdoc
-(`cargo doc --open`, or [docs.rs/ratada](https://docs.rs/ratada)).
+Developer notes for working on `ratada`. For a usage overview see [`README.md`](../README.md); for coding conventions see [`CLAUDE.md`](../CLAUDE.md); the authoritative API reference is the rustdoc (`cargo doc --open`, or [docs.rs/ratada](https://docs.rs/ratada)).
 
-`ratada` is a reusable ratatui widget toolkit. It depends only on external
-crates (`ratatui`, `crossterm`, `unicode-width`, `nucleo-matcher`,
-`pulldown-cmark`, `chrono`, `log`, `serde`) and never on application types, so
-any host can build a TUI on it.
+`ratada` is a reusable ratatui widget toolkit. It depends only on external crates (`ratatui`, `crossterm`, `unicode-width`, `nucleo-matcher`, `pulldown-cmark`, `chrono`, `log`, `serde`) and never on application types, so any host can build a TUI on it.
 
 ## Project layout
 
-Widget modules sit flat at the crate root; the theming vocabulary is a
-submodule. Cross-module references use `super::`.
+Widget modules sit flat at the crate root; the theming vocabulary is a submodule. Cross-module references use `super::`.
 
 ```text
 src/
@@ -78,75 +71,21 @@ tests/
 
 ## Conventions (SSOT)
 
-This crate is the single source of truth for the TUI conventions in
-CLAUDE.md §7.10. When building a widget, reuse the shared building blocks rather
-than reinventing them:
+This crate is the single source of truth for the TUI conventions in CLAUDE.md §7.10. When building a widget, reuse the shared building blocks rather than reinventing them:
 
 - **Navigation:** `nav::cycle` (wrapping), `nav::keep_visible` (scroll offset).
-- **Scrollbar:** `scroll::render_scrollbar` – renders only on overflow and
-  skips empty areas; `list::render` already calls it, so list-backed widgets
-  (`tree`, `finder`, `help`, `path_picker`) get it for free.
-- **Framing:** `chrome::framed_decor` draws the rounded accent box with a
-  caption (top border) and badge (bottom-right); every boxable widget goes
-  through it and exposes `.boxed(decor)`.
-- **Global chords:** the toolkit intercepts exactly two keys – `Ctrl+Q`
-  (`terminal::classify`) and the hints toggle (`driver::run`/`overlay::popup`).
-  `shortcut_hints::global_bindings` names them with their current bindings, for
-  a host to splice into its footer and help; the host's own conventional keys
-  (`q`, `?`) stay with the host, which alone knows when the user rebinds them.
-  A quit confirmation is opt-in via the `quit` module. An app that drives its own
-  event loop calls `shortcut_hints::consume_toggle(key)` at the top of its key
-  dispatch — never match the chord by hand, or the modifier check gets forgotten.
-- **Hint footers:** every footer goes through `shortcut_hints::lines` (or
-  `group_lines`/`render`), which is why the global `F1` toggle reaches all of
-  them at once — never hand-roll a hint line. A layout that reserves a footer
-  row sizes it with `shortcut_hints::footer_height(rows)` so the row (and any
-  blank spacer you pair with the hint) collapses when the hints are hidden.
-- **Block caret:** filter/search lines go through `input::query_spans` (caret at
-  the end, for widgets keeping a bare `String`), fields with their own cursor
-  through `InputField::caret_spans`. Both scroll horizontally and mark a
-  scrolled-off head with `…`. Never rebuild the caret span inline.
-- **Position badge:** the `position/total` (or percent) indicator never overlays
-  content. Where there is a frame, `chrome::render_badge` paints it into the
-  bottom border – used by `framed_decor` and by every popup that frames a
-  scrollable list; whoever owns the frame owns the badge. Where there is none,
-  `chrome::render_corner_badge` puts it right-aligned into a reserved bottom row
-  (`list::render_counted` does that for a list, and yields the row back when the
-  area is too short to spare one). Both take their label from
-  `chrome::position_badge` and their colour from `style::muted`.
-- **Popup sizing:** `layout::centered_fraction` gives every centered popup its
-  size (a fraction of the area, grown to a preferred minimum). It and every
-  hand-rolled popup rect derive that size through `layout::fit(wanted, min,
-  max)`, never through `clamp(min, max)`: a terminal below the popup's minimum
-  makes `max < min`, and `Ord::clamp` panics on that. The available space is
-  the hard limit; the minimum is only a preference.
-- **Colors:** only `style.rs` maps `theme::Color` to ratatui; widgets take a
-  `&Skin`/`&Palette`, never a raw literal.
-- **Focused frames:** a focused field brightens its own fill, so a fixed border
-  loses most of its contrast against it. Draw such a frame from `border_focus`
-  (`style::border_focus`), not from `border`. It is lifted above `border` and
-  follows it: a theme or a host that sets only `border` gets a matching focus
-  color for free, and an explicit `border_focus` always wins. Because
-  `chrome::border_title` reads the stroke colour from `palette.border`, a widget
-  that titles a focused box hands it a `Skin` copy whose `border` *is* the focus
-  color — styling `border_style` alone would leave that one stroke behind.
-- **Validating a theme table:** check a `[themes.<name>]` against
-  `ThemeColors::KEYS`, never against `Palette::KEYS`. The palette carries derived
-  colors a theme cannot contribute (`selection`, `cursor`, `input_bg`, …);
-  accepting them there drops the value without a word.
-- **Text editing:** `input::TextCursor` + the public `input::apply_edit_key`
-  are the shared caret/edit core. `EditMode` picks the geometry: `InputField`
-  drives it with `SingleLine`, `textarea::TextArea` with `Multiline`, so both
-  carry one set of shortcuts. Widths are measured with `unicode-width` (wide
-  glyphs count as 2).
-- **Logging:** diagnostics go through the `log` facade, sparingly. `error!` for
-  an unrecoverable, otherwise-silent failure (a failed terminal restore in
-  `Drop`); `warn!` for a noticeable degradation (a missing clipboard tool, an
-  unreadable directory, a canonicalize fallback that weakens the path
-  confinement, an invalid color override, an unknown theme name); `debug!` for
-  per-attempt breadcrumbs. Never log in the hot path (per-frame render, the sort
-  comparator) or on normal control flow (Esc, empty input). The host installs
-  the logger; the library only emits.
+- **Scrollbar:** `scroll::render_scrollbar` – renders only on overflow and skips empty areas; `list::render` already calls it, so list-backed widgets (`tree`, `finder`, `help`, `path_picker`) get it for free.
+- **Framing:** `chrome::framed_decor` draws the rounded accent box with a caption (top border) and badge (bottom-right); every boxable widget goes through it and exposes `.boxed(decor)`.
+- **Global chords:** the toolkit intercepts exactly two keys – `Ctrl+Q` (`terminal::classify`) and the hints toggle (`driver::run`/`overlay::popup`). `shortcut_hints::global_bindings` names them with their current bindings, for a host to splice into its footer and help; the host's own conventional keys (`q`, `?`) stay with the host, which alone knows when the user rebinds them. A quit confirmation is opt-in via the `quit` module. An app that drives its own event loop calls `shortcut_hints::consume_toggle(key)` at the top of its key dispatch — never match the chord by hand, or the modifier check gets forgotten.
+- **Hint footers:** every footer goes through `shortcut_hints::lines` (or `group_lines`/`render`), which is why the global `F1` toggle reaches all of them at once — never hand-roll a hint line. A layout that reserves a footer row sizes it with `shortcut_hints::footer_height(rows)` so the row (and any blank spacer you pair with the hint) collapses when the hints are hidden.
+- **Block caret:** filter/search lines go through `input::query_spans` (caret at the end, for widgets keeping a bare `String`), fields with their own cursor through `InputField::caret_spans`. Both scroll horizontally and mark a scrolled-off head with `…`. Never rebuild the caret span inline.
+- **Position badge:** the `position/total` (or percent) indicator never overlays content. Where there is a frame, `chrome::render_badge` paints it into the bottom border – used by `framed_decor` and by every popup that frames a scrollable list; whoever owns the frame owns the badge. Where there is none, `chrome::render_corner_badge` puts it right-aligned into a reserved bottom row (`list::render_counted` does that for a list, and yields the row back when the area is too short to spare one). Both take their label from `chrome::position_badge` and their colour from `style::muted`.
+- **Popup sizing:** `layout::centered_fraction` gives every centered popup its size (a fraction of the area, grown to a preferred minimum). It and every hand-rolled popup rect derive that size through `layout::fit(wanted, min, max)`, never through `clamp(min, max)`: a terminal below the popup's minimum makes `max < min`, and `Ord::clamp` panics on that. The available space is the hard limit; the minimum is only a preference.
+- **Colors:** only `style.rs` maps `theme::Color` to ratatui; widgets take a `&Skin`/`&Palette`, never a raw literal.
+- **Focused frames:** a focused field brightens its own fill, so a fixed border loses most of its contrast against it. Draw such a frame from `border_focus` (`style::border_focus`), not from `border`. It is lifted above `border` and follows it: a theme or a host that sets only `border` gets a matching focus color for free, and an explicit `border_focus` always wins. Because `chrome::border_title` reads the stroke colour from `palette.border`, a widget that titles a focused box hands it a `Skin` copy whose `border` *is* the focus color — styling `border_style` alone would leave that one stroke behind.
+- **Validating a theme table:** check a `[themes.<name>]` against `ThemeColors::KEYS`, never against `Palette::KEYS`. The palette carries derived colors a theme cannot contribute (`selection`, `cursor`, `input_bg`, …); accepting them there drops the value without a word.
+- **Text editing:** `input::TextCursor` + the public `input::apply_edit_key` are the shared caret/edit core. `EditMode` picks the geometry: `InputField` drives it with `SingleLine`, `textarea::TextArea` with `Multiline`, so both carry one set of shortcuts. Widths are measured with `unicode-width` (wide glyphs count as 2).
+- **Logging:** diagnostics go through the `log` facade, sparingly. `error!` for an unrecoverable, otherwise-silent failure (a failed terminal restore in `Drop`); `warn!` for a noticeable degradation (a missing clipboard tool, an unreadable directory, a canonicalize fallback that weakens the path confinement, an invalid color override, an unknown theme name); `debug!` for per-attempt breadcrumbs. Never log in the hot path (per-frame render, the sort comparator) or on normal control flow (Esc, empty input). The host installs the logger; the library only emits.
 
 ## Common commands
 
@@ -157,9 +96,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test            # unit tests + doctests + tests/render.rs
 ```
 
-`ratada` is a library, so there is no binary to run; exercise widgets through
-the bundled examples, the `clibase` gallery (`cargo run` in
-`../../templates/clibase`, view `3`) or a `TestBackend` in `tests/render.rs`.
+`ratada` is a library, so there is no binary to run; exercise widgets through the bundled examples, the `clibase` gallery (`cargo run` in `../../templates/clibase`, view `3`) or a `TestBackend` in `tests/render.rs`.
 
 ```bash
 cargo run --example counter   # minimal Screen/run app (space +1, q quits)
@@ -170,37 +107,25 @@ See [Screenshot](#screenshot) below for how the `gallery` example is captured.
 
 ## Screenshot
 
-The `gallery` example renders a static, one-frame dashboard – header, tab bar, a
-boxed table, a tree, a list, a Markdown view, a gauge, shortcut hints and a
-status bar – built to be captured for the README screenshot:
+The `gallery` example renders a static, one-frame dashboard – header, tab bar, a boxed table, a tree, a list, a Markdown view, a gauge, shortcut hints and a status bar – built to be captured for the README screenshot:
 
 ```bash
 cargo run --example gallery
 ```
 
-Size the terminal to taste (roughly 100x30 reads well), take the screenshot,
-then press any key (or `Ctrl+Q`) to leave. The `clibase` template additionally
-renders every widget in a live, interactive gallery (run it and open `view 3`).
+Size the terminal to taste (roughly 100x30 reads well), take the screenshot, then press any key (or `Ctrl+Q`) to leave. The `clibase` template additionally renders every widget in a live, interactive gallery (run it and open `view 3`).
 
 ## Testing
 
-- **Unit tests** live inline (`#[cfg(test)] mod tests`) and cover pure logic
-  (navigation, wrap/width, filtering, selection, badge counts).
+- **Unit tests** live inline (`#[cfg(test)] mod tests`) and cover pure logic (navigation, wrap/width, filtering, selection, badge counts).
 - **Doctests** on the key public items double as compile-checked examples.
-- **`tests/render.rs`** renders the frame-based widgets into a `TestBackend`
-  plain/boxed, at a roomy and a cramped size, and with wide characters – a
-  panic-free smoke test (this is how the empty-area scrollbar panic was caught).
-  Popups (`help`/`finder`/`modal`/`path_picker`) need a live `Tui` loop and are
-  covered by their unit tests instead.
+- **`tests/render.rs`** renders the frame-based widgets into a `TestBackend` plain/boxed, at a roomy and a cramped size, and with wide characters – a panic-free smoke test (this is how the empty-area scrollbar panic was caught). Popups (`help`/`finder`/`modal`/`path_picker`) need a live `Tui` loop and are covered by their unit tests instead.
 
 ## Adding a widget
 
 1. Add `pub mod <name>;` to `lib.rs` (flat at the crate root).
 2. Take a `&Skin` (or `&Palette`) for styling; never depend on host types.
 3. Reuse `nav`/`scroll`/`chrome`/`style` and the `unicode-width` helpers.
-4. If it should support the boxed style, store an `Option<chrome::BoxDecor>` and
-   render through `chrome::framed_decor`; add a `.boxed(decor)` builder.
-5. Add unit tests for the logic and a case in `tests/render.rs`; a doctest for
-   the constructor.
-6. Keep the rustdoc, `README.md` and `CLAUDE.md` in sync when the public API
-   changes.
+4. If it should support the boxed style, store an `Option<chrome::BoxDecor>` and render through `chrome::framed_decor`; add a `.boxed(decor)` builder.
+5. Add unit tests for the logic and a case in `tests/render.rs`; a doctest for the constructor.
+6. Keep the rustdoc, `README.md` and `CLAUDE.md` in sync when the public API changes.
