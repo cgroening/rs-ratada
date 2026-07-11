@@ -151,7 +151,7 @@ impl Autocomplete {
     /// The rendered dropdown lines, each indented by `indent` columns; the
     /// highlighted row uses the selection style. Empty when closed. In
     /// [`strong_highlight`](Self::strong_highlight) mode `indent` is ignored and
-    /// the rows render as a full-width menu (see [`menu_lines`](Self::menu_lines)).
+    /// the rows render as a full-width menu with a solid accent selection bar.
     pub fn lines(
         &self,
         palette: &Palette,

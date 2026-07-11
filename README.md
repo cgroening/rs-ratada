@@ -46,7 +46,7 @@ palette and glyphs) that maps onto ratatui styles.
 
 ```toml
 [dependencies]
-ratada = "0.2"
+ratada = "0.3"
 ```
 
 Requires Rust 1.88 or newer (the crate uses `let`-chains).
@@ -100,6 +100,8 @@ top border, an automatic or fixed badge bottom-right), e.g.
 
 - [API reference on docs.rs](https://docs.rs/ratada) – the authoritative,
   complete rustdoc (or `cargo doc --open` locally).
+- [`CHANGELOG.md`](https://github.com/cgroening/rs-ratada/blob/main/CHANGELOG.md)
+  – release history (Keep a Changelog + SemVer).
 - [`DEVELOPMENT.md`](https://github.com/cgroening/rs-ratada/blob/main/docs/DEVELOPMENT.md)
   – module layout, conventions and how to add a widget.
 - [`CLAUDE.md`](https://github.com/cgroening/rs-ratada/blob/main/CLAUDE.md) – the

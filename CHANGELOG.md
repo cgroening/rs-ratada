@@ -7,6 +7,8 @@ bump may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-11
+
 ### Added
 
 - `opener::open` opens a file in the operating system's default application,
@@ -115,54 +117,10 @@ bump may contain breaking changes.
 
 ### Changed
 
-- `textarea` wraps **word-aware**: a soft break falls on the last space that
-  fits and consumes it, instead of hard-splitting mid-word at the column. A word
-  longer than the width is still hard-split. `TextArea::render` and the new
-  `wrap_offsets` share the one implementation.
-
-### Fixed
-
-- A `toast` box grows to its message. Every box was drawn three rows tall
-  ("border + one wrapped line"), so anything longer than the inner width was cut
-  off after the first line - the message wrapped, but the rows were not there.
-  `render` now measures the message with `text::wrap` and sizes the box to it,
-  capped at six lines with a trailing `…`. The wrapped lines are handed to the
-  `Paragraph` directly instead of re-wrapping them with `Wrap`, so measuring and
-  drawing cannot disagree.
-- A caret line no longer overflows its width. With both a head and a tail `…`
-  marker, a window of two columns drew three: the markers were taken before the
-  text was given a column. Markers are now dropped, tail first, until the text
-  and its block caret keep at least one column (`input::caret_spans`).
-
-- `AltGr` characters are typed again instead of being swallowed as command
-  chords. `input::apply_edit_key` and `textarea::TextArea::handle_key` tested
-  `KeyModifiers::CONTROL` alone, but crossterm reports `AltGr` as
-  `Control + Alt` – so on a German keyboard `\ @ [ ] { } | ~` never reached the
-  buffer. Both now go through the new `input::is_command` (`Control` *without*
-  `Alt`), which is public so hosts with their own key dispatch can share it.
-
-- Opening a popup in a terminal narrower or shorter than the popup's preferred
-  minimum panicked with `assertion failed: min <= max`. `modal::confirm`,
-  `message`, the list pickers, `input_wide`, `command_palette` and
-  `layout::centered_fraction` reached `Ord::clamp(min, max)` with `max < min`.
-  They now use `layout::fit`, where the available space wins over the preferred
-  minimum. A `confirm` dialog in a 20x6 terminal used to crash the host
-  application.
-- `path_picker` shows the block caret in its filter line again. The field is a
-  full `InputField`, but the render path drew only its value, so nothing marked
-  where typing would insert – including on an empty filter.
-- The hints toggle compared only the key code, so `Shift+F1` toggled the hints
-  as well. Modifiers are now matched exactly.
-- An unboxed `tree` shows its `position/total` counter again. It had vanished
-  with the overlay chip, since a frameless widget had nowhere to put one.
-
-### Changed
-
 - **Breaking:** `ThemeColors` gained a `border_focus` field. Every struct
   literal has to name it; `ThemeColors::derived`, `from_accent` and
   `from_lookup` fill it on their own. Hosts building a theme from a color
   table are unaffected.
-
 - The `position/total` indicator now always sits in a frame's bottom border
   (`─ 3/12 ─╯`) instead of floating over the last list row, and is drawn in the
   new, dimmer `foreground_muted`. Popups over a scrollable list – `path_picker`,
@@ -181,7 +139,6 @@ bump may contain breaking changes.
   `sidebar`, `table`, `pager`) scroll horizontally and mark a scrolled-off head
   with `…`, instead of being cut off at the line end. They share one caret
   renderer rather than each rebuilding the caret span inline.
-
 - Modal frames now fill with a slightly lightened background, lifting the box
   above the dimmed backdrop so it reads as an elevated surface.
 - Form and toast frames now title via the shared `chrome::border_title`, so
@@ -189,6 +146,10 @@ bump may contain breaking changes.
   of the title/accent color.
 - `modal::number_input` now falls back to the initial value instead of `0` when
   the entered text cannot be parsed as an integer.
+- `textarea` wraps **word-aware**: a soft break falls on the last space that
+  fits and consumes it, instead of hard-splitting mid-word at the column. A word
+  longer than the width is still hard-split. `TextArea::render` and the new
+  `wrap_offsets` share the one implementation.
 
 ### Removed
 
@@ -196,6 +157,40 @@ bump may contain breaking changes.
   row. Plain `list::render` no longer shows a count; use `list::render_counted`
   (a reserved bottom row), `list::render_boxed` with a `BoxDecor`, or let the
   surrounding popup frame carry the badge.
+
+### Fixed
+
+- A `toast` box grows to its message. Every box was drawn three rows tall
+  ("border + one wrapped line"), so anything longer than the inner width was cut
+  off after the first line - the message wrapped, but the rows were not there.
+  `render` now measures the message with `text::wrap` and sizes the box to it,
+  capped at six lines with a trailing `…`. The wrapped lines are handed to the
+  `Paragraph` directly instead of re-wrapping them with `Wrap`, so measuring and
+  drawing cannot disagree.
+- A caret line no longer overflows its width. With both a head and a tail `…`
+  marker, a window of two columns drew three: the markers were taken before the
+  text was given a column. Markers are now dropped, tail first, until the text
+  and its block caret keep at least one column (`input::caret_spans`).
+- `AltGr` characters are typed again instead of being swallowed as command
+  chords. `input::apply_edit_key` and `textarea::TextArea::handle_key` tested
+  `KeyModifiers::CONTROL` alone, but crossterm reports `AltGr` as
+  `Control + Alt` – so on a German keyboard `\ @ [ ] { } | ~` never reached the
+  buffer. Both now go through the new `input::is_command` (`Control` *without*
+  `Alt`), which is public so hosts with their own key dispatch can share it.
+- Opening a popup in a terminal narrower or shorter than the popup's preferred
+  minimum panicked with `assertion failed: min <= max`. `modal::confirm`,
+  `message`, the list pickers, `input_wide`, `command_palette` and
+  `layout::centered_fraction` reached `Ord::clamp(min, max)` with `max < min`.
+  They now use `layout::fit`, where the available space wins over the preferred
+  minimum. A `confirm` dialog in a 20x6 terminal used to crash the host
+  application.
+- `path_picker` shows the block caret in its filter line again. The field is a
+  full `InputField`, but the render path drew only its value, so nothing marked
+  where typing would insert – including on an empty filter.
+- The hints toggle compared only the key code, so `Shift+F1` toggled the hints
+  as well. Modifiers are now matched exactly.
+- An unboxed `tree` shows its `position/total` counter again. It had vanished
+  with the overlay chip, since a frameless widget had nowhere to put one.
 
 ## [0.2.0] - 2026-07-07
 
@@ -235,6 +230,7 @@ Crate-wide cleanup and API consolidation. This release contains breaking changes
 - `textarea` now reuses the shared single-line edit core from `input` (SSOT).
 - Documentation synced with the code and the public API surface tightened.
 
-[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/cgroening/rs-ratada/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/cgroening/rs-ratada/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/cgroening/rs-ratada/releases/tag/v0.1.0
