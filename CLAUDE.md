@@ -1,59 +1,57 @@
 # CLAUDE.md
 
-Leitfaden für die Arbeit an diesem Repository. `ratada` ist ein
-wiederverwendbares **ratatui-Widget-Toolkit** für Rust-Terminal-Apps: ein
-generischer Event-Loop-Treiber, Widgets, Modals, Formulare, Picker und eine
-framework-agnostische Theming-Schicht über einem schlanken Kern aus `ratatui`,
-`crossterm` und wenigen weiteren Crates.
+Guide for working on this repository. `ratada` is a reusable
+**ratatui widget toolkit** for Rust terminal apps: a generic event-loop
+driver, widgets, modals, forms, pickers, and a framework-agnostic theming
+layer on top of a lean core of `ratatui`, `crossterm`, and a few other crates.
 
-## Projektüberblick
+## Project Overview
 
-- **Bibliothek, kein Binary.** `ratada` hat keine `main`, keine CLI, keine
-  Domänen-/Persistenz-Schicht. Es liefert die generischen TUI-Bausteine, auf
-  denen konsumierende Apps (z. B. `clibase`) ihre Views bauen.
-- **Kern-Idee:** Der Host implementiert das `Screen`-Trait und übergibt es an
-  `run`, das den Event-Loop innerhalb eines `Tui`-Guards (Raw-Mode +
-  Alternate-Screen, RAII) fährt. Lifecycle-Hooks kommen über
-  `Tui::with_hooks`. Das Toolkit besitzt Terminal, Navigation, Rendering und
-  Modal-Bausteine; der Host besitzt den Anwendungszustand.
-- **Keine Anwendungstypen.** Die Module hängen ausschließlich von externen
-  Crates und dem eigenen `theme`-Submodul ab, nie von Host-Typen. Das hält das
-  Toolkit universell einsetzbar.
+- **Library, not a binary.** `ratada` has no `main`, no CLI, no
+  domain/persistence layer. It provides the generic TUI building blocks on
+  which consuming apps (e.g. `clibase`) build their views.
+- **Core idea:** The host implements the `Screen` trait and passes it to
+  `run`, which drives the event loop inside a `Tui` guard (raw mode +
+  alternate screen, RAII). Lifecycle hooks come via `Tui::with_hooks`. The
+  toolkit owns the terminal, navigation, rendering, and modal building blocks;
+  the host owns the application state.
+- **No application types.** The modules depend solely on external crates and
+  their own `theme` submodule, never on host types. This keeps the toolkit
+  universally usable.
 
-### Modul-Layout
+### Module Layout
 
-- **Crate-Root (`src/lib.rs`):** deklariert die Widget-Module flach
-  (`pub mod modal;`, `pub mod table;`, …) plus `pub mod theme;` und re-exportiert
-  ein kleines Prelude:
+- **Crate root (`src/lib.rs`):** declares the widget modules flat
+  (`pub mod modal;`, `pub mod table;`, …) plus `pub mod theme;` and re-exports
+  a small prelude:
   ```rust
   pub use driver::{Flow, Screen, run};
   pub use modal::ModalSignal;
   pub use overlay::{PopupFlow, popup};
   pub use terminal::{Tui, TuiEvent};
   ```
-  Die meisten Widgets werden über ihren Modulpfad erreicht (`ratada::table`,
-  `ratada::modal`, …), nicht über das Prelude.
-- **Widget-Module (flach im Root):** `terminal`, `driver`, `overlay`, `modal`,
-  `chrome`, `layout`, `nav`, `scroll`, `style`, Eingabe/Editieren (`input`,
-  `textarea`, `autocomplete`, `editor`, `clipboard`), Picker (`color_picker`,
-  `date_picker`, `date_range_picker`, `month_picker`, `path_picker`, `slider`),
-  Anzeige (`table`, `tree`, `list`, `tabs`, `pager`, `gauge`, `spinner`,
-  `toast`, `text`), sowie `form`, `finder`, `fuzzy`, `help`, `header`, `footer`,
-  `statusbar`, `double_press`. Querverweise zwischen Modulen laufen über
-  `super::` (der Crate-Root).
-- **`theme/` (Submodul):** framework-agnostisches Theming, das eine UI-Schicht
-  (auch eine reine CLI) teilen kann: `Color` (+ `parse_color`/`dim_color`/
-  `lighten`), `Palette` (+ `resolve`, `ColorOverrides`), `Skin` (Bündel aus
-  Palette/Glyphs/Mode), `Glyphs`/`GlyphVariant`, `Mode`, sowie
-  `ThemeRegistry`/`ThemeColors`/`Surfaces` mit den Built-in-Themes. `style.rs`
-  ist die **einzige** Naht, die `theme::Color` auf `ratatui::style::Color`
-  abbildet.
-- **Abhängigkeiten:** nur `ratatui`, `crossterm`, `unicode-width`,
-  `nucleo-matcher`, `pulldown-cmark` (CommonMark-Parser für das `markdown`-Modul,
-  `default-features = false`), `chrono`, `log`, `serde` (Letzteres für die
-  persistierbaren Enums `GlyphVariant` etc.). Keine weiteren.
+  Most widgets are reached via their module path (`ratada::table`,
+  `ratada::modal`, …), not via the prelude.
+- **Widget modules (flat in the root):** `terminal`, `driver`, `overlay`,
+  `modal`, `chrome`, `layout`, `nav`, `scroll`, `style`, input/editing
+  (`input`, `textarea`, `autocomplete`, `editor`, `clipboard`), pickers
+  (`color_picker`, `date_picker`, `date_range_picker`, `month_picker`,
+  `path_picker`, `slider`), display (`table`, `tree`, `list`, `tabs`, `pager`,
+  `gauge`, `spinner`, `toast`, `text`), as well as `form`, `finder`, `fuzzy`,
+  `help`, `header`, `footer`, `statusbar`, `double_press`. Cross-references
+  between modules go via `super::` (the crate root).
+- **`theme/` (submodule):** framework-agnostic theming that a UI layer (even a
+  pure CLI) can share: `Color` (+ `parse_color`/`dim_color`/`lighten`),
+  `Palette` (+ `resolve`, `ColorOverrides`), `Skin` (bundle of
+  palette/glyphs/mode), `Glyphs`/`GlyphVariant`, `Mode`, as well as
+  `ThemeRegistry`/`ThemeColors`/`Surfaces` with the built-in themes. `style.rs`
+  is the **only** seam that maps `theme::Color` onto `ratatui::style::Color`.
+- **Dependencies:** only `ratatui`, `crossterm`, `unicode-width`,
+  `nucleo-matcher`, `pulldown-cmark` (CommonMark parser for the `markdown`
+  module, `default-features = false`), `chrono`, `log`, `serde` (the latter for
+  the persistable enums `GlyphVariant` etc.). Nothing else.
 
-### Befehle
+### Commands
 
 ```bash
 cargo build
@@ -62,495 +60,492 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-Dieses Crate ist die **SSOT** der unten in §7.10 beschriebenen
-TUI-Konventionen. Neue Widgets und konsumierende TUIs bauen darauf auf, statt
-sie nachzubauen.
+This crate is the **SSOT** of the TUI conventions described below in §7.10.
+New widgets and consuming TUIs build on top of it instead of reimplementing
+them.
 
 ---
 
-Der folgende Style Guide ist bindend. Bei Konflikten gehen spezifischere
-(sprachbezogene) Regeln den allgemeinen vor. Diese dokumentierten Regeln haben
-Vorrang vor automatischen Formattern/Lintern.
+The following style guide is binding. In case of conflicts, more specific
+(language-related) rules take precedence over the general ones. These
+documented rules take precedence over automatic formatters/linters.
 
 ## 1 Clean Code / Design Principles & Patterns
 
-Oberstes Ziel ist leserlicher, wartbarer Code – Verständlichkeit geht im
-Zweifel vor Kürze oder Cleverness. Gleichrangig: Robustheit und Sicherheit
-(§2.7).
+The top priority is readable, maintainable code – comprehensibility takes
+precedence over brevity or cleverness when in doubt. Equally ranked: robustness
+and security (§2.7).
 
-### 1.1 Einfachheit & Wiederholung
+### 1.1 Simplicity & Repetition
 
-- **KISS / YAGNI** – keine spekulative Abstraktion oder Konfigurierbarkeit "für
-  später".
-- **DRY** (Code/Logik) und **SSOT** (Daten-/Wissensquelle).
-- **Konsistenz:** Gleichartige Dinge gleich lösen.
-- **Keine Magic Numbers/Strings:** benannte Konstanten.
+- **KISS / YAGNI** – no speculative abstraction or configurability "for
+  later".
+- **DRY** (code/logic) and **SSOT** (data/knowledge source).
+- **Consistency:** Solve similar things similarly.
+- **No magic numbers/strings:** named constants.
 
-### 1.2 Funktionen
+### 1.2 Functions
 
-- **SLAP** – eine Abstraktionsebene pro Funktion.
-- **Maximal zwei Verschachtelungsebenen** (mit frühem Return).
-- **Keine Flag-Argumente:** statt Boolean-Parameter zwei Funktionen mit
-  sprechenden Namen.
-- **Command-Query-Separation;** reine Funktionen bevorzugen.
+- **SLAP** – one level of abstraction per function.
+- **At most two levels of nesting** (with early return).
+- **No flag arguments:** instead of a boolean parameter, two functions with
+  descriptive names.
+- **Command-query separation;** prefer pure functions.
 
 ### 1.3 OO & Design
 
-- **Polymorphismus statt Typ-Verzweigung.**
-- **Komposition statt Vererbung;** Vererbung nur bei echter "ist ein"-Beziehung
-  (LSP).
+- **Polymorphism instead of type branching.**
+- **Composition over inheritance;** inheritance only for a true "is-a"
+  relationship (LSP).
 - **Tell, Don't Ask / Law of Demeter.**
-- **SOLID** (DIP via Dependency Injection).
-- **Hohe Kohäsion, lose Kopplung.**
-- **Design Patterns (GoF):** einsetzen, wo sie ein reales Problem lösen – nie
-  als Selbstzweck, KISS/YAGNI gehen vor.
+- **SOLID** (DIP via dependency injection).
+- **High cohesion, loose coupling.**
+- **Design patterns (GoF):** apply where they solve a real problem – never as
+  an end in itself, KISS/YAGNI take precedence.
 
 ### 1.4 Code Smells
 
-- **Code Smells erkennen & per Refactoring beseitigen** (Long Method, Duplicate
-  Code, Feature Envy, Primitive Obsession, …). Ein Smell ist ein Hinweis, kein
-  Automatismus. Vorgehen siehe §3.
+- **Recognize code smells & eliminate them via refactoring** (Long Method,
+  Duplicate Code, Feature Envy, Primitive Obsession, …). A smell is a hint, not
+  an automatism. Procedure see §3.
 
-### 1.5 Namen
+### 1.5 Names
 
-- **Booleans/Prädikate** als Ja/Nein-Frage: `is_`, `has_`, `can_`, `should_`.
-- **Methoden = Verben, Klassen/Typen = Substantive** – keine Sammelnamen wie
+- **Booleans/predicates** as a yes/no question: `is_`, `has_`, `can_`,
+  `should_`.
+- **Methods = verbs, classes/types = nouns** – no catch-all names like
   `Manager`, `Data`, `Helper`.
 
-### 1.6 Fehlerbehandlung
+### 1.6 Error Handling
 
-- **Fail fast:** ungültige Zustände/Eingaben so früh wie möglich abfangen.
-- **Kein `None`/`null` zurückgeben:** stattdessen leere Collection,
-  Special-Case-Objekt oder Exception.
-- **Exceptions mit Kontext** (was, wo, warum) – sprachspezifisch siehe
-  jeweiliger Abschnitt.
+- **Fail fast:** catch invalid states/inputs as early as possible.
+- **Do not return `None`/`null`:** instead an empty collection, special-case
+  object, or exception.
+- **Exceptions with context** (what, where, why) – language-specific see the
+  respective section.
 
 ### 1.7 Tests & Performance
 
-- **Tests nach FIRST;** ein Konzept pro Test.
-- **Erst messen, dann optimieren:** Optimierung nur mit Profiling-Beweis.
+- **Tests per FIRST;** one concept per test.
+- **Measure first, then optimize:** optimization only with profiling proof.
 
-## 2 Allgemeine Regeln (alle Sprachen)
+## 2 General Rules (all languages)
 
-### 2.1 Formatierung & Tools
+### 2.1 Formatting & Tools
 
-- **Einrückung:** 4 Spaces als Standard.
-- **Zeilenlänge:** Maximal 80 Zeichen. Längere Zeilen leserlich umbrechen. Gilt
-  für Code-Dateien (`.rs`, …), nicht für Textdateien (`.txt`, `.md`).
-- **Markdown-Fließtext:** Absätze und Listenpunkte NICHT hart umbrechen – jeder
-  Absatz und Listenpunkt steht auf genau einer Zeile (Editor-Soft-Wrap nutzen).
-  Leerzeilen, Listenstruktur, Überschriften und Code-Blöcke bleiben erhalten.
-- **Zeilenumbruch:** Lange Ausdrücke/Aufrufe leserlich umbrechen – Operatoren an
-  den Zeilenanfang, bei vielen Argumenten eines pro Zeile; Fortsetzungszeilen
-  konsistent einrücken.
-- **Signatur- & Aufruf-Umbruch:** Passt eine Signatur/ein Aufruf nicht in 80
-  Zeichen, zuerst alle Parameter/Argumente auf eine eingerückte Zeile zwischen
-  den Klammern; reicht das nicht, eines pro Zeile. Voll aufgefächerte Signaturen
-  sind ein Indikator für zu viele Parameter – dann gruppieren (Struct).
-- **Whitespace & Datei-Hygiene:** Nur Spaces (keine Tabs); kein Trailing
-  Whitespace; Datei endet mit genau einem Newline; UTF-8; Zeilenenden LF.
-- **Zahlenliterale:** Ziffern-Trenner bei großen Zahlen (`1_000_000`); Hex in
-  Kleinbuchstaben (`0xff`).
-- **Trailing Commas:** In mehrzeiligen Listen, Argumentlisten, Enums und
-  Initializern abschließendes Komma; einzeilig nicht. (rustfmt erzwingt das.)
-- **Alignment:** Spalten-Alignment mit zusätzlichen Leerzeichen ist zur besseren
-  Lesbarkeit erlaubt.
-- **Bindestriche / Gedankenstrich:** Niemals den Geviertstrich "—". In Code nur
-  das Minuszeichen ("-"). In Markdown-Fließtext den Gedankenstrich "–" als
-  Gedankenstrich verwenden, nicht einen von Leerzeichen umgebenen Bindestrich.
-  Bindestriche in zusammengesetzten Wörtern bleiben Bindestriche.
-- **Anführungszeichen:** Immer gerade Anführungszeichen "…" – nie typografische.
-- **Vorrang vor Tools:** Diese Regeln gehen rustfmt/clippy vor.
-- **Portabilität/Versionen:** Neueste Standards bevorzugen.
+- **Indentation:** 4 spaces as standard.
+- **Line length:** At most 80 characters. Break longer lines readably. Applies
+  to code files (`.rs`, …), not to text files (`.txt`, `.md`).
+- **Markdown body text:** Do NOT hard-wrap paragraphs and list items – each
+  paragraph and list item is on exactly one line (use editor soft-wrap). Blank
+  lines, list structure, headings, and code blocks are preserved.
+- **Line breaks:** Break long expressions/calls readably – operators at the
+  beginning of the line, with many arguments one per line; indent continuation
+  lines consistently.
+- **Signature & call breaking:** If a signature/call does not fit in 80
+  characters, first put all parameters/arguments on one indented line between
+  the parentheses; if that is not enough, one per line. Fully fanned-out
+  signatures are an indicator of too many parameters – then group (struct).
+- **Whitespace & file hygiene:** Only spaces (no tabs); no trailing whitespace;
+  file ends with exactly one newline; UTF-8; line endings LF.
+- **Numeric literals:** Digit separators for large numbers (`1_000_000`); hex in
+  lowercase (`0xff`).
+- **Trailing commas:** In multi-line lists, argument lists, enums, and
+  initializers a trailing comma; not single-line. (rustfmt enforces this.)
+- **Alignment:** Column alignment with additional spaces is allowed for better
+  readability.
+- **Hyphens / dash:** Never the em dash "—". In code only the minus sign ("-").
+  In Markdown body text use the dash "–" as a dash, not a hyphen surrounded by
+  spaces. Hyphens in compound words remain hyphens.
+- **Quotation marks:** Always straight quotation marks "…" – never
+  typographic ones.
+- **Precedence over tools:** These rules take precedence over rustfmt/clippy.
+- **Portability/versions:** Prefer the latest standards.
 
-### 2.2 Kommentare & Sprache
+### 2.2 Comments & Language
 
-- **Kommentare:** Moderat. Funktionen und wichtige Logikblöcke werden
-  kommentiert, nicht jede Zeile. Ein Kommentar wiederholt nicht den Bezeichner –
-  er erklärt, was der Leser nicht aus dem Namen ableiten kann (Semantik,
-  Einheiten, Sentinel-Werte, Invarianten, Beweggründe). Kommentare erklären vor
-  allem das **Warum**, nicht das Was.
-- **TODO-Kommentare:** Format `// TODO: <text>`.
-- **Sprache:** Durchgehend Englisch – Bezeichner, Kommentare, Docstrings und
-  sichtbare Texte (Fehler, Logs, TUI-Ausgaben).
-- **Einzeilige Kommentare:** Bei ≤ 80 Zeichen hinter einem Befehl erlaubt; dann
-  zwei Leerzeichen vor `//`. Besteht der Kommentar nur aus einem Satz, kein
-  Punkt am Ende.
+- **Comments:** Moderate. Functions and important logic blocks are commented,
+  not every line. A comment does not repeat the identifier – it explains what
+  the reader cannot derive from the name (semantics, units, sentinel values,
+  invariants, rationale). Comments explain above all the **why**, not the what.
+- **TODO comments:** Format `// TODO: <text>`.
+- **Language:** Throughout English – identifiers, comments, docstrings, and
+  visible texts (errors, logs, TUI outputs).
+- **Single-line comments:** Allowed after a statement at ≤ 80 characters; then
+  two spaces before `//`. If the comment consists of a single sentence, no
+  period at the end.
 
-### 2.3 Namensgebung
+### 2.3 Naming
 
-- **Namensgebung:** `snake_case` für Variablen und Funktionen; `UPPER_CASE` für
-  Modul-/Klassenkonstanten; `PascalCase` für Typen.
-- **Datei-/Modulnamen:** snake_case.
-- **Aussagekräftige Variablennamen:** Aus dem Namen geht der Zweck hervor. Keine
-  kryptischen Kürzel. Ausnahme: Zählervariable einer einzelnen, nicht
-  verschachtelten Schleife darf `i` heißen.
-- **Akronyme in Bezeichnern:** wie normale Wörter (`UserId`, `HttpClient`,
-  `parse_url`) – nicht `UserID`/`HTTPClient`.
-- **Keine negativen Booleans:** positiv benennen; doppelte Verneinung vermeiden.
+- **Naming:** `snake_case` for variables and functions; `UPPER_CASE` for
+  module/class constants; `PascalCase` for types.
+- **File/module names:** snake_case.
+- **Meaningful variable names:** The purpose is evident from the name. No
+  cryptic abbreviations. Exception: the counter variable of a single,
+  non-nested loop may be called `i`.
+- **Acronyms in identifiers:** like normal words (`UserId`, `HttpClient`,
+  `parse_url`) – not `UserID`/`HTTPClient`.
+- **No negative booleans:** name positively; avoid double negation.
 
-### 2.4 Typen & Daten
+### 2.4 Types & Data
 
-- **Wahrheitswerte:** `bool` verwenden – keine `int`-Flags.
-- **Starke Typisierung:** Domäne explizit typisiert – `enum`s statt magischer
-  Zahlen/Strings, Structs statt loser Primitiven.
-- **Unveränderlichkeit:** Wo sinnvoll unveränderlich halten; Funktionseingaben
-  nicht mutieren.
+- **Truth values:** use `bool` – no `int` flags.
+- **Strong typing:** the domain explicitly typed – `enum`s instead of magic
+  numbers/strings, structs instead of loose primitives.
+- **Immutability:** Keep immutable where sensible; do not mutate function
+  inputs.
 
-### 2.5 Funktionen & Kontrollfluss
+### 2.5 Functions & Control Flow
 
-- **Funktionslänge:** Klein halten (Single Responsibility). Größere Funktionen
-  zerlegen.
-- **Funktionsparameter:** Anzahl gering (möglichst ≤ 3). Zusammengehörige
-  Parameter in einem Struct gruppieren. Situative Werte bleiben explizite
-  Parameter, nicht als transienter Zustand im Objekt.
-- **Explizite Übergabe:** Bei mehreren Werten benannt übergeben statt
-  positionsabhängig.
-- **Kontrollfluss:** Früher Return (Guard Clauses) statt tiefer Verschachtelung.
-- **Lesereihenfolge:** Code von oben nach unten lesbar – extrahierte
-  Hilfsfunktionen erscheinen unterhalb ihrer Aufrufer.
-- **Deklarationsreihenfolge:** öffentliche vor privaten Membern; zusammen-
-  gehörige Member gruppieren.
+- **Function length:** Keep small (single responsibility). Decompose larger
+  functions.
+- **Function parameters:** Keep the count low (ideally ≤ 3). Group related
+  parameters in a struct. Situational values remain explicit parameters, not as
+  transient state in the object.
+- **Explicit passing:** With multiple values pass by name instead of
+  positionally.
+- **Control flow:** Early return (guard clauses) instead of deep nesting.
+- **Reading order:** Code readable from top to bottom – extracted helper
+  functions appear below their callers.
+- **Declaration order:** public before private members; group related members.
 
-### 2.6 Architektur & Abhängigkeiten
+### 2.6 Architecture & Dependencies
 
-- **Programmierstil:** Objektorientiert für zustandsbehaftete Komponenten
-  (Widgets mit eigenem Zustand); freie Funktionen für zustandslose Utilities
-  (Rendering-Helper, Navigation).
-- **Schichten-Architektur:** Verantwortungen trennen; von Abstraktionen statt
-  Konkretionen abhängen (DIP). Als Bibliothek hängt `ratada` nie von
-  Anwendungstypen ab; variables Verhalten kommt über Traits/Callbacks vom Host
-  (z. B. das `Screen`-Trait, `Tui::with_hooks`).
-- **Externe Bibliotheken:** Bordmittel und Standardbibliothek bevorzugen,
-  Abhängigkeiten minimieren. Externe Libraries dürfen vorgeschlagen werden –
-  aber vorher nachfragen, bevor eine Dependency eingeführt wird.
+- **Programming style:** Object-oriented for stateful components (widgets with
+  their own state); free functions for stateless utilities (rendering helpers,
+  navigation).
+- **Layered architecture:** Separate responsibilities; depend on abstractions
+  instead of concretions (DIP). As a library, `ratada` never depends on
+  application types; variable behavior comes via traits/callbacks from the host
+  (e.g. the `Screen` trait, `Tui::with_hooks`).
+- **External libraries:** Prefer built-in means and the standard library,
+  minimize dependencies. External libraries may be proposed – but ask first
+  before introducing a dependency.
 
-### 2.7 Robustheit, Fehler & Logging
+### 2.7 Robustness, Errors & Logging
 
-- **Robustheit & Sicherheit:** So robust wie möglich gegen Abstürze und so
-  sicher wie möglich. Defensiv programmieren: Eingaben validieren, Randfälle
-  absichern, Rückgabewerte/Fehler prüfen. Lieber kontrolliert fehlschlagen als
-  abstürzen oder still falsch weiterlaufen.
-- **Logging:** Für Diagnose strukturiertes Logging über das Logging-Framework
-  (`log`) statt direkter Konsolenausgabe (`println!`); Log-Level sinnvoll
-  wählen. Sichtbare TUI-Ausgaben sind kein Logging.
+- **Robustness & security:** As robust against crashes as possible and as
+  secure as possible. Program defensively: validate inputs, safeguard edge
+  cases, check return values/errors. Better to fail in a controlled way than to
+  crash or silently continue incorrectly.
+- **Logging:** For diagnostics, structured logging via the logging framework
+  (`log`) instead of direct console output (`println!`); choose log levels
+  sensibly. Visible TUI outputs are not logging.
 
 ### 2.8 Tests
 
-- **Tests:** Werden immer mitgeliefert. Fakes gegenüber Mocks bevorzugen;
-  verwandte Tests gruppieren und Testnamen das erwartete Verhalten beschreiben
-  lassen.
+- **Tests:** Always shipped along. Prefer fakes over mocks; group related tests
+  and let test names describe the expected behavior.
 
-### 2.9 Verhältnismäßigkeit: kleine und persönliche Skripte
+### 2.9 Proportionality: small and personal scripts
 
-Bei einzelnen Funktionen, kleinen Skripten oder Code nur für den persönlichen
-Gebrauch darf der Umfang reduziert werden – aber nie stillschweigend:
+For individual functions, small scripts, or code only for personal use, the
+scope may be reduced – but never silently:
 
-- **Rücksprache mit Vorschlag:** Bevor Sicherheitsaspekte oder Tests weggelassen
-  werden, nachfragen – mit konkretem Vorschlag (was entfällt, was bleibt,
-  Risiko in je einem Satz).
-- **Nie verhandelbar:** kein `eval`/`exec` auf fremde Eingaben, keine
-  Shell-/Command-Injection, keine Secrets im Code, keine destruktiven
-  Operationen auf unvalidierte Pfade.
+- **Consult with a proposal:** Before omitting security aspects or tests, ask –
+  with a concrete proposal (what is dropped, what stays, risk in one sentence
+  each).
+- **Never negotiable:** no `eval`/`exec` on foreign inputs, no
+  shell/command injection, no secrets in code, no destructive operations on
+  unvalidated paths.
 
-## 3 Wartung / Refactoring / Code-Anpassungen
+## 3 Maintenance / Refactoring / Code Adjustments
 
-- **Lokalen Stil respektieren:** Beim Ändern bestehenden Codes den vorhandenen
-  Stil/Idiome übernehmen; den Style Guide nicht mitten in einer Datei halb
-  durchdrücken (Konsistenz vor "mein Stil"). Ausnahme: explizit beauftragtes
-  Refactoring. Bei großen Abweichungen (Architektur, Tooling, …) keine
-  Änderungen ohne vorherige Absprache.
-- **Minimale, fokussierte Änderungen:** Nur anfassen, was die Aufgabe erfordert;
-  keinen unbeteiligten Code umformatieren, den Umfang nicht ausweiten.
-- **Refactoring vom Verhalten trennen:** Reines Refactoring ändert das Verhalten
-  nicht; Verhaltensänderungen sind ein separater Schritt. Boy-Scout-Regel.
-- **Aufrufer & Tests mitziehen:** Bei Signatur-/Verhaltensänderungen alle
-  Aufrufstellen anpassen, Tests aktualisieren/ergänzen und laufen lassen. Als
-  Bibliothek mit öffentlicher API: Änderungen an `pub`-Signaturen sind
-  Breaking Changes – bewusst und dokumentiert vornehmen.
-- **Kommentare/Docs aktuell halten:** Bei Umbenennungen/Änderungen Kommentare
-  und Doc-Blöcke mitziehen.
-- **Keine Leichen hinterlassen:** Toten und auskommentierten Code entfernen.
-- **Ursache statt Symptom:** Bugs an der Wurzel beheben.
-- **Dokumentation:** Bei jeder Änderung prüfen, ob Doku (README.md, rustdoc, …)
-  angepasst werden muss, und es erledigen.
-- **Tests:** Bei jeder Änderung prüfen, ob Tests anzupassen/zu ergänzen sind.
-  **Nach jeder Änderung alle Tests neu ausführen und sicherstellen, dass alle
-  bestehen.**
+- **Respect local style:** When changing existing code, adopt the existing
+  style/idioms; do not push through the style guide halfway in the middle of a
+  file (consistency over "my style"). Exception: explicitly commissioned
+  refactoring. With large deviations (architecture, tooling, …) no changes
+  without prior agreement.
+- **Minimal, focused changes:** Only touch what the task requires; do not
+  reformat unrelated code, do not expand the scope.
+- **Separate refactoring from behavior:** Pure refactoring does not change
+  behavior; behavior changes are a separate step. Boy Scout rule.
+- **Bring callers & tests along:** For signature/behavior changes, adjust all
+  call sites, update/add tests and run them. As a library with a public API:
+  changes to `pub` signatures are breaking changes – make them deliberately and
+  documented.
+- **Keep comments/docs current:** For renames/changes, bring comments and doc
+  blocks along.
+- **Leave no corpses behind:** Remove dead and commented-out code.
+- **Cause instead of symptom:** Fix bugs at the root.
+- **Documentation:** With every change, check whether documentation (README.md,
+  rustdoc, …) needs to be adjusted, and do it.
+- **Tests:** With every change, check whether tests need to be adjusted/added.
+  **After every change re-run all tests and ensure that all pass.**
 
 ## 7 Rust
 
 ### 7.1 Toolchain & Standard
 
-- **Edition:** 2024 (neueste stable). `rust-version` nur bei konkreter MSRV.
-- **Formatting:** rustfmt mit Default-Einstellungen. Import-Gruppierung über
-  `group_imports = "StdExternalCrate"` und `imports_granularity` aktivieren, wo
-  eine `rustfmt.toml` vorhanden ist.
-- **Linting:** clippy muss warnungsfrei durchlaufen
-  (`cargo clippy -- -D warnings`). `clippy::pedantic` optional, projektweit per
-  `#![warn(...)]`, nicht durch verstreute `#[allow]`.
-- **Logging:** `tracing` oder `log` (mit Implementierung wie `env_logger`) für
-  Diagnose statt `println!`/`eprintln!`. Crate vorher abstimmen.
-- **Vorrang vor Tools:** Diese Regeln gehen rustfmt/clippy vor.
+- **Edition:** 2024 (latest stable). `rust-version` only with a concrete MSRV.
+- **Formatting:** rustfmt with default settings. Enable import grouping via
+  `group_imports = "StdExternalCrate"` and `imports_granularity` where a
+  `rustfmt.toml` is present.
+- **Linting:** clippy must run warning-free
+  (`cargo clippy -- -D warnings`). `clippy::pedantic` optional, project-wide via
+  `#![warn(...)]`, not through scattered `#[allow]`.
+- **Logging:** `tracing` or `log` (with an implementation such as `env_logger`)
+  for diagnostics instead of `println!`/`eprintln!`. Agree on the crate
+  beforehand.
+- **Precedence over tools:** These rules take precedence over rustfmt/clippy.
 
-### 7.2 Projektstruktur & Architektur
+### 7.2 Project Structure & Architecture
 
-- **Modul-Deklaration:** Untermodule über `mod`-Deklarationen in `lib.rs` bzw.
-  der übergeordneten Datei; Dateinamen `snake_case`. Querverweise zwischen den
-  flach im Root liegenden Widget-Modulen über `super::`.
-- **Dependency Injection:** Variables Verhalten über Traits abstrahieren;
-  Implementierung per Generic (`fn f<T: Screen>(…)`) oder `dyn Trait`/`Box<dyn
-  Trait>` injizieren. Der Host bringt sein Verhalten über das `Screen`-Trait und
-  Lifecycle-Hooks ein.
-- **Target-Ordner:** `target.nosync` (damit iCloud die Build-Artefakte nicht
-  synchronisiert), in `.gitignore` aufnehmen.
+- **Module declaration:** Submodules via `mod` declarations in `lib.rs` or the
+  parent file; file names `snake_case`. Cross-references between the widget
+  modules lying flat in the root via `super::`.
+- **Dependency injection:** Abstract variable behavior via traits; inject the
+  implementation via generic (`fn f<T: Screen>(…)`) or `dyn Trait`/`Box<dyn
+  Trait>`. The host brings in its behavior via the `Screen` trait and lifecycle
+  hooks.
+- **Target folder:** `target.nosync` (so that iCloud does not sync the build
+  artifacts), include in `.gitignore`.
 
-### 7.3 Fehlerbehandlung
+### 7.3 Error Handling
 
-- **`Result` + `?`:** Fehler über `Result<T, E>` und `?` propagieren; keine
-  String-Fehler als dauerhaftes Muster.
-- **`thiserror` für Bibliotheken:** Eigene Fehler-Enums mit
-  `#[derive(thiserror::Error)]` und sprechenden `#[error("…")]`-Meldungen; pro
-  Modul/Domäne ein Error-Typ. Fremdfehler über `#[from]`. `ratada` ist eine
-  Bibliothek – **`anyhow` gehört nicht in die Public-API.** Das `Screen`-Trait
-  lässt den Host seinen eigenen Fehlertyp wählen (`type Error: From<io::Error>`).
-- **`unwrap()` verboten; `expect()` nur an beweisbar unfehlbaren Stellen.** Jedes
-  `expect("…")` begründet, warum es nicht fehlschlagen kann. Im normalen Fluss
-  `?`.
-- **Kein `panic!` im Normalfluss:** nur für echte Programmierfehler/Invarianten.
-- **`unsafe`:** Vermeiden. Falls unumgänglich, vorher nachfragen, kapseln, mit
-  `// SAFETY: …` begründen.
+- **`Result` + `?`:** Propagate errors via `Result<T, E>` and `?`; no
+  string errors as a permanent pattern.
+- **`thiserror` for libraries:** Own error enums with
+  `#[derive(thiserror::Error)]` and descriptive `#[error("…")]` messages; one
+  error type per module/domain. Foreign errors via `#[from]`. `ratada` is a
+  library – **`anyhow` does not belong in the public API.** The `Screen` trait
+  lets the host choose its own error type (`type Error: From<io::Error>`).
+- **`unwrap()` forbidden; `expect()` only in provably infallible places.** Every
+  `expect("…")` justifies why it cannot fail. In the normal flow `?`.
+- **No `panic!` in the normal flow:** only for real programming
+  errors/invariants.
+- **`unsafe`:** Avoid. If unavoidable, ask first, encapsulate, justify with
+  `// SAFETY: …`.
 
-### 7.4 Dokumentation (rustdoc)
+### 7.4 Documentation (rustdoc)
 
-- **`///`-Doc-Comments** über jedem öffentlichen Item. Erste Zeile knappe
-  Ein-Satz-Zusammenfassung. Als Bibliothek mit öffentlicher API ist gepflegtes
-  rustdoc besonders wichtig.
-- **Idiomatisches rustdoc, keine `# Arguments`-Listen:** Parameter/Rückgabe in
-  Prosa. Standardabschnitte wo zutreffend: `# Examples` (mit lauffähigem
-  Doctest, wenn nicht offensichtlich), `# Errors`, `# Panics`, `# Safety`.
-- **Bezeichner in Doc-Comments** in `` `inline code ``; intra-doc-Links wo
-  sinnvoll.
-- **Modul-Doc:** Jedes Modul oben einen `//!`-Doc-Comment mit Kurzbeschreibung.
-- **Private Items:** Kurzer einzeiliger `///`-Kommentar genügt.
+- **`///` doc comments** above every public item. First line a concise
+  one-sentence summary. As a library with a public API, well-maintained rustdoc
+  is especially important.
+- **Idiomatic rustdoc, no `# Arguments` lists:** parameters/return in prose.
+  Standard sections where applicable: `# Examples` (with a runnable doctest, if
+  not obvious), `# Errors`, `# Panics`, `# Safety`.
+- **Identifiers in doc comments** in `` `inline code ``; intra-doc links where
+  sensible.
+- **Module doc:** Every module a `//!` doc comment at the top with a short
+  description.
+- **Private items:** A short single-line `///` comment suffices.
 
-### 7.5 Typen & Idiome
+### 7.5 Types & Idioms
 
-- **Starke Typisierung:** `enum`s für Zustände/Varianten statt magischer
-  Strings; `struct`s statt loser Tupel. Newtypes für Domänenwerte erwägen.
-- **Ableitungen:** Sinnvolle Traits ableiten (`Debug, Clone, PartialEq, …`);
-  `Serialize`/`Deserialize` via serde-derive. `Copy` nur bei kleinen Typen.
-- **Konstruktoren:** `pub fn new() -> Self`; bei Default-Konstruktoren zusätzlich
-  `impl Default`. `new` ohne Argumente nicht doppelt zu `Default` pflegen.
-- **Ownership:** Borrows (`&T`/`&mut T`) bevorzugen; unnötiges `.clone()`/
-  `.to_string()` vermeiden. Eingaben nicht unnötig mutieren.
-- **Optionalität:** `Option<T>` für "kann fehlen"; kein Sentinel-Wert.
-- **Kontrollfluss:** `match`/`if let` mit Guard Clauses; tiefe Verschachtelung
-  vermeiden.
-- **Iteratoren statt manueller Schleifen** für einfache Map/Filter/Fold; bei
-  komplexer Logik explizite `for`-Schleife.
-- **Sichtbarkeit:** So privat wie möglich; öffentliche API klein halten
-  (wichtig für eine Bibliothek). Prelude-Re-Exports über `pub use` in `lib.rs`.
+- **Strong typing:** `enum`s for states/variants instead of magic strings;
+  `struct`s instead of loose tuples. Consider newtypes for domain values.
+- **Derivations:** Derive sensible traits (`Debug, Clone, PartialEq, …`);
+  `Serialize`/`Deserialize` via serde-derive. `Copy` only for small types.
+- **Constructors:** `pub fn new() -> Self`; for default constructors
+  additionally `impl Default`. Do not maintain `new` without arguments
+  redundantly to `Default`.
+- **Ownership:** Prefer borrows (`&T`/`&mut T`); avoid unnecessary
+  `.clone()`/`.to_string()`. Do not mutate inputs unnecessarily.
+- **Optionality:** `Option<T>` for "may be absent"; no sentinel value.
+- **Control flow:** `match`/`if let` with guard clauses; avoid deep nesting.
+- **Iterators instead of manual loops** for simple map/filter/fold; with
+  complex logic an explicit `for` loop.
+- **Visibility:** As private as possible; keep the public API small
+  (important for a library). Prelude re-exports via `pub use` in `lib.rs`.
 
-### 7.6 Nebenläufigkeit
+### 7.6 Concurrency
 
-- **Synchron als Default,** solange kein realer Bedarf besteht (KISS/YAGNI).
-- **`async`/`await` nur bei echtem I/O-Concurrency-Bedarf,** dann mit Runtime
-  (`tokio`); Runtime vorher abstimmen.
-- **Keine blockierenden Aufrufe im `async`-Kontext;** CPU-Lastiges über
-  `spawn_blocking`/dedizierte Threads.
-- **Shared State** bevorzugt über Ownership/Channels statt geteilter Sperren;
-  nur wo nötig `Arc<Mutex<…>>`.
+- **Synchronous as default,** as long as there is no real need (KISS/YAGNI).
+- **`async`/`await` only with a real I/O concurrency need,** then with a runtime
+  (`tokio`); agree on the runtime beforehand.
+- **No blocking calls in the `async` context;** CPU-intensive work via
+  `spawn_blocking`/dedicated threads.
+- **Shared state** preferably via ownership/channels instead of shared locks;
+  only where necessary `Arc<Mutex<…>>`.
 
-### 7.7 Externe Crates
+### 7.7 External Crates
 
-- Standardbibliothek bevorzugen, Dependencies minimieren – neue Crates vorher
-  abstimmen. Etablierte Crates über dem `use` bzw. in `Cargo.toml` dokumentieren:
+- Prefer the standard library, minimize dependencies – agree on new crates
+  beforehand. Document established crates above the `use` or in `Cargo.toml`:
   `// https://crates.io/crates/<name>`.
 
 ### 7.8 Tests
 
-- **Unit-Tests** in der jeweiligen Datei unter `#[cfg(test)] mod tests { … }`
-  mit `use super::*;`; **Integrationstests** im Verzeichnis `tests/`.
-- Testfunktionen `#[test]`, Namen beschreiben das erwartete Verhalten;
-  Fehlerfälle ggf. mit `#[should_panic]` oder `Result`-Rückgabe. FIRST und
-  Fakes-vor-Mocks gelten.
-- Doctests in `# Examples` zählen als Tests und müssen laufen.
+- **Unit tests** in the respective file under `#[cfg(test)] mod tests { … }`
+  with `use super::*;`; **integration tests** in the `tests/` directory.
+- Test functions `#[test]`, names describe the expected behavior; error cases
+  where appropriate with `#[should_panic]` or `Result` return. FIRST and
+  fakes-over-mocks apply.
+- Doctests in `# Examples` count as tests and must run.
 
-### 7.9 Sicherheit
+### 7.9 Security
 
-- **`unsafe`-Disziplin:** vermeiden, kapseln, `// SAFETY:` + `# Safety`-Doku.
-- **Integer-Overflow:** für Werte von außen explizit `checked_*`/`saturating_*`/
-  `wrapping_*`. Terminal-Geometrie (u16/usize-Konvertierungen) ist durch die
-  Bildschirmgröße begrenzt.
-- **Command Injection:** `std::process::Command` mit `.arg()`/`.args()`; kein
-  `sh -c` mit zusammengesetzten Strings (relevant für `editor`/`clipboard`, die
-  externe Tools aufrufen).
-- **Pfad-Traversal:** Pfade von außen mit `canonicalize()` + `starts_with()`
-  prüfen (relevant für `path_picker`).
-- **Secrets:** keine Secrets in Code/Log; bei Bedarf `zeroize`.
-- **Eingaben begrenzen:** Größen-/Längenlimits beim Parsen fremder Daten.
-- **Dependencies:** `cargo audit` in CI; Dependencies minimieren (§7.7).
+- **`unsafe` discipline:** avoid, encapsulate, `// SAFETY:` + `# Safety` doc.
+- **Integer overflow:** for values from outside explicitly
+  `checked_*`/`saturating_*`/`wrapping_*`. Terminal geometry (u16/usize
+  conversions) is bounded by the screen size.
+- **Command injection:** `std::process::Command` with `.arg()`/`.args()`; no
+  `sh -c` with composed strings (relevant for `editor`/`clipboard`, which call
+  external tools).
+- **Path traversal:** Check paths from outside with `canonicalize()` +
+  `starts_with()` (relevant for `path_picker`).
+- **Secrets:** no secrets in code/log; if needed `zeroize`.
+- **Limit inputs:** size/length limits when parsing foreign data.
+- **Dependencies:** `cargo audit` in CI; minimize dependencies (§7.7).
 
-### 7.10 TUI-Konventionen (Rust-Terminal-Apps)
+### 7.10 TUI Conventions (Rust terminal apps)
 
-Gilt für ratatui-basierte Terminal-Apps. **Dieses Crate implementiert die
-folgenden Konventionen** als wiederverwendbare Bausteine; neue Widgets und
-konsumierende Ansichten bauen darauf auf. Punkte ohne Zusatz gelten
-grundsätzlich; mit "(optional)" markierte sind bewährte Muster, die übernommen
-werden, wo sie passen.
+Applies to ratatui-based terminal apps. **This crate implements the following
+conventions** as reusable building blocks; new widgets and consuming views
+build on top of it. Points without an addition apply in principle; those marked
+"(optional)" are proven patterns that are adopted where they fit.
 
-**Listen & Navigation**
+**Lists & Navigation**
 
-- **Zyklisch navigieren:** Auswahllisten wrappen an beiden Enden über einen
-  gemeinsamen Helper (`nav::cycle` bzw. `rem_euclid`), nicht per
-  `saturating_add/sub`. Leere Liste ergibt Index 0.
-- **Seitenweise Navigation:** `PageUp`/`PageDown` bewegen um eine Bildschirm-
-  seite (sichtbare Zeilen, mindestens 1); am Rand geklemmt (nicht zyklisch).
-- **Sprünge an Anfang/Ende:** `Home`/`End` springen an Listenanfang/-ende und
-  klemmen dort. Optional zusätzlich vim (`g`/`G`, `j`/`k`).
-- **Direktsprung zu einem Wert (optional):** kleiner Picker, springt auf die
-  nächste vorhandene Zeile.
-- **Mehrfachauswahl (optional):** `Space` toggelt; `Shift`+Pfeil/`PageUp/Down`
-  erweitern einen Bereich von einem Anker aus.
+- **Navigate cyclically:** Selection lists wrap at both ends via a shared helper
+  (`nav::cycle` or `rem_euclid`), not via `saturating_add/sub`. An empty list
+  yields index 0.
+- **Page-wise navigation:** `PageUp`/`PageDown` move by one screen page (visible
+  rows, at least 1); clamped at the edge (not cyclic).
+- **Jumps to start/end:** `Home`/`End` jump to the start/end of the list and
+  clamp there. Optionally additionally vim (`g`/`G`, `j`/`k`).
+- **Direct jump to a value (optional):** small picker, jumps to the next
+  existing row.
+- **Multi-selection (optional):** `Space` toggles; `Shift`+arrow/`PageUp/Down`
+  extend a range from an anchor.
 
-**Scrollen & Scrollbar**
+**Scrolling & Scrollbar**
 
-- **Scrollbar bei Überlauf:** vertikale Scrollbar rechts, sobald Inhalt den
-  Viewport überläuft, sonst weggelassen. Dim-Stil ohne Pfeile, gemeinsamer
-  Helper (`scroll::render_scrollbar`); Positionszahl ist `total - viewport + 1`.
-- **Positionsanzeige `XX/YY` verdeckt nie Inhalt:** Bei einem gerahmten Widget
-  sitzt sie im unteren Rahmen (`chrome::render_badge`), bei einem rahmenlosen
-  rechtsbündig in einer reservierten letzten Zeile
-  (`chrome::render_corner_badge`, für Listen `list::render_counted`). Ist die
-  Fläche zu niedrig, um die Zeile zu entbehren, gewinnt der Inhalt.
-- **Scroll-Offset folgt dem Cursor:** Liste scrollt erst am Rand, nicht
-  seitenweise pro Schritt.
-- **Box mit eigenem Umbruch:** Ein Widget, das seinen Text selbst umbricht, hat
-  keine Spalte für eine `Scrollbar` über einem eigenen `Rect` übrig. Es holt
-  sich die Thumb-/Track-Zelle pro sichtbarer Zeile über `scroll::row_indicator`
-  und hängt sie an die `Line`, statt den Inhalt zu überzeichnen.
+- **Scrollbar on overflow:** vertical scrollbar on the right as soon as the
+  content overflows the viewport, otherwise omitted. Dim style without arrows,
+  shared helper (`scroll::render_scrollbar`); the position number is
+  `total - viewport + 1`.
+- **Position indicator `XX/YY` never obscures content:** For a framed widget it
+  sits in the lower border (`chrome::render_badge`), for a borderless one
+  right-aligned in a reserved last line (`chrome::render_corner_badge`, for
+  lists `list::render_counted`). If the area is too low to spare the line,
+  content wins.
+- **Scroll offset follows the cursor:** the list scrolls only at the edge, not
+  page-wise per step.
+- **Box with its own wrapping:** A widget that wraps its text itself has no
+  column left for a `Scrollbar` over its own `Rect`. It fetches the
+  thumb/track cell per visible row via `scroll::row_indicator` and appends it to
+  the `Line` instead of overdrawing the content.
 
 **Modals & Widgets**
 
-- **Wiederverwendbare Modal-Widgets:** gemeinsamer Satz – `confirm`,
-  `confirm_default`, `select`, `multi_select`, `number_input`, `message` – nicht
-  pro Aufrufstelle nachgebaut.
-- **Destruktive Aktionen sind per Default abschlägig:** Eine gewöhnliche Ja/Nein-
-  Frage geht über `confirm`, wo `Enter` bestätigt. Löschen und andere nicht
-  umkehrbare Aktionen gehen über `confirm_default` mit `Question::declining` –
-  dort antwortet ein versehentliches `Enter` "nein". `y`/`n` antworten immer
-  explizit, `Esc` lehnt ab; die Footer-Hint bindet `enter` an die Antwort, die
-  sie tatsächlich gibt.
-- **Kalender-Date-Picker (optional):** gemeinsames Kalender-Modal mit
-  einheitlichem Look/Shortcuts.
-- **Fuzzy-Matching:** Filter- und Auswahl-Picker matchen fuzzy (`fuzzy`, backed
+- **Reusable modal widgets:** a shared set – `confirm`, `confirm_default`,
+  `select`, `multi_select`, `number_input`, `message` – not reimplemented per
+  call site.
+- **Destructive actions are declined by default:** An ordinary yes/no question
+  goes via `confirm`, where `Enter` confirms. Deletion and other irreversible
+  actions go via `confirm_default` with `Question::declining` – there an
+  accidental `Enter` answers "no". `y`/`n` always answer explicitly, `Esc`
+  declines; the footer hint binds `enter` to the answer it actually gives.
+- **Calendar date picker (optional):** shared calendar modal with a uniform
+  look/shortcuts.
+- **Fuzzy matching:** filter and selection pickers match fuzzy (`fuzzy`, backed
   by `nucleo-matcher`).
-- **Autocomplete-Dropdown (optional):** Inline-Dropdown für Vorschlagswerte.
+- **Autocomplete dropdown (optional):** inline dropdown for suggestion values.
 
-**Formulare**
+**Forms**
 
-- **Aufbau & Steuerung:** alle Felder gleichzeitig sichtbar; `Tab`/`BackTab`
-  steppen (umlaufend), `Ctrl+S` speichert, `Esc` bricht ab; fokussierte Zeile
-  per Hintergrund-Tint hervorgehoben.
-- **Dirty-Marker & Reset (optional):** geänderte Felder tragen `*`; `r` setzt
-  das fokussierte Feld zurück.
-- **Externer Editor (optional):** `Ctrl+G` übergibt das Feld an `$EDITOR`.
-- **Lese-/Pan-Modus (optional):** `Ctrl`+Pfeile schwenken eine Multiline-Box.
+- **Structure & control:** all fields visible simultaneously; `Tab`/`BackTab`
+  step (wrapping), `Ctrl+S` saves, `Esc` cancels; the focused row highlighted
+  via background tint.
+- **Dirty marker & reset (optional):** changed fields carry `*`; `r` resets the
+  focused field.
+- **External editor (optional):** `Ctrl+G` hands the field to `$EDITOR`.
+- **Read/pan mode (optional):** `Ctrl`+arrows pan a multiline box.
 
-**Textfelder**
+**Text Fields**
 
-- **Vollständige Editier-Shortcuts:** ein- und mehrzeilige Felder teilen
-  denselben Satz Shortcuts über den geteilten Editier-Kern
-  `input::apply_edit_key` (ein Caret mit optionalem Selektions-Anker) – einzige
-  Quelle (SSOT/DRY). `input::EditMode` wählt die Geometrie: `SingleLine` treibt
-  `InputField`, `Multiline { width }` die `TextArea`. Der Editor-Kern behandelt
-  nur Editier-Tasten; Steuertasten des Feldes (`Esc`, bestätigendes `Enter`,
-  andere Chords) gehören dem Aufrufer.
-  - **Bewegung:** Pfeile zeichenweise; `Home`/`End`; `Up`/`Down` nur mehrzeilig.
-  - **Selektion:** `Shift`+Bewegung erweitert, ohne `Shift` hebt auf; `Ctrl+A`
-    alles.
-  - **Löschen:** `Backspace`/`Delete`; `Ctrl+U`/`Ctrl+K` bis Zeilenanfang/-ende
-    (mehrzeilig: bis Anfang/Ende der **Display**-Zeile, nicht der logischen).
-  - **Zwischenablage:** `Ctrl+C`/`X`/`V`; Tippen/Einfügen ersetzen Selektion.
-    Ein Command-Chord ist `Control` **ohne** `Alt` (`input::is_command`) – sonst
-    verschluckt ein Feld die `AltGr`-Zeichen, die crossterm als `Control+Alt`
-    meldet.
-  - **Rendering:** Block-Cursor (Farbe optional via Config); einzeilig
-    horizontal scrollend mit `…`-Clipping, mehrzeilig wortweise umgebrochen
-    (weicher Umbruch am letzten passenden Leerzeichen, überlange Wörter hart).
-  - **Einbettbar:** Ein Host, der sein Text-Layout selbst macht, nutzt
-    `input::line_spans` / `scrolled_line_spans` / `query_spans_at` samt
-    `LinePaint`-Stil-Overlay, statt die Caret-Logik nachzubauen.
+- **Complete editing shortcuts:** single- and multi-line fields share the same
+  set of shortcuts via the shared editing core `input::apply_edit_key` (one
+  caret with an optional selection anchor) – single source (SSOT/DRY).
+  `input::EditMode` selects the geometry: `SingleLine` drives `InputField`,
+  `Multiline { width }` the `TextArea`. The editor core handles only editing
+  keys; the field's control keys (`Esc`, confirming `Enter`, other chords)
+  belong to the caller.
+  - **Movement:** arrows character-wise; `Home`/`End`; `Up`/`Down` only
+    multi-line.
+  - **Selection:** `Shift`+movement extends, without `Shift` clears; `Ctrl+A`
+    everything.
+  - **Deletion:** `Backspace`/`Delete`; `Ctrl+U`/`Ctrl+K` to the start/end of
+    the line (multi-line: to the start/end of the **display** line, not the
+    logical one).
+  - **Clipboard:** `Ctrl+C`/`X`/`V`; typing/pasting replace the selection.
+    A command chord is `Control` **without** `Alt` (`input::is_command`) –
+    otherwise a field swallows the `AltGr` characters that crossterm reports as
+    `Control+Alt`.
+  - **Rendering:** block cursor (color optional via config); single-line
+    scrolling horizontally with `…` clipping, multi-line wrapped word-wise
+    (soft wrap at the last fitting space, overlong words hard).
+  - **Embeddable:** A host that does its text layout itself uses
+    `input::line_spans` / `scrolled_line_spans` / `query_spans_at` along with
+    the `LinePaint` style overlay, instead of reimplementing the caret logic.
 
-**Darstellung**
+**Presentation**
 
-- **Farbgebung – dezent statt grell:** ein einziger Akzentton (weiches RGB) für
-  Header/aktiven Tab/Hervorhebung, `DIM`/Grau für Sekundärtext, gedämpfte
-  Hintergrund-Tints für Selektion/Fokus. Farben tragen Bedeutung und werden als
-  benannte Konstanten zentral gehalten (im `theme`-Submodul), nicht über Widgets
-  verstreut.
-- **Rahmen-Stil:** Boxen/Modals mit abgerundeten Rahmen (`BorderType::Rounded`).
-- **Glyphen/Icons – zwei Varianten, config-wählbar:** jedes Icon in zwei Stufen
-  (Unicode + ASCII-Fallback), per `GlyphVariant` wählbar. Keine bunten Emojis.
-- **Footer-Hint-Line:** aktive Tastenkürzel in einer Fußzeile –
-  `(Taste, Beschreibung)`-Tokens, Taste im Akzentton, Beschreibung dim, mit
-  ` · ` getrennt, bei zu schmaler Breite umbrechend. Gemeinsamer Helper
+- **Coloring – subtle instead of garish:** a single accent tone (soft RGB) for
+  header/active tab/highlight, `DIM`/gray for secondary text, muted background
+  tints for selection/focus. Colors carry meaning and are held centrally as
+  named constants (in the `theme` submodule), not scattered across widgets.
+- **Border style:** boxes/modals with rounded borders (`BorderType::Rounded`).
+- **Glyphs/icons – two variants, config-selectable:** each icon in two levels
+  (Unicode + ASCII fallback), selectable via `GlyphVariant`. No colorful emojis.
+- **Footer hint line:** active keyboard shortcuts in a footer –
+  `(key, description)` tokens, key in the accent tone, description dim,
+  separated with ` · `, wrapping when the width is too narrow. Shared helper
   (`footer::lines`).
-- **Hilfe-Overlay:** über `?` aufrufbares Voll-Overlay mit allen Shortcuts;
-  scrollbarer Fuzzy Finder. Footer weist mit `? help` darauf hin. Beim
-  Hinzufügen eines Shortcuts Footer, Hilfe-Overlay und die Doku synchron halten.
-- **Transiente Status-Zeile:** Rückmeldungen als kurze Meldung im Footer
-  (Akzentfarbe), die beim nächsten Tastendruck verschwindet. Fehler aus Aktionen
-  werden so gemeldet und führen nie zum Absturz; nur schwerwiegende Fälle nutzen
-  ein Modal.
-- **Überlauf kürzen mit `…`:** zu breiter Text auf sichtbare Breite gekürzt
-  (gemeinsamer `text::truncate`-Helper).
-- **Sticky-Header-Zeile (optional);** Spaltenkopf mit Einheit (optional);
-  Tab-Bar (optional); Theming (optional, Farben via `theme` mit
-  Default-Fallback).
+- **Help overlay:** a full overlay callable via `?` with all shortcuts;
+  scrollable fuzzy finder. The footer points to it with `? help`. When adding a
+  shortcut, keep footer, help overlay, and the docs in sync.
+- **Transient status line:** feedback as a short message in the footer (accent
+  color) that disappears on the next keypress. Errors from actions are reported
+  this way and never lead to a crash; only severe cases use a modal.
+- **Truncate overflow with `…`:** too-wide text truncated to the visible width
+  (shared `text::truncate` helper).
+- **Sticky header line (optional);** column head with unit (optional); tab bar
+  (optional); theming (optional, colors via `theme` with a default fallback).
 
-**Globale Tasten & App-Rahmen**
+**Global Keys & App Frame**
 
-- **Globale Tasten:** `Ctrl+Q` beendet hart (überall, inkl. Modals, mit
-  Speichern der Session). `F1` blendet die Hint-Fußzeilen um (Default: an;
-  samt der Leerzeile darüber). Beide setzt das Toolkit selbst: `Ctrl+Q` in
-  `terminal::classify`, `F1` in `driver::run` und `overlay::popup` – jeder Screen
-  und jedes Modal erben sie, der Host sieht die Taste nie. `F1` ist über
-  `shortcut_hints::set_toggle_key` umbindbar und abschaltbar; `Ctrl+Q` bleibt
-  fest verdrahtet, damit der Notausstieg aus dem Alternate Screen nicht
-  versehentlich verschwindet. `shortcut_hints::global_bindings` nennt beide, mit
-  der aktuellen Bindung – der Host spleißt sie in Footer und Hilfe-Overlay. Eine
-  App mit eigenem Event-Loop (statt `driver::run`) ruft
-  `shortcut_hints::consume_toggle(key)` ganz vorne in ihrer Tastenbehandlung;
-  den Chord nie von Hand vergleichen.
-- **Quit-Nachfrage (optional):** `quit::set_confirm` legt fest, ob vor dem harten
-  `Ctrl+Q`, vor der eigenen Quit-Action des Hosts, vor beidem oder vor keinem
-  gefragt wird (Default: keinem). `quit::set_guard` registriert, wie der Dialog
-  gezeichnet wird. Den harten Chord fragt das Toolkit selbst ab; die eigene
-  Quit-Action fragt der Host über `quit::request` – nur er weiß, woher sie kam.
-- `Ctrl+C` bleibt der Zwischenablage vorbehalten. Zahlentasten wählen
-  Top-Level-Views (persistiert). `u` macht die letzte Aktion rückgängig
-  (One-Level-Undo), `y` kopiert in die Zwischenablage. `q`/`Esc` beenden weich,
-  `?` öffnet die Hilfe. (Diese setzt der Host; `q` darf das Toolkit nicht
-  abfangen – es ist ein gewöhnliches Zeichen und wäre in jedem Filter Eingabe.)
-- **Terminal-Guard (RAII):** ein Guard-Typ (`Tui`) aktiviert Raw-Mode +
-  Alternate-Screen bei Erzeugung und stellt beide beim Drop wieder her; der
-  Event-Wrapper liefert Tasten und `Resize`, die Oberfläche zeichnet bei Resize
-  neu.
-- **Debounced Save (optional):** schnelle, wiederholte Änderungen gebündelt und
-  verzögert schreiben.
+- **Global keys:** `Ctrl+Q` quits hard (everywhere, incl. modals, with saving
+  of the session). `F1` toggles the hint footers (default: on; including the
+  blank line above them). The toolkit itself sets both: `Ctrl+Q` in
+  `terminal::classify`, `F1` in `driver::run` and `overlay::popup` – every
+  screen and every modal inherit them, the host never sees the key. `F1` is
+  rebindable and disableable via `shortcut_hints::set_toggle_key`; `Ctrl+Q`
+  stays hard-wired so that the emergency exit from the alternate screen does not
+  accidentally disappear. `shortcut_hints::global_bindings` names both, with the
+  current binding – the host splices them into the footer and help overlay. An
+  app with its own event loop (instead of `driver::run`) calls
+  `shortcut_hints::consume_toggle(key)` at the very front of its key handling;
+  never compare the chord by hand.
+- **Quit prompt (optional):** `quit::set_confirm` determines whether a
+  confirmation is asked before the hard `Ctrl+Q`, before the host's own quit
+  action, before both, or before neither (default: neither). `quit::set_guard`
+  registers how the dialog is drawn. The hard chord the toolkit queries itself;
+  the host asks about its own quit action via `quit::request` – only it knows
+  where it came from.
+- `Ctrl+C` remains reserved for the clipboard. Number keys select top-level
+  views (persisted). `u` undoes the last action (one-level undo), `y` copies to
+  the clipboard. `q`/`Esc` quit softly, `?` opens the help. (These the host
+  sets; `q` must not be intercepted by the toolkit – it is an ordinary character
+  and would be input in every filter.)
+- **Terminal guard (RAII):** a guard type (`Tui`) activates raw mode +
+  alternate screen on creation and restores both on drop; the event wrapper
+  delivers keys and `Resize`, the surface redraws on resize.
+- **Debounced save (optional):** fast, repeated changes bundled and written with
+  a delay.
 
-### 7.11 Sonstiges
+### 7.11 Miscellaneous
 
-- Übrige allgemeine Regeln (Benennung, Zeilenlänge, Kommentare, Robustheit)
-  gelten unverändert.
+- The remaining general rules (naming, line length, comments, robustness) apply
+  unchanged.
 
 ## 11 Git
 
-**FÜHRE KEINE EIGENEN COMMITS DURCH.**
+**DO NOT MAKE YOUR OWN COMMITS.**
 
-Mache am Ende von Änderungen einen Vorschlag für eine Commit-Nachricht (nur
-Titel) – auf Englisch, im Imperativ (z. B. "add X", "update Y"), es sei denn,
-etwas anderes ist vorgegeben. Verwende den Stil von
+At the end of changes, make a proposal for a commit message (title only) – in
+English, in the imperative (e.g. "add X", "update Y"), unless something else is
+specified. Use the style of
 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
