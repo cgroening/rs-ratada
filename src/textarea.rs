@@ -31,6 +31,7 @@ pub struct TextArea {
     text: String,
     cursor: TextCursor,
     width: Cell<usize>,
+    height: Cell<usize>,
     scroll: Cell<usize>,
     max_len: Option<usize>,
     decor: Option<chrome::BoxDecor>,
@@ -52,6 +53,7 @@ impl TextArea {
             text: initial.to_string(),
             cursor: TextCursor::at_end(initial),
             width: Cell::new(1),
+            height: Cell::new(1),
             scroll: Cell::new(0),
             ..Self::default()
         }
@@ -97,6 +99,7 @@ impl TextArea {
             key,
             input::EditMode::Multiline {
                 width: self.width.get().max(1),
+                height: self.height.get().max(1),
             },
             self.max_len,
         )
@@ -129,6 +132,7 @@ impl TextArea {
         let width = inner.width.max(1) as usize;
         let height = inner.height.max(1) as usize;
         self.width.set(width);
+        self.height.set(height);
         let chars: Vec<char> = self.text.chars().collect();
         let rows = wrap_ranges(&chars, width);
         let (caret_row, caret_col) = locate(&rows, self.cursor.pos);
@@ -467,6 +471,27 @@ mod tests {
         assert_eq!(area.cursor.selection(), Some((2, 3)));
         area.handle_key(KeyEvent::new(KeyCode::Char('X'), KeyModifiers::NONE));
         assert_eq!(area.text(), "abX");
+    }
+
+    #[test]
+    fn page_down_moves_by_the_stored_viewport_height() {
+        // Five rows via newlines (starts 0,3,6,9,12); a two-row viewport.
+        let mut area = TextArea::new("l0\nl1\nl2\nl3\nl4");
+        area.width.set(10);
+        area.height.set(2);
+        area.cursor.move_to(0);
+        area.handle_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
+        assert_eq!(area.cursor.pos, 6); // two rows down: "l2"
+    }
+
+    #[test]
+    fn page_down_falls_back_to_one_row_before_a_render() {
+        // Without a render the height defaults to one row, so a page is one row.
+        let mut area = TextArea::new("l0\nl1\nl2");
+        area.width.set(10);
+        area.cursor.move_to(0);
+        area.handle_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
+        assert_eq!(area.cursor.pos, 3); // one row down: "l1"
     }
 
     #[test]

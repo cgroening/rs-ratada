@@ -2,8 +2,9 @@
 //!
 //! A centred ISO date over a Monday-first month grid with today, the cursor day
 //! and weekends coloured. Arrows / `hjkl` move by day/week, `PageUp`/`PageDown`
-//! jump whole months, `Enter` picks, `Del`/`Backspace` clears (when allowed)
-//! and `Esc` cancels.
+//! jump whole months, `Home`/`End` jump to the first/last day of the visible
+//! month, `Enter` picks, `Del`/`Backspace` clears (when allowed) and `Esc`
+//! cancels.
 
 use std::io;
 
@@ -83,6 +84,14 @@ pub fn date_picker(
                 *cursor = add_months(*cursor, 1);
                 PopupFlow::Continue
             }
+            KeyCode::Home => {
+                *cursor = first_of_month(*cursor);
+                PopupFlow::Continue
+            }
+            KeyCode::End => {
+                *cursor = last_of_month(*cursor);
+                PopupFlow::Continue
+            }
             KeyCode::Enter => PopupFlow::Done(Some(*cursor)),
             KeyCode::Delete | KeyCode::Backspace if allow_clear => {
                 PopupFlow::Done(None)
@@ -114,11 +123,22 @@ pub(super) fn add_months(date: NaiveDate, months: i32) -> NaiveDate {
     shifted.unwrap_or(date)
 }
 
+/// The first day of the month containing `date`.
+pub(super) fn first_of_month(date: NaiveDate) -> NaiveDate {
+    date.with_day(1).unwrap_or(date)
+}
+
+/// The last day of the month containing `date`.
+pub(super) fn last_of_month(date: NaiveDate) -> NaiveDate {
+    // First of next month, stepped back one day.
+    shift(add_months(first_of_month(date), 1), -1)
+}
+
 /// The Monday-first cells for the month containing `cursor`: leading `None`s for
 /// the offset to the first weekday, one `Some(day)` per day, trailing `None`s to
 /// fill the last week. Shared with the date-range picker.
 pub(super) fn month_cells(cursor: NaiveDate) -> Vec<Option<NaiveDate>> {
-    let first = cursor.with_day(1).unwrap_or(cursor);
+    let first = first_of_month(cursor);
     let lead = first.weekday().num_days_from_monday() as usize;
     let mut cells: Vec<Option<NaiveDate>> = vec![None; lead];
     let mut day = first;
@@ -260,6 +280,20 @@ mod tests {
         assert_eq!(
             shift(day, 7),
             NaiveDate::from_ymd_opt(2026, 6, 22).unwrap()
+        );
+    }
+
+    #[test]
+    fn first_and_last_of_month_bound_the_visible_month() {
+        let mid = NaiveDate::from_ymd_opt(2026, 2, 15).unwrap();
+        assert_eq!(
+            first_of_month(mid),
+            NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
+        );
+        // February 2026 has 28 days.
+        assert_eq!(
+            last_of_month(mid),
+            NaiveDate::from_ymd_opt(2026, 2, 28).unwrap(),
         );
     }
 }

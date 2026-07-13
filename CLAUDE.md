@@ -273,7 +273,7 @@ Applies to ratatui-based terminal apps. **This crate implements the following co
 **Text Fields**
 
 - **Complete editing shortcuts:** single- and multi-line fields share the same set of shortcuts via the shared editing core `input::apply_edit_key` (one caret with an optional selection anchor) – single source (SSOT/DRY). `input::EditMode` selects the geometry: `SingleLine` drives `InputField`, `Multiline { width }` the `TextArea`. The editor core handles only editing keys; the field's control keys (`Esc`, confirming `Enter`, other chords) belong to the caller.
-  - **Movement:** arrows character-wise; `Home`/`End`; `Up`/`Down` only multi-line.
+  - **Movement:** arrows character-wise; `Home`/`End`; `Up`/`Down` and `PageUp`/`PageDown` (by one viewport page) only multi-line.
   - **Selection:** `Shift`+movement extends, without `Shift` clears; `Ctrl+A` everything.
   - **Deletion:** `Backspace`/`Delete`; `Ctrl+U`/`Ctrl+K` to the start/end of the line (multi-line: to the start/end of the **display** line, not the logical one).
   - **Clipboard:** `Ctrl+C`/`X`/`V`; typing/pasting replace the selection. A command chord is `Control` **without** `Alt` (`input::is_command`) – otherwise a field swallows the `AltGr` characters that crossterm reports as `Control+Alt`.

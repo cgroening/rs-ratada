@@ -73,6 +73,7 @@ pub struct TreeView {
     expanded: HashSet<usize>,
     cursor: usize,
     offset: Cell<usize>,
+    viewport: Cell<usize>,
     decor: Option<chrome::BoxDecor>,
 }
 
@@ -84,6 +85,7 @@ impl TreeView {
             expanded: HashSet::new(),
             cursor: 0,
             offset: Cell::new(0),
+            viewport: Cell::new(1),
             decor: None,
         }
     }
@@ -118,18 +120,32 @@ impl TreeView {
             .is_some_and(|node| !node.has_children)
     }
 
-    /// Handles a key: navigate, expand/collapse or toggle the current node.
+    /// Handles a key: move the cursor (`Up`/`Down`/`k`/`j` cyclically,
+    /// `PageUp`/`PageDown` by a page, `Home`/`End`/`g`/`G` to the ends),
+    /// expand/collapse (`Left`/`Right`/`h`/`l`) or toggle (`Enter`/`Space`) the
+    /// current node.
     pub fn handle_key(&mut self, key: KeyEvent) {
         let flat = self.flatten();
         if flat.is_empty() {
             return;
         }
+        let page = self.viewport.get().max(1) as isize;
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 self.cursor = nav::cycle(self.cursor, flat.len(), -1);
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 self.cursor = nav::cycle(self.cursor, flat.len(), 1);
+            }
+            KeyCode::PageUp => {
+                self.cursor = nav::step_clamped(self.cursor, flat.len(), -page);
+            }
+            KeyCode::PageDown => {
+                self.cursor = nav::step_clamped(self.cursor, flat.len(), page);
+            }
+            KeyCode::Home | KeyCode::Char('g') => self.cursor = 0,
+            KeyCode::End | KeyCode::Char('G') => {
+                self.cursor = flat.len().saturating_sub(1);
             }
             KeyCode::Right | KeyCode::Char('l') => {
                 self.set_expanded(&flat, true);
@@ -232,14 +248,15 @@ impl TreeView {
             selected: self.cursor,
             offset: &self.offset,
         };
-        match &self.decor {
+        let viewport = match &self.decor {
             Some(decor) => {
-                list::render_boxed(frame, area, skin, view, decor, true);
+                list::render_boxed(frame, area, skin, view, decor, true)
             }
             // Without a box there is no border to hang the badge on, so the
             // bottom row carries it.
             None => list::render_counted(frame, area, skin, view),
-        }
+        };
+        self.viewport.set(viewport);
     }
 }
 
@@ -301,6 +318,31 @@ mod tests {
     fn navigation_stays_in_bounds() {
         let mut view = sample();
         view.handle_key(key(KeyCode::Up)); // wrap to last
+        assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
+    }
+
+    #[test]
+    fn home_and_end_jump_to_the_first_and_last_row() {
+        let mut view = sample();
+        view.handle_key(key(KeyCode::End));
+        assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
+        view.handle_key(key(KeyCode::Home));
+        assert_eq!(view.selected_label().as_deref(), Some("src"));
+        // vim g/G mirror Home/End.
+        view.handle_key(key(KeyCode::Char('G')));
+        assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
+        view.handle_key(key(KeyCode::Char('g')));
+        assert_eq!(view.selected_label().as_deref(), Some("src"));
+    }
+
+    #[test]
+    fn page_down_clamps_at_the_last_row() {
+        // The default one-row viewport makes a page one row; PageDown from the
+        // top still clamps at the last node rather than wrapping.
+        let mut view = sample();
+        view.handle_key(key(KeyCode::PageDown));
+        assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
+        view.handle_key(key(KeyCode::PageDown));
         assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
     }
 

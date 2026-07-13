@@ -3,8 +3,9 @@
 //! A thin wrapper over [`overlay::popup`]: the dimmed backdrop, box and loop
 //! come from there; this module owns the search state and the sectioned body.
 //! Bindings are grouped into [`HelpSection`]s; `Tab`/`BackTab` jump between
-//! sections, the arrows move within the flat list, and typing filters fuzzily
-//! while keeping the section headers of any section that still has a match.
+//! sections, the arrows (plus `PageUp`/`PageDown` and `Home`/`End`) move within
+//! the flat list, and typing filters fuzzily while keeping the section headers
+//! of any section that still has a match.
 
 use std::{cell::Cell, io};
 
@@ -48,6 +49,8 @@ struct Help {
     /// Persistent list scroll offset so the view and scrollbar follow the
     /// cursor across frames.
     offset: Cell<usize>,
+    /// The list viewport height captured at render, driving page jumps.
+    viewport: Cell<usize>,
 }
 
 /// One rendered row: a section header or a selectable binding.
@@ -68,7 +71,8 @@ struct RowLayout<'a> {
 /// Shows the help overlay until the user closes it.
 ///
 /// A query filters the bindings fuzzily (keeping the header of every section
-/// that still matches); the arrow keys move the selection, `Tab`/`BackTab` jump
+/// that still matches); the arrows (plus `PageUp`/`PageDown` and `Home`/`End`)
+/// move the selection, `Tab`/`BackTab` jump
 /// to the next/previous section, and `Esc` or `?` close the overlay.
 pub fn show<B: AsRef<str>>(
     tui: &mut Tui,
@@ -80,6 +84,7 @@ pub fn show<B: AsRef<str>>(
         query: String::new(),
         cursor: 0,
         offset: Cell::new(0),
+        viewport: Cell::new(1),
     };
     popup(
         tui,
@@ -108,6 +113,30 @@ pub fn show<B: AsRef<str>>(
                 let count =
                     layout_rows(sections, &state.query).selectable.len();
                 state.cursor = nav::cycle(state.cursor, count, 1);
+                PopupFlow::Continue
+            }
+            KeyCode::PageUp => {
+                let count =
+                    layout_rows(sections, &state.query).selectable.len();
+                let page = state.viewport.get().max(1) as isize;
+                state.cursor = nav::step_clamped(state.cursor, count, -page);
+                PopupFlow::Continue
+            }
+            KeyCode::PageDown => {
+                let count =
+                    layout_rows(sections, &state.query).selectable.len();
+                let page = state.viewport.get().max(1) as isize;
+                state.cursor = nav::step_clamped(state.cursor, count, page);
+                PopupFlow::Continue
+            }
+            KeyCode::Home => {
+                state.cursor = 0;
+                PopupFlow::Continue
+            }
+            KeyCode::End => {
+                let count =
+                    layout_rows(sections, &state.query).selectable.len();
+                state.cursor = count.saturating_sub(1);
                 PopupFlow::Continue
             }
             KeyCode::Tab => {
@@ -264,7 +293,7 @@ fn render_body<B: AsRef<str>>(
         .get(state.cursor.min(layout.selectable.len().saturating_sub(1)))
         .copied()
         .unwrap_or(0);
-    list::render(
+    let viewport = list::render(
         frame,
         rows[1],
         skin,
@@ -274,6 +303,7 @@ fn render_body<B: AsRef<str>>(
             offset: &state.offset,
         },
     );
+    state.viewport.set(viewport);
 
     let hint = footer_hint(skin, rows[2].width as usize);
     frame.render_widget(Paragraph::new(hint), rows[2]);
@@ -339,6 +369,7 @@ mod tests {
             query: String::new(),
             cursor: 0,
             offset: Cell::new(0),
+            viewport: Cell::new(1),
         };
         // From the first section, Tab moves to the Tasks section start (index 2
         // in the selectable list).

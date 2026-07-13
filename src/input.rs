@@ -109,11 +109,15 @@ pub enum EditMode {
     /// One line: `Home`/`End` jump to the value's start/end, `Enter` is free
     /// for the caller and a paste drops its line breaks.
     SingleLine,
-    /// A box wrapped at `width` columns: `Home`/`End` act on the display line,
-    /// `Up`/`Down` walk them, `Enter` inserts a newline and a paste keeps them.
+    /// A box wrapped at `width` columns and `height` display rows tall:
+    /// `Home`/`End` act on the display line, `Up`/`Down` walk them,
+    /// `PageUp`/`PageDown` move by `height` rows, `Enter` inserts a newline and
+    /// a paste keeps them.
     Multiline {
         /// The wrap width in columns.
         width: usize,
+        /// The viewport height in display rows, driving `PageUp`/`PageDown`.
+        height: usize,
     },
 }
 
@@ -308,9 +312,10 @@ pub fn is_command(key: KeyEvent) -> bool {
 /// `Backspace` and `Delete` replace an active selection.
 ///
 /// In [`EditMode::Multiline`] the line-oriented keys act on the **display**
-/// line (the wrap at `width`), `Up`/`Down` walk display lines, `Enter` inserts
-/// a newline and a paste keeps its line breaks. `max_len` caps the character
-/// count on typing and paste.
+/// line (the wrap at `width`), `Up`/`Down` walk display lines,
+/// `PageUp`/`PageDown` move by the viewport `height` in display rows (clamped at
+/// the edges), `Enter` inserts a newline and a paste keeps its line breaks.
+/// `max_len` caps the character count on typing and paste.
 ///
 /// # Examples
 ///
@@ -491,14 +496,29 @@ fn motion_target(
         KeyCode::End => line_end(text, pos, mode),
         KeyCode::Up if multiline => display_line_target(text, pos, mode, -1),
         KeyCode::Down if multiline => display_line_target(text, pos, mode, 1),
+        KeyCode::PageUp if multiline => {
+            display_line_target(text, pos, mode, -page(mode))
+        }
+        KeyCode::PageDown if multiline => {
+            display_line_target(text, pos, mode, page(mode))
+        }
         _ => return None,
     };
     Some(target)
 }
 
+/// The page step for `PageUp`/`PageDown`: the viewport height in display rows
+/// (at least one). A single line has no page, so it reports one row.
+fn page(mode: EditMode) -> isize {
+    match mode {
+        EditMode::Multiline { height, .. } => height.max(1) as isize,
+        EditMode::SingleLine => 1,
+    }
+}
+
 /// The caret index for `Home`: the value's start, or the display line's start.
 fn line_start(text: &str, pos: usize, mode: EditMode) -> usize {
-    let EditMode::Multiline { width } = mode else {
+    let EditMode::Multiline { width, .. } = mode else {
         return 0;
     };
     let lines = textarea::wrap_offsets(text, width);
@@ -509,7 +529,7 @@ fn line_start(text: &str, pos: usize, mode: EditMode) -> usize {
 
 /// The caret index for `End`: the value's end, or the display line's end.
 fn line_end(text: &str, pos: usize, mode: EditMode) -> usize {
-    let EditMode::Multiline { width } = mode else {
+    let EditMode::Multiline { width, .. } = mode else {
         return text.chars().count();
     };
     let lines = textarea::wrap_offsets(text, width);
@@ -519,25 +539,25 @@ fn line_end(text: &str, pos: usize, mode: EditMode) -> usize {
     textarea::display_to_cursor(&lines, line, col)
 }
 
-/// The caret index one display line up/down, keeping the column where possible;
-/// returns `pos` unchanged when there is no line in that direction.
+/// The caret index `delta` display lines away, keeping the column where
+/// possible. The target line is clamped to the first/last row, so a `PageUp`
+/// near the top still lands on row 0; a single step at an edge stays put (it is
+/// already on the clamped row).
 fn display_line_target(
     text: &str,
     pos: usize,
     mode: EditMode,
     delta: isize,
 ) -> usize {
-    let EditMode::Multiline { width } = mode else {
+    let EditMode::Multiline { width, .. } = mode else {
         return pos;
     };
     let lines = textarea::wrap_offsets(text, width);
     let (line, col) =
         textarea::cursor_to_display(&lines, text.chars().count(), pos);
-    let target = line as isize + delta;
-    if target < 0 || target >= lines.len() as isize {
-        return pos;
-    }
-    textarea::display_to_cursor(&lines, target as usize, col)
+    let target =
+        (line as isize + delta).clamp(0, lines.len() as isize - 1) as usize;
+    textarea::display_to_cursor(&lines, target, col)
 }
 
 /// The marker standing in for the text scrolled off an edge.
@@ -1130,7 +1150,10 @@ mod tests {
     #[test]
     fn ctrl_u_and_ctrl_k_act_on_the_display_line_when_multiline() {
         // "alpha beta gamma" word-wraps to "alpha beta" / "gamma" at width 11.
-        let mode = EditMode::Multiline { width: 11 };
+        let mode = EditMode::Multiline {
+            width: 11,
+            height: 4,
+        };
         let caret = TextCursor::at(13); // inside "gamma"
         let (text, cursor) =
             edit("alpha beta gamma", caret, ctrl(KeyCode::Char('k')), mode);
@@ -1142,7 +1165,10 @@ mod tests {
 
     #[test]
     fn multiline_home_end_and_vertical_move_on_display_lines() {
-        let mode = EditMode::Multiline { width: 11 };
+        let mode = EditMode::Multiline {
+            width: 11,
+            height: 4,
+        };
         let text = "alpha beta gamma";
         let caret = TextCursor::at(13); // line 1, column 2
         assert_eq!(edit(text, caret, press(KeyCode::Home), mode).1.pos, 11);
@@ -1155,12 +1181,74 @@ mod tests {
     }
 
     #[test]
+    fn page_keys_move_by_the_viewport_height_of_display_rows() {
+        // Six one-char-wide rows via explicit newlines; height 2 is the page.
+        let mode = EditMode::Multiline {
+            width: 10,
+            height: 2,
+        };
+        let text = "l0\nl1\nl2\nl3\nl4\nl5"; // rows start at 0,3,6,9,12,15
+        // PageDown moves two rows down, keeping the column.
+        assert_eq!(
+            edit(text, TextCursor::at(1), press(KeyCode::PageDown), mode)
+                .1
+                .pos,
+            7
+        );
+        // PageUp moves two rows up, keeping the column.
+        assert_eq!(
+            edit(text, TextCursor::at(16), press(KeyCode::PageUp), mode)
+                .1
+                .pos,
+            10
+        );
+    }
+
+    #[test]
+    fn page_keys_clamp_at_the_first_and_last_row() {
+        let mode = EditMode::Multiline {
+            width: 10,
+            height: 4,
+        };
+        let text = "l0\nl1\nl2"; // rows start at 0,3,6
+        // PageUp near the top lands on row 0, not a no-op.
+        assert_eq!(
+            edit(text, TextCursor::at(6), press(KeyCode::PageUp), mode)
+                .1
+                .pos,
+            0
+        );
+        // PageDown past the end lands on the last row.
+        assert_eq!(
+            edit(text, TextCursor::at(0), press(KeyCode::PageDown), mode)
+                .1
+                .pos,
+            6
+        );
+    }
+
+    #[test]
+    fn shift_page_down_extends_the_selection() {
+        let mode = EditMode::Multiline {
+            width: 10,
+            height: 2,
+        };
+        let text = "l0\nl1\nl2\nl3";
+        let (_, cursor) =
+            edit(text, TextCursor::at(0), shift(KeyCode::PageDown), mode);
+        assert_eq!(cursor.selection(), Some((0, 6)));
+    }
+
+    #[test]
     fn enter_inserts_a_newline_only_in_multiline() {
         let (text, _) = edit(
             "ab",
             TextCursor::at(2),
             press(KeyCode::Enter),
-            EditMode::Multiline { width: 8 },
+            EditMode::Multiline {
+                width: 8,
+                height: 4,
+            },
         );
         assert_eq!(text.as_str(), "ab\n");
         // In a single line the caller owns `Enter`, so it is not consumed.

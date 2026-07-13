@@ -1,7 +1,8 @@
 //! Month picker modal: a `YYYY-MM` header over a 3x4 Jan-Dec grid.
 //!
 //! Arrows / `hjkl` move within the grid, `PageUp`/`PageDown` change the year,
-//! `Enter` picks, `Del`/`Backspace` clears (when allowed) and `Esc` cancels.
+//! `Home`/`End` jump to January/December, `Enter` picks, `Del`/`Backspace`
+//! clears (when allowed) and `Esc` cancels.
 
 use std::io;
 
@@ -103,6 +104,14 @@ pub fn month_picker(
             }
             KeyCode::PageDown => {
                 state.year += 1;
+                PopupFlow::Continue
+            }
+            KeyCode::Home => {
+                state.month = 1;
+                PopupFlow::Continue
+            }
+            KeyCode::End => {
+                state.month = 12;
                 PopupFlow::Continue
             }
             KeyCode::Enter => PopupFlow::Done(Some((state.year, state.month))),

@@ -1,9 +1,10 @@
 //! A filesystem path picker modal.
 //!
-//! Browses directories: `Up`/`Down` move (cyclic), `Right` descends into a
-//! folder, `Left`/`Backspace` (empty filter) ascends, typing filters the
-//! entries, `Ctrl+H` toggles hidden (dot-prefixed) entries (hidden by default),
-//! `Enter` selects the highlighted entry (a folder, or a file when
+//! Browses directories: `Up`/`Down` move (cyclic), `PageUp`/`PageDown` move by
+//! a page and `Home`/`End` jump to the first/last entry (both clamped), `Right`
+//! descends into a folder, `Left`/`Backspace` (empty filter) ascends, typing
+//! filters the entries, `Ctrl+H` toggles hidden (dot-prefixed) entries (hidden
+//! by default), `Enter` selects the highlighted entry (a folder, or a file when
 //! `allow_files`), `Esc` cancels.
 //!
 //! An optional confinement root ([`PathPickerConfig::root`]) bounds navigation:
@@ -58,6 +59,7 @@ struct State {
     filter: InputField,
     cursor: usize,
     offset: Cell<usize>,
+    viewport: Cell<usize>,
 }
 
 impl State {
@@ -84,6 +86,7 @@ impl State {
             filter: InputField::default(),
             cursor: 0,
             offset: Cell::new(0),
+            viewport: Cell::new(1),
         };
         state.reload();
         state
@@ -246,6 +249,26 @@ pub fn path_picker(
                 state.cursor = nav::cycle(state.cursor, state.visible.len(), 1);
                 PopupFlow::Continue
             }
+            KeyCode::PageUp => {
+                let page = state.viewport.get().max(1) as isize;
+                state.cursor =
+                    nav::step_clamped(state.cursor, state.visible.len(), -page);
+                PopupFlow::Continue
+            }
+            KeyCode::PageDown => {
+                let page = state.viewport.get().max(1) as isize;
+                state.cursor =
+                    nav::step_clamped(state.cursor, state.visible.len(), page);
+                PopupFlow::Continue
+            }
+            KeyCode::Home => {
+                state.cursor = 0;
+                PopupFlow::Continue
+            }
+            KeyCode::End => {
+                state.cursor = state.visible.len().saturating_sub(1);
+                PopupFlow::Continue
+            }
             KeyCode::Right => {
                 state.descend();
                 PopupFlow::Continue
@@ -335,7 +358,7 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
             }
         })
         .collect();
-    list::render(
+    let viewport = list::render(
         frame,
         rows[2],
         skin,
@@ -345,6 +368,7 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
             offset: &state.offset,
         },
     );
+    state.viewport.set(viewport);
 
     frame.render_widget(
         Paragraph::new(

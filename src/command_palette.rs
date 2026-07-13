@@ -59,6 +59,8 @@ struct PaletteState {
     /// Persistent list scroll offset so the view and scrollbar follow the
     /// cursor across frames.
     offset: Cell<usize>,
+    /// The list viewport height captured at render, driving page jumps.
+    viewport: Cell<usize>,
 }
 
 /// One rendered row: a section header or a command.
@@ -101,6 +103,7 @@ pub fn command_palette(
         query: String::new(),
         cursor: 0,
         offset: Cell::new(0),
+        viewport: Cell::new(1),
     };
     popup(
         tui,
@@ -140,6 +143,27 @@ pub fn command_palette(
             KeyCode::Down => {
                 let count = layout_rows(items, &state.query).selectable.len();
                 state.cursor = nav::cycle(state.cursor, count, 1);
+                PopupFlow::Continue
+            }
+            KeyCode::PageUp => {
+                let count = layout_rows(items, &state.query).selectable.len();
+                let page = state.viewport.get().max(1) as isize;
+                state.cursor = nav::step_clamped(state.cursor, count, -page);
+                PopupFlow::Continue
+            }
+            KeyCode::PageDown => {
+                let count = layout_rows(items, &state.query).selectable.len();
+                let page = state.viewport.get().max(1) as isize;
+                state.cursor = nav::step_clamped(state.cursor, count, page);
+                PopupFlow::Continue
+            }
+            KeyCode::Home => {
+                state.cursor = 0;
+                PopupFlow::Continue
+            }
+            KeyCode::End => {
+                let count = layout_rows(items, &state.query).selectable.len();
+                state.cursor = count.saturating_sub(1);
                 PopupFlow::Continue
             }
             KeyCode::Tab => {
@@ -315,7 +339,7 @@ fn render_body(
         .get(state.cursor.min(layout.selectable.len().saturating_sub(1)))
         .copied()
         .unwrap_or(0);
-    list::render(
+    let viewport = list::render(
         frame,
         rows[1],
         skin,
@@ -325,6 +349,7 @@ fn render_body(
             offset: &state.offset,
         },
     );
+    state.viewport.set(viewport);
 
     let hint = footer_hint(skin, rows[2].width as usize, grouped);
     frame.render_widget(Paragraph::new(hint), rows[2]);

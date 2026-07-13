@@ -35,6 +35,7 @@ struct Finder {
     query: String,
     cursor: usize,
     offset: Cell<usize>,
+    viewport: Cell<usize>,
 }
 
 /// Lets the user pick one entry from `items` with a live fuzzy filter. `Enter`
@@ -54,6 +55,7 @@ pub fn finder(
         query: String::new(),
         cursor: 0,
         offset: Cell::new(0),
+        viewport: Cell::new(1),
     };
     popup(
         tui,
@@ -86,6 +88,27 @@ pub fn finder(
             KeyCode::Down => {
                 let len = filter(items, &state.query).len();
                 state.cursor = nav::cycle(state.cursor, len, 1);
+                PopupFlow::Continue
+            }
+            KeyCode::PageUp => {
+                let len = filter(items, &state.query).len();
+                let page = state.viewport.get().max(1) as isize;
+                state.cursor = nav::step_clamped(state.cursor, len, -page);
+                PopupFlow::Continue
+            }
+            KeyCode::PageDown => {
+                let len = filter(items, &state.query).len();
+                let page = state.viewport.get().max(1) as isize;
+                state.cursor = nav::step_clamped(state.cursor, len, page);
+                PopupFlow::Continue
+            }
+            KeyCode::Home => {
+                state.cursor = 0;
+                PopupFlow::Continue
+            }
+            KeyCode::End => {
+                let len = filter(items, &state.query).len();
+                state.cursor = len.saturating_sub(1);
                 PopupFlow::Continue
             }
             KeyCode::Backspace => {
@@ -156,7 +179,7 @@ fn render_body(
             ))
         })
         .collect();
-    list::render(
+    let viewport = list::render(
         frame,
         rows[1],
         skin,
@@ -166,6 +189,7 @@ fn render_body(
             offset: &state.offset,
         },
     );
+    state.viewport.set(viewport);
 }
 
 #[cfg(test)]

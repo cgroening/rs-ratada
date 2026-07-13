@@ -26,18 +26,25 @@ pub struct ListView<'a> {
 }
 
 /// Renders `view` in `area`, highlighting the selected row and scrolling to
-/// keep it visible.
+/// keep it visible. Returns the viewport height (the number of visible rows),
+/// so a stateful caller can drive page-wise navigation.
 ///
 /// Callers build each row's content (and any per-row styling such as dimming);
 /// this widget overlays the selection highlight (a subtle `selection` tint) and
 /// the scrollbar. Whoever owns the surrounding frame owns the position badge.
-pub fn render(frame: &mut Frame, area: Rect, skin: &Skin, view: ListView) {
-    render_core(frame, area, skin, view);
+pub fn render(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    view: ListView,
+) -> usize {
+    render_core(frame, area, skin, view)
 }
 
 /// Like [`render`], but keeps the bottom row free for a `position/total` badge
 /// in its right-hand corner — for a list with no frame to hang one on. The
-/// list's viewport is therefore one row shorter than `area`.
+/// list's viewport is therefore one row shorter than `area`. Returns that
+/// viewport height (the badge row already subtracted).
 ///
 /// Content wins over the badge: an area too short to spare a row (one row or
 /// less) renders like plain [`render`]. An empty list gets no badge either.
@@ -46,24 +53,25 @@ pub fn render_counted(
     area: Rect,
     skin: &Skin,
     view: ListView,
-) {
+) -> usize {
     // A badge row would leave no room for a single entry.
     if area.height <= 1 {
-        render_core(frame, area, skin, view);
-        return;
+        return render_core(frame, area, skin, view);
     }
     let badge = chrome::position_badge(view.selected, view.rows.len());
     let rows = Rect {
         height: area.height - 1,
         ..area
     };
-    render_core(frame, rows, skin, view);
+    let viewport = render_core(frame, rows, skin, view);
     chrome::render_corner_badge(frame, area, skin, &badge);
+    viewport
 }
 
 /// Like [`render`], but wrapped in a rounded box (see [`chrome::BoxDecor`]) when
 /// `force` is set; the box's bottom-right badge then shows `position/total`.
-/// Without `force` it behaves exactly like [`render`].
+/// Without `force` it behaves exactly like [`render`]. Returns the inner
+/// viewport height (the visible row count).
 pub fn render_boxed(
     frame: &mut Frame,
     area: Rect,
@@ -71,18 +79,24 @@ pub fn render_boxed(
     view: ListView,
     decor: &chrome::BoxDecor,
     force: bool,
-) {
+) -> usize {
     if force {
         let badge = chrome::position_badge(view.selected, view.rows.len());
         let inner = chrome::framed_decor(frame, area, skin, decor, &badge);
-        render_core(frame, inner, skin, view);
+        render_core(frame, inner, skin, view)
     } else {
-        render(frame, area, skin, view);
+        render(frame, area, skin, view)
     }
 }
 
-/// Draws the list rows (with the selection highlight) and the scrollbar.
-fn render_core(frame: &mut Frame, area: Rect, skin: &Skin, view: ListView) {
+/// Draws the list rows (with the selection highlight) and the scrollbar,
+/// returning the viewport height (the number of visible rows).
+fn render_core(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    view: ListView,
+) -> usize {
     let viewport = area.height as usize;
     let total = view.rows.len();
     let selected = view.selected;
@@ -122,4 +136,5 @@ fn render_core(frame: &mut Frame, area: Rect, skin: &Skin, view: ListView) {
             viewport,
         },
     );
+    viewport
 }

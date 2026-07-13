@@ -16,6 +16,7 @@ use super::{
     input::InputField,
     layout::centered_rect,
     modal::ModalSignal,
+    nav,
     overlay::{self, PopupFlow, popup},
     shortcut_hints, style,
     terminal::Tui,
@@ -391,17 +392,16 @@ fn handle_presets(
     state: &mut State,
     key: crossterm::event::KeyEvent,
 ) -> PopupFlow<Outcome> {
+    let count = state.presets.len();
     match key.code {
         KeyCode::Left | KeyCode::Char('h') => {
-            state.preset = state.preset.saturating_sub(1);
-            state.adopt(state.presets[state.preset]);
-            state.sync_hex();
+            select_preset(state, nav::cycle(state.preset, count, -1));
         }
         KeyCode::Right | KeyCode::Char('l') => {
-            state.preset = (state.preset + 1).min(state.presets.len() - 1);
-            state.adopt(state.presets[state.preset]);
-            state.sync_hex();
+            select_preset(state, nav::cycle(state.preset, count, 1));
         }
+        KeyCode::Home => select_preset(state, 0),
+        KeyCode::End => select_preset(state, count.saturating_sub(1)),
         KeyCode::Char('m') => state.set_model(state.model.next()),
         KeyCode::Char('y') => copy_hex(state),
         KeyCode::Char('s') => {
@@ -410,6 +410,13 @@ fn handle_presets(
         _ => {}
     }
     PopupFlow::Continue
+}
+
+/// Adopts the preset at `index` as the live color and refreshes the hex field.
+fn select_preset(state: &mut State, index: usize) {
+    state.preset = index;
+    state.adopt(state.presets[index]);
+    state.sync_hex();
 }
 
 /// Copies the current color's hex code to the clipboard (best effort).
@@ -633,6 +640,23 @@ mod tests {
             assert!(g.abs_diff(gg) <= 1, "{name} G: {g} vs {gg}");
             assert!(b.abs_diff(bb) <= 1, "{name} B: {b} vs {bb}");
         }
+    }
+
+    #[test]
+    fn presets_wrap_cyclically_and_home_end_jump() {
+        let mut state = state_from(Color::hex("#8bd3cd"));
+        state.focus = Focus::Presets;
+        // Two presets: Left from the first wraps to the last.
+        handle(&mut state, key(KeyCode::Left));
+        assert_eq!(state.preset, 1);
+        // Right from the last wraps back to the first.
+        handle(&mut state, key(KeyCode::Right));
+        assert_eq!(state.preset, 0);
+        // End jumps to the last, Home back to the first.
+        handle(&mut state, key(KeyCode::End));
+        assert_eq!(state.preset, 1);
+        handle(&mut state, key(KeyCode::Home));
+        assert_eq!(state.preset, 0);
     }
 
     #[test]

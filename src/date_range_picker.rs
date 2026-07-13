@@ -17,7 +17,8 @@ use ratatui::{
 
 use super::{
     date_picker::{
-        add_months, day_grid, is_weekend, shift, today, weekday_header,
+        add_months, day_grid, first_of_month, is_weekend, last_of_month, shift,
+        today, weekday_header,
     },
     layout::centered_rect,
     modal::ModalSignal,
@@ -93,6 +94,14 @@ pub fn date_range_picker(
             }
             KeyCode::PageDown => {
                 state.cursor = add_months(state.cursor, 1);
+                PopupFlow::Continue
+            }
+            KeyCode::Home => {
+                state.cursor = first_of_month(state.cursor);
+                PopupFlow::Continue
+            }
+            KeyCode::End => {
+                state.cursor = last_of_month(state.cursor);
                 PopupFlow::Continue
             }
             KeyCode::Enter => match state.start {

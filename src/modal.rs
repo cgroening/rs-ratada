@@ -9,7 +9,7 @@
 //!
 //! Every modal takes a [`Skin`], whose palette drives the colors.
 
-use std::{collections::HashSet, io};
+use std::{cell::Cell, collections::HashSet, io};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -192,6 +192,34 @@ fn input_impl(
     )
 }
 
+/// Applies the shared list-navigation keys to `cursor` over `len` items,
+/// returning whether the key was one of them. `Up`/`Down` (and `k`/`j`) wrap
+/// cyclically; `PageUp`/`PageDown` move by `page` rows and `Home`/`End` jump to
+/// the ends, both clamped. The caller handles the picker's own keys (`Enter`,
+/// `Esc`, ...) for the keys this leaves unconsumed.
+fn navigate_list(
+    cursor: &mut usize,
+    key: KeyEvent,
+    len: usize,
+    page: usize,
+) -> bool {
+    let page = page.max(1) as isize;
+    match key.code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            *cursor = nav::cycle(*cursor, len, -1);
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            *cursor = nav::cycle(*cursor, len, 1);
+        }
+        KeyCode::PageUp => *cursor = nav::step_clamped(*cursor, len, -page),
+        KeyCode::PageDown => *cursor = nav::step_clamped(*cursor, len, page),
+        KeyCode::Home => *cursor = 0,
+        KeyCode::End => *cursor = len.saturating_sub(1),
+        _ => return false,
+    }
+    true
+}
+
 /// Lets the user pick one entry from a list. `Esc` cancels.
 pub fn select(
     tui: &mut Tui,
@@ -205,26 +233,26 @@ pub fn select(
         return Ok(ModalSignal::Cancelled);
     }
     let mut cursor = initial.min(items.len() - 1);
+    let page_rows = Cell::new(1usize);
     popup(
         tui,
         &mut cursor,
         |area, _| picker_area(area, items.len()),
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
-            render_picker(frame, skin, title, items, *cursor, None, rect);
+            let viewport =
+                render_picker(frame, skin, title, items, *cursor, None, rect);
+            page_rows.set(viewport);
         },
-        |cursor, key| match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                *cursor = nav::cycle(*cursor, items.len(), -1);
-                PopupFlow::Continue
+        |cursor, key| {
+            if navigate_list(cursor, key, items.len(), page_rows.get()) {
+                return PopupFlow::Continue;
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                *cursor = nav::cycle(*cursor, items.len(), 1);
-                PopupFlow::Continue
+            match key.code {
+                KeyCode::Enter => PopupFlow::Done(*cursor),
+                KeyCode::Esc => PopupFlow::Cancelled,
+                _ => PopupFlow::Continue,
             }
-            KeyCode::Enter => PopupFlow::Done(*cursor),
-            KeyCode::Esc => PopupFlow::Cancelled,
-            _ => PopupFlow::Continue,
         },
     )
 }
@@ -251,7 +279,7 @@ pub fn multi_select(
         |frame, _| render_bg(frame),
         |frame, rect, state: &MultiSelect| {
             let checked = Some((&state.checked, check));
-            render_picker(
+            let viewport = render_picker(
                 frame,
                 skin,
                 title,
@@ -260,6 +288,7 @@ pub fn multi_select(
                 checked,
                 rect,
             );
+            state.viewport.set(viewport);
         },
         |state, key| state.handle_key(key, items.len()),
     )
@@ -293,33 +322,39 @@ pub fn select_reorderable(
         return Ok(ModalSignal::Cancelled);
     }
     let mut cursor = initial.min(items.len() - 1);
+    let page_rows = Cell::new(1usize);
     popup(
         tui,
         &mut cursor,
         |area, _| picker_area(area, items.len()),
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
-            render_picker(frame, skin, title, items, *cursor, None, rect);
+            let viewport =
+                render_picker(frame, skin, title, items, *cursor, None, rect);
+            page_rows.set(viewport);
         },
         |cursor, key| {
             let alt = key.modifiers.contains(KeyModifiers::ALT);
+            // Alt+Up/Down reorder; the plain motions fall to the shared nav.
             match key.code {
-                KeyCode::Up if alt => PopupFlow::Done(ListAction::Move {
-                    index: *cursor,
-                    delta: -1,
-                }),
-                KeyCode::Down if alt => PopupFlow::Done(ListAction::Move {
-                    index: *cursor,
-                    delta: 1,
-                }),
-                KeyCode::Up | KeyCode::Char('k') => {
-                    *cursor = nav::cycle(*cursor, items.len(), -1);
-                    PopupFlow::Continue
+                KeyCode::Up if alt => {
+                    return PopupFlow::Done(ListAction::Move {
+                        index: *cursor,
+                        delta: -1,
+                    });
                 }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    *cursor = nav::cycle(*cursor, items.len(), 1);
-                    PopupFlow::Continue
+                KeyCode::Down if alt => {
+                    return PopupFlow::Done(ListAction::Move {
+                        index: *cursor,
+                        delta: 1,
+                    });
                 }
+                _ => {}
+            }
+            if navigate_list(cursor, key, items.len(), page_rows.get()) {
+                return PopupFlow::Continue;
+            }
+            match key.code {
                 KeyCode::Enter => PopupFlow::Done(ListAction::Pick(*cursor)),
                 KeyCode::Esc => PopupFlow::Cancelled,
                 _ => PopupFlow::Continue,
@@ -341,28 +376,27 @@ pub fn select_styled(
         return Ok(ModalSignal::Cancelled);
     }
     let mut cursor = initial.min(items.len() - 1);
+    let page_rows = Cell::new(1usize);
     popup(
         tui,
         &mut cursor,
         |area, _| picker_area(area, items.len()),
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
-            render_styled_picker(
+            let viewport = render_styled_picker(
                 frame, skin, title, items, *cursor, None, rect,
             );
+            page_rows.set(viewport);
         },
-        |cursor, key| match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                *cursor = nav::cycle(*cursor, items.len(), -1);
-                PopupFlow::Continue
+        |cursor, key| {
+            if navigate_list(cursor, key, items.len(), page_rows.get()) {
+                return PopupFlow::Continue;
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                *cursor = nav::cycle(*cursor, items.len(), 1);
-                PopupFlow::Continue
+            match key.code {
+                KeyCode::Enter => PopupFlow::Done(*cursor),
+                KeyCode::Esc => PopupFlow::Cancelled,
+                _ => PopupFlow::Continue,
             }
-            KeyCode::Enter => PopupFlow::Done(*cursor),
-            KeyCode::Esc => PopupFlow::Cancelled,
-            _ => PopupFlow::Continue,
         },
     )
 }
@@ -389,9 +423,10 @@ pub fn multi_select_styled(
         |frame, rect, state: &MultiSelect| {
             let checked = Some((&state.checked, check));
             let cursor = state.cursor;
-            render_styled_picker(
+            let viewport = render_styled_picker(
                 frame, skin, title, items, cursor, checked, rect,
             );
+            state.viewport.set(viewport);
         },
         |state, key| state.handle_key(key, items.len()),
     )
@@ -492,10 +527,12 @@ struct TextField {
     cursor: TextCursor,
 }
 
-/// The state shared by the multi-select modals: the cursor plus the toggled set.
+/// The state shared by the multi-select modals: the cursor, the toggled set and
+/// the list viewport height captured at render (for page-wise navigation).
 struct MultiSelect {
     cursor: usize,
     checked: HashSet<usize>,
+    viewport: Cell<usize>,
 }
 
 impl MultiSelect {
@@ -503,6 +540,7 @@ impl MultiSelect {
         Self {
             cursor: 0,
             checked: initial.iter().copied().collect(),
+            viewport: Cell::new(1),
         }
     }
 
@@ -511,15 +549,10 @@ impl MultiSelect {
         key: KeyEvent,
         len: usize,
     ) -> PopupFlow<Vec<usize>> {
+        if navigate_list(&mut self.cursor, key, len, self.viewport.get()) {
+            return PopupFlow::Continue;
+        }
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.cursor = nav::cycle(self.cursor, len, -1);
-                PopupFlow::Continue
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.cursor = nav::cycle(self.cursor, len, 1);
-                PopupFlow::Continue
-            }
             KeyCode::Char(' ') => {
                 if !self.checked.insert(self.cursor) {
                     self.checked.remove(&self.cursor);
@@ -584,6 +617,8 @@ fn render_message(
     frame.render_widget(paragraph, inner);
 }
 
+/// Renders a single-column picker and returns its viewport height (visible
+/// rows), for page-wise navigation.
 fn render_picker(
     frame: &mut Frame,
     skin: &Skin,
@@ -592,7 +627,7 @@ fn render_picker(
     cursor: usize,
     checked: Option<(&HashSet<usize>, &str)>,
     rect: Rect,
-) {
+) -> usize {
     let inner = overlay::framed(frame, rect, skin, title);
     let entries: Vec<ListItem> = items
         .iter()
@@ -602,10 +637,14 @@ fn render_picker(
             ListItem::new(Line::from(format!("{prefix}{label}")))
         })
         .collect();
-    render_picker_list(frame, inner, entries, items.len(), cursor, skin);
+    let viewport =
+        render_picker_list(frame, inner, entries, items.len(), cursor, skin);
     render_picker_badge(frame, rect, skin, items.len(), cursor);
+    viewport
 }
 
+/// Renders a styled-label picker and returns its viewport height (visible
+/// rows), for page-wise navigation.
 fn render_styled_picker(
     frame: &mut Frame,
     skin: &Skin,
@@ -614,7 +653,7 @@ fn render_styled_picker(
     cursor: usize,
     checked: Option<(&HashSet<usize>, &str)>,
     rect: Rect,
-) {
+) -> usize {
     let inner = overlay::framed(frame, rect, skin, title);
     let entries: Vec<ListItem> = items
         .iter()
@@ -627,8 +666,10 @@ fn render_styled_picker(
             ]))
         })
         .collect();
-    render_picker_list(frame, inner, entries, items.len(), cursor, skin);
+    let viewport =
+        render_picker_list(frame, inner, entries, items.len(), cursor, skin);
     render_picker_badge(frame, rect, skin, items.len(), cursor);
+    viewport
 }
 
 /// Draws the `position/total` badge into the picker frame's bottom border.
@@ -646,6 +687,8 @@ fn render_picker_badge(
 
 /// Renders a picker's list into `inner` with the cursor highlighted, then a
 /// scrollbar on the right whenever the entries overflow the visible rows.
+/// Returns the viewport height (the number of visible rows), so the caller can
+/// drive page-wise navigation.
 fn render_picker_list(
     frame: &mut Frame,
     inner: Rect,
@@ -653,9 +696,10 @@ fn render_picker_list(
     total: usize,
     cursor: usize,
     skin: &Skin,
-) {
+) -> usize {
     let mut state = picker_state(cursor);
     frame.render_stateful_widget(picker_list(entries, skin), inner, &mut state);
+    let viewport = inner.height as usize;
     scroll::render_scrollbar(
         frame,
         inner,
@@ -663,9 +707,10 @@ fn render_picker_list(
         nav::ScrollView {
             total,
             offset: state.offset(),
-            viewport: inner.height as usize,
+            viewport,
         },
     );
+    viewport
 }
 
 /// The check-mark (or blank) prefix for a multi-select row, or empty for a
@@ -736,6 +781,30 @@ fn hinted_box_height() -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn navigate_list_wraps_on_arrows_and_clamps_on_page_and_ends() {
+        let mut cursor = 0;
+        // Up wraps to the last item.
+        assert!(navigate_list(&mut cursor, key(KeyCode::Up), 5, 2));
+        assert_eq!(cursor, 4);
+        // PageUp clamps at the top rather than wrapping.
+        assert!(navigate_list(&mut cursor, key(KeyCode::PageUp), 5, 2));
+        assert_eq!(cursor, 2);
+        assert!(navigate_list(&mut cursor, key(KeyCode::PageUp), 5, 2));
+        assert_eq!(cursor, 0);
+        // End and Home jump to the last and first item.
+        assert!(navigate_list(&mut cursor, key(KeyCode::End), 5, 2));
+        assert_eq!(cursor, 4);
+        assert!(navigate_list(&mut cursor, key(KeyCode::Home), 5, 2));
+        assert_eq!(cursor, 0);
+        // A non-navigation key is left for the caller.
+        assert!(!navigate_list(&mut cursor, key(KeyCode::Enter), 5, 2));
+    }
 
     /// Every popup wants a minimum width or height. A terminal smaller than
     /// that must shrink the popup, not panic: these helpers used to reach
