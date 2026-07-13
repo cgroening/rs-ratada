@@ -352,7 +352,10 @@ fn inline_to_cells(
                     cells.push((ch, code_style));
                 }
             }
-            Event::SoftBreak => cells.push((' ', style)),
+            Event::SoftBreak => cells.push((
+                if sheet.preserve_line_breaks { '\n' } else { ' ' },
+                style,
+            )),
             Event::HardBreak => cells.push(('\n', style)),
             _ => {}
         }

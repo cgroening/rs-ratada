@@ -4,6 +4,10 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+### Added
+
+- `StyleSheet::preserve_line_breaks` – renders a single source newline (a CommonMark soft break) as a real line break instead of collapsing it to a space (display only). Off by default, so reflowed text is unchanged; a host whose Markdown carries meaningful hard-wrapped lines opts in. Like every `StyleSheet` field it is public, so a struct-literal construction must name it, while `StyleSheet::default` and `from_skin` fill it in.
+
 ## [0.3.0] - 2026-07-11
 
 ### Added

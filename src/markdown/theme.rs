@@ -137,6 +137,7 @@ impl Default for StyleSheet {
             },
             table_border: Some(TABLE_BORDER),
             smart_punctuation: false,
+            preserve_line_breaks: false,
             html: Style::default().add_modifier(Modifier::DIM),
             ellipsis: Style::default().add_modifier(Modifier::DIM),
         }

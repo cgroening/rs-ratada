@@ -244,6 +244,9 @@ pub struct StyleSheet {
     pub table_border: Option<Color>,
     /// Replace `--`/`...`/quotes with their typographic forms (display only).
     pub smart_punctuation: bool,
+    /// Render a single source newline (CommonMark soft break) as a real line
+    /// break instead of collapsing it to a space (display only).
+    pub preserve_line_breaks: bool,
     /// Style for literal raw HTML (`<br>`, …).
     pub html: Style,
     /// Style for the overflow `…` ellipsis on clipped values.
@@ -458,6 +461,7 @@ mod tests {
             },
             table_border: Some(Color::Rgb(210, 140, 60)),
             smart_punctuation: false,
+            preserve_line_breaks: false,
             html: Style::default().add_modifier(Modifier::DIM),
             ellipsis: Style::default().add_modifier(Modifier::DIM),
         }
@@ -807,6 +811,20 @@ mod tests {
         let joined: String =
             lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
         assert_eq!(joined, "a -- b ...");
+    }
+
+    #[test]
+    fn preserve_line_breaks_keeps_soft_breaks_as_lines() {
+        let mut sheet = sheet();
+        sheet.preserve_line_breaks = true;
+        let lines = render_block("XXX\nXXX", 40, &sheet);
+        assert_eq!(texts(&lines), vec!["XXX".to_string(), "XXX".to_string()]);
+    }
+
+    #[test]
+    fn soft_breaks_collapse_to_a_space_by_default() {
+        let lines = render_block("XXX\nXXX", 40, &sheet());
+        assert_eq!(texts(&lines), vec!["XXX XXX".to_string()]);
     }
 
     #[test]
