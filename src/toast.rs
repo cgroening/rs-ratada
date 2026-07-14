@@ -13,6 +13,7 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::Modifier,
+    text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 
@@ -141,7 +142,10 @@ impl Toasts {
                 .border_type(BorderType::Rounded)
                 .border_style(style::fg(color))
                 .style(style::bg(skin.palette.background))
-                .title(chrome::border_title(skin, toast.kind.label(), label));
+                .title(Line::from(vec![
+                    chrome::border_title_lead(style::fg(color)),
+                    Span::styled(format!("{} ", toast.kind.label()), label),
+                ]));
             frame.render_widget(Clear, rect);
             // The lines are wrapped already, so no `Wrap` here: measuring and
             // rendering must not use two different wrap implementations.
