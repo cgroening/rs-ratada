@@ -45,6 +45,22 @@ pub trait Screen {
         tui: &mut Tui,
     ) -> Result<Flow, Self::Error>;
 
+    /// Handles a bracketed paste (newlines already normalized to `\n`) by
+    /// inserting `text` into the focused field. The default ignores it, so a
+    /// screen without a text field need not implement this.
+    ///
+    /// # Errors
+    ///
+    /// Returns the host's error if handling the paste fails.
+    fn handle_paste(
+        &mut self,
+        text: String,
+        tui: &mut Tui,
+    ) -> Result<Flow, Self::Error> {
+        let _ = (text, tui);
+        Ok(Flow::Continue)
+    }
+
     /// Called on each idle tick (no input within `TICK`); use it to advance
     /// animations. Default: do nothing.
     fn tick(&mut self) {}
@@ -73,6 +89,11 @@ pub fn run<S: Screen>(tui: &mut Tui, screen: &mut S) -> Result<(), S::Error> {
                 }
             }
             Some(TuiEvent::Resize) => {}
+            Some(TuiEvent::Paste(text)) => {
+                if let Flow::Quit = screen.handle_paste(text, tui)? {
+                    break;
+                }
+            }
             // The next iteration redraws with the new visibility.
             Some(TuiEvent::Key(key)) if shortcut_hints::consume_toggle(key) => {
             }

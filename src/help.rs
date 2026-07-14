@@ -24,7 +24,7 @@ use super::{
     list,
     modal::ModalSignal,
     nav,
-    overlay::{self, PopupFlow, popup},
+    overlay::{self, PopupFlow, popup_with_paste},
     shortcut_hints, style,
     terminal::Tui,
 };
@@ -86,7 +86,7 @@ pub fn show<B: AsRef<str>>(
         offset: Cell::new(0),
         viewport: Cell::new(1),
     };
-    popup(
+    popup_with_paste(
         tui,
         &mut state,
         |area, _| centered_fraction(area, 2, 3, 40, 8),
@@ -158,6 +158,13 @@ pub fn show<B: AsRef<str>>(
                 PopupFlow::Continue
             }
             _ => PopupFlow::Continue,
+        },
+        |state, text| {
+            state
+                .query
+                .extend(text.chars().filter(|ch| !ch.is_control()));
+            state.cursor = 0;
+            PopupFlow::Continue
         },
     )
 }

@@ -118,7 +118,7 @@ pub mod tree;
 
 pub use driver::{Flow, Screen, run};
 pub use modal::ModalSignal;
-pub use overlay::{PopupFlow, popup};
+pub use overlay::{PopupFlow, popup, popup_with_paste};
 pub use terminal::{Tui, TuiEvent};
 
 /// The common imports for building a TUI on `ratada`: the terminal guard, the
@@ -127,6 +127,7 @@ pub use terminal::{Tui, TuiEvent};
 pub mod prelude {
     pub use crate::chrome::BoxDecor;
     pub use crate::{
-        Flow, ModalSignal, PopupFlow, Screen, Tui, TuiEvent, popup, run,
+        Flow, ModalSignal, PopupFlow, Screen, Tui, TuiEvent, popup,
+        popup_with_paste, run,
     };
 }

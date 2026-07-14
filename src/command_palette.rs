@@ -24,7 +24,7 @@ use super::{
     list,
     modal::ModalSignal,
     nav,
-    overlay::{self, PopupFlow, popup},
+    overlay::{self, PopupFlow, popup_with_paste},
     shortcut_hints, style,
     terminal::Tui,
 };
@@ -105,7 +105,7 @@ pub fn command_palette(
         offset: Cell::new(0),
         viewport: Cell::new(1),
     };
-    popup(
+    popup_with_paste(
         tui,
         &mut state,
         |area, _| {
@@ -185,6 +185,13 @@ pub fn command_palette(
                 PopupFlow::Continue
             }
             _ => PopupFlow::Continue,
+        },
+        |state, text| {
+            state
+                .query
+                .extend(text.chars().filter(|ch| !ch.is_control()));
+            state.cursor = 0;
+            PopupFlow::Continue
         },
     )
 }

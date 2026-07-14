@@ -208,6 +208,21 @@ impl InputField {
         )
     }
 
+    /// Inserts pasted `text` at the caret, replacing any active selection.
+    ///
+    /// Control characters (including newlines) are stripped so the field stays
+    /// on one line, honoring the length limit. This routes a bracketed paste;
+    /// `Ctrl+V` goes through [`Self::handle_key`].
+    pub fn paste(&mut self, text: &str) {
+        paste_text(
+            &mut self.text,
+            &mut self.cursor,
+            EditMode::SingleLine,
+            self.max_len,
+            text,
+        );
+    }
+
     /// The current text.
     pub fn value(&self) -> &str {
         &self.text
@@ -379,11 +394,7 @@ pub fn apply_edit_key(
             true
         }
         KeyCode::Char('v') if ctrl => {
-            if multiline {
-                paste_multiline(&mut chars, cursor, max_len);
-            } else {
-                paste(&mut chars, cursor, max_len);
-            }
+            paste_clipboard(&mut chars, cursor, max_len, mode);
             true
         }
         KeyCode::Backspace => {
@@ -467,6 +478,37 @@ pub fn replace_selection(text: &mut String, cursor: &mut TextCursor, s: &str) {
 /// An alias of [`replace_selection`] that reads right at an insertion site.
 pub fn insert_str(text: &mut String, cursor: &mut TextCursor, to_insert: &str) {
     replace_selection(text, cursor, to_insert);
+}
+
+/// Inserts pasted `payload` at the caret, replacing any active selection.
+///
+/// Applies the same filter as a `Ctrl+V` paste: control characters are dropped,
+/// and newlines survive only in [`EditMode::Multiline`], so a paste into a
+/// single-line field stays on one line; `max_len` caps the result. This is the
+/// seam bracketed-paste routing inserts through, so terminal-native paste and
+/// `Ctrl+V` share one insertion path.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::input::{EditMode, TextCursor, paste_text};
+///
+/// let mut text = String::from("ab");
+/// let mut cursor = TextCursor::at_end(&text);
+/// paste_text(&mut text, &mut cursor, EditMode::SingleLine, None, "c\nd");
+/// assert_eq!(text, "abcd");
+/// ```
+pub fn paste_text(
+    text: &mut String,
+    cursor: &mut TextCursor,
+    mode: EditMode,
+    max_len: Option<usize>,
+    payload: &str,
+) {
+    let mut chars: Vec<char> = text.chars().collect();
+    cursor.pos = cursor.pos.min(chars.len());
+    insert_pasted(&mut chars, cursor, max_len, payload, paste_keep(mode));
+    *text = chars.into_iter().collect();
 }
 
 /// The selected substring, or `None` when nothing is selected.
@@ -1043,39 +1085,28 @@ pub(crate) fn copy_selection(chars: &[char], cursor: &TextCursor) {
     }
 }
 
-/// Pastes clipboard text at the caret, replacing any selection and stripping
-/// all control characters (single-line fields).
-pub(crate) fn paste(
-    chars: &mut Vec<char>,
-    cursor: &mut TextCursor,
-    max_len: Option<usize>,
-) {
-    paste_filtered(chars, cursor, max_len, |ch| !ch.is_control());
+/// The character filter a paste applies in `mode`: control characters are
+/// always dropped, and newlines survive only in a multiline field, so a paste
+/// into a single-line field can never break onto a second line.
+fn paste_keep(mode: EditMode) -> fn(char) -> bool {
+    if matches!(mode, EditMode::Multiline { .. }) {
+        |ch| ch == '\n' || !ch.is_control()
+    } else {
+        |ch| !ch.is_control()
+    }
 }
 
-/// Like [`paste`], but keeps newlines so multi-line fields preserve the pasted
-/// line breaks.
-pub(crate) fn paste_multiline(
+/// Replaces any selection, then inserts `payload`'s `keep`-passing characters at
+/// the caret, respecting `max_len`.
+fn insert_pasted(
     chars: &mut Vec<char>,
     cursor: &mut TextCursor,
     max_len: Option<usize>,
-) {
-    paste_filtered(chars, cursor, max_len, |ch| ch == '\n' || !ch.is_control());
-}
-
-/// Shared paste: replaces any selection, then inserts the clipboard's
-/// `keep`-passing chars at the caret, respecting `max_len`.
-fn paste_filtered(
-    chars: &mut Vec<char>,
-    cursor: &mut TextCursor,
-    max_len: Option<usize>,
+    payload: &str,
     keep: impl Fn(char) -> bool,
 ) {
-    let Some(text) = clipboard::paste() else {
-        return;
-    };
     delete_selection(chars, cursor);
-    for ch in text.chars().filter(|&ch| keep(ch)) {
+    for ch in payload.chars().filter(|&ch| keep(ch)) {
         if max_len.is_some_and(|max| chars.len() >= max) {
             break;
         }
@@ -1083,6 +1114,19 @@ fn paste_filtered(
         cursor.pos += 1;
     }
     cursor.anchor = None;
+}
+
+/// Reads the clipboard and inserts it at the caret with `mode`'s paste filter.
+fn paste_clipboard(
+    chars: &mut Vec<char>,
+    cursor: &mut TextCursor,
+    max_len: Option<usize>,
+    mode: EditMode,
+) {
+    let Some(text) = clipboard::paste() else {
+        return;
+    };
+    insert_pasted(chars, cursor, max_len, &text, paste_keep(mode));
 }
 
 #[cfg(test)]
@@ -1637,5 +1681,48 @@ mod tests {
         let spans = query_spans("", &palette, 0);
         assert_eq!(spans.len(), 1);
         assert!(is_caret(&spans[0], &palette));
+    }
+
+    #[test]
+    fn paste_into_a_single_line_field_drops_control_and_newlines() {
+        let mut text = String::new();
+        let mut cursor = TextCursor::default();
+        let mode = EditMode::SingleLine;
+        paste_text(&mut text, &mut cursor, mode, None, "a\nb\tc");
+        assert_eq!(text, "abc");
+        assert_eq!(cursor.pos, 3);
+    }
+
+    #[test]
+    fn paste_into_a_multiline_field_keeps_newlines() {
+        let mut text = String::new();
+        let mut cursor = TextCursor::default();
+        let mode = EditMode::Multiline {
+            width: 10,
+            height: 4,
+        };
+        paste_text(&mut text, &mut cursor, mode, None, "a\nb\tc");
+        assert_eq!(text, "a\nbc");
+    }
+
+    #[test]
+    fn paste_caps_the_result_at_max_len() {
+        let mut text = String::new();
+        let mut cursor = TextCursor::default();
+        let mode = EditMode::SingleLine;
+        paste_text(&mut text, &mut cursor, mode, Some(3), "abcdef");
+        assert_eq!(text, "abc");
+    }
+
+    #[test]
+    fn paste_replaces_the_active_selection() {
+        let mut text = String::from("hello");
+        let mut cursor = TextCursor {
+            pos: 5,
+            anchor: Some(0),
+        };
+        let mode = EditMode::SingleLine;
+        paste_text(&mut text, &mut cursor, mode, None, "hi");
+        assert_eq!((text.as_str(), cursor.pos, cursor.anchor), ("hi", 2, None));
     }
 }

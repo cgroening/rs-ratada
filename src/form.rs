@@ -234,6 +234,7 @@ impl Form {
             match tui.read_event()? {
                 TuiEvent::Quit => return Ok(FormOutcome::Quit),
                 TuiEvent::Resize => {}
+                TuiEvent::Paste(text) => self.paste_into_focus(&text),
                 TuiEvent::Key(key) => {
                     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                     match key.code {
@@ -259,6 +260,18 @@ impl Form {
                     }
                 }
             }
+        }
+    }
+
+    /// Routes a pasted payload to the focused text field; other field kinds
+    /// have no text to paste into and ignore it.
+    fn paste_into_focus(&mut self, text: &str) {
+        match &mut self.fields[self.focus].state {
+            FieldState::Text { input, .. } => input.paste(text),
+            FieldState::Multiline { area, .. } => area.paste(text),
+            FieldState::Bool { .. }
+            | FieldState::Choice { .. }
+            | FieldState::Date { .. } => {}
         }
     }
 

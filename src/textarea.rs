@@ -105,6 +105,24 @@ impl TextArea {
         )
     }
 
+    /// Inserts pasted `text` at the caret, replacing any active selection.
+    ///
+    /// Newlines are kept (the box wraps and grows) while other control
+    /// characters are dropped, honoring the length limit. This routes a
+    /// bracketed paste; `Ctrl+V` goes through [`Self::handle_key`].
+    pub fn paste(&mut self, text: &str) {
+        input::paste_text(
+            &mut self.text,
+            &mut self.cursor,
+            input::EditMode::Multiline {
+                width: self.width.get().max(1),
+                height: self.height.get().max(1),
+            },
+            self.max_len,
+            text,
+        );
+    }
+
     /// Renders the buffer into `area`, scrolling so the caret stays visible and
     /// filling the field with the input background (active tint when `focused`).
     /// A block caret is shown only when `focused`. Wrapped in a box when

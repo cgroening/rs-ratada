@@ -60,7 +60,32 @@ pub fn popup<S, T>(
     area: impl Fn(Rect, &S) -> Rect,
     render_bg: impl Fn(&mut Frame, &S),
     render_box: impl Fn(&mut Frame, Rect, &S),
+    handle_key: impl FnMut(&mut S, KeyEvent) -> PopupFlow<T>,
+) -> io::Result<ModalSignal<T>> {
+    popup_with_paste(
+        tui,
+        state,
+        area,
+        render_bg,
+        render_box,
+        handle_key,
+        |_, _| PopupFlow::Continue,
+    )
+}
+
+/// Like [`popup`], but also routes a bracketed paste to `handle_paste`.
+///
+/// A modal with a text field forwards the paste payload to that field;
+/// [`popup`] is the shorthand for modals with no field, which ignore paste.
+/// Newlines in the payload are already normalized to `\n`.
+pub fn popup_with_paste<S, T>(
+    tui: &mut Tui,
+    state: &mut S,
+    area: impl Fn(Rect, &S) -> Rect,
+    render_bg: impl Fn(&mut Frame, &S),
+    render_box: impl Fn(&mut Frame, Rect, &S),
     mut handle_key: impl FnMut(&mut S, KeyEvent) -> PopupFlow<T>,
+    mut handle_paste: impl FnMut(&mut S, String) -> PopupFlow<T>,
 ) -> io::Result<ModalSignal<T>> {
     loop {
         // One painter for the frame and for whatever the quit guard draws on
@@ -80,6 +105,13 @@ pub fn popup<S, T>(
                 }
             }
             TuiEvent::Resize => {}
+            TuiEvent::Paste(text) => match handle_paste(state, text) {
+                PopupFlow::Continue => {}
+                PopupFlow::Done(value) => {
+                    return Ok(ModalSignal::Value(value));
+                }
+                PopupFlow::Cancelled => return Ok(ModalSignal::Cancelled),
+            },
             // The next iteration redraws with the new visibility.
             TuiEvent::Key(key) if shortcut_hints::consume_toggle(key) => {}
             TuiEvent::Key(key) => match handle_key(state, key) {

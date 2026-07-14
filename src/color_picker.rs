@@ -17,7 +17,7 @@ use super::{
     layout::centered_rect,
     modal::ModalSignal,
     nav,
-    overlay::{self, PopupFlow, popup},
+    overlay::{self, PopupFlow, popup_with_paste},
     shortcut_hints, style,
     terminal::Tui,
 };
@@ -276,7 +276,7 @@ pub fn color_picker(
         presets: preset_colors(&skin.palette),
         preset: 0,
     };
-    let signal = popup(
+    let signal = popup_with_paste(
         tui,
         &mut state,
         |area, state: &State| {
@@ -290,6 +290,7 @@ pub fn color_picker(
             frame.render_widget(Paragraph::new(lines), inner);
         },
         handle,
+        |state, text| handle_paste(state, &text),
     )?;
     Ok(match signal {
         ModalSignal::Value(Outcome::Done(color)) => ColorExit::Done(color),
@@ -354,6 +355,18 @@ fn handle_hex(
         && let Some(color) = parse_color(state.hex.value())
     {
         state.adopt(color);
+    }
+    PopupFlow::Continue
+}
+
+/// Routes a paste to the hex field, but only while it is focused; a valid entry
+/// updates the channels live, like [`handle_hex`].
+fn handle_paste(state: &mut State, text: &str) -> PopupFlow<Outcome> {
+    if state.focus == Focus::Hex {
+        state.hex.paste(text);
+        if let Some(color) = parse_color(state.hex.value()) {
+            state.adopt(color);
+        }
     }
     PopupFlow::Continue
 }

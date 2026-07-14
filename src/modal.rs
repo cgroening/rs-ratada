@@ -26,7 +26,7 @@ use super::{
     input::{self, TextCursor},
     layout::{centered_rect, fit},
     nav,
-    overlay::{self, PopupFlow, popup},
+    overlay::{self, PopupFlow, popup, popup_with_paste},
     scroll, shortcut_hints, style,
     terminal::Tui,
 };
@@ -167,7 +167,7 @@ fn input_impl(
         cursor: TextCursor::at_end(initial),
         text: initial.to_string(),
     };
-    popup(
+    popup_with_paste(
         tui,
         &mut state,
         |rect, _| area(rect),
@@ -188,6 +188,16 @@ fn input_impl(
                 );
                 PopupFlow::Continue
             }
+        },
+        |field: &mut TextField, text| {
+            input::paste_text(
+                &mut field.text,
+                &mut field.cursor,
+                input::EditMode::SingleLine,
+                None,
+                &text,
+            );
+            PopupFlow::Continue
         },
     )
 }
@@ -467,7 +477,7 @@ fn number_impl(
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<i64>> {
     let mut text = initial.to_string();
-    popup(
+    popup_with_paste(
         tui,
         &mut text,
         |area, _| input_area(area),
@@ -488,15 +498,27 @@ fn number_impl(
                 text.pop();
                 PopupFlow::Continue
             }
-            KeyCode::Char(ch)
-                if ch.is_ascii_digit() || (ch == '-' && text.is_empty()) =>
-            {
+            KeyCode::Char(ch) if is_number_char(ch, text) => {
                 text.push(ch);
                 PopupFlow::Continue
             }
             _ => PopupFlow::Continue,
         },
+        |text: &mut String, pasted| {
+            for ch in pasted.chars() {
+                if is_number_char(ch, text) {
+                    text.push(ch);
+                }
+            }
+            PopupFlow::Continue
+        },
     )
+}
+
+/// Whether `ch` may extend the number buffer `text`: a digit, or a leading `-`
+/// only while the buffer is still empty.
+fn is_number_char(ch: char, text: &str) -> bool {
+    ch.is_ascii_digit() || (ch == '-' && text.is_empty())
 }
 
 /// Shows an informational message until any key is pressed.

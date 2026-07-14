@@ -27,6 +27,8 @@ type Backend = CrosstermBackend<Stdout>;
 pub enum TuiEvent {
     /// A key press.
     Key(KeyEvent),
+    /// A bracketed paste from the terminal, with newlines normalized to `\n`.
+    Paste(String),
     /// The terminal was resized; the surface should redraw.
     Resize,
     /// The global quit chord (`Ctrl+Q`) was pressed.
@@ -136,10 +138,11 @@ impl Drop for Tui {
 }
 
 /// Maps a crossterm event to a [`TuiEvent`], or `None` for events the app
-/// ignores (key releases, mouse, focus, paste).
+/// ignores (key releases, mouse, focus).
 fn classify(event: &Event) -> Option<TuiEvent> {
     match event {
         Event::Resize(_, _) => Some(TuiEvent::Resize),
+        Event::Paste(text) => Some(TuiEvent::Paste(normalize_newlines(text))),
         Event::Key(key) if key.kind != KeyEventKind::Release => {
             if is_global_quit(key) {
                 Some(TuiEvent::Quit)
@@ -151,6 +154,15 @@ fn classify(event: &Event) -> Option<TuiEvent> {
     }
 }
 
+/// Collapses `\r\n` and lone `\r` line endings to `\n`.
+///
+/// Bracketed pastes carry whatever line endings the source used (Windows text
+/// arrives as `\r\n`); normalizing here means every consumer sees `\n`-only,
+/// regardless of the platform the clipboard content came from.
+fn normalize_newlines(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
 fn is_global_quit(key: &KeyEvent) -> bool {
     key.code == KeyCode::Char('q')
         && key.modifiers.contains(KeyModifiers::CONTROL)
@@ -159,4 +171,23 @@ fn is_global_quit(key: &KeyEvent) -> bool {
 fn restore() -> io::Result<()> {
     execute!(io::stdout(), LeaveAlternateScreen, DisableBracketedPaste)?;
     disable_raw_mode()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_newlines_collapses_crlf_and_lone_cr() {
+        assert_eq!(normalize_newlines("a\r\nb\rc\nd"), "a\nb\nc\nd");
+    }
+
+    #[test]
+    fn classify_paste_normalizes_newlines() {
+        let event = Event::Paste("a\r\nb".to_string());
+        match classify(&event) {
+            Some(TuiEvent::Paste(text)) => assert_eq!(text, "a\nb"),
+            _ => panic!("expected a normalized paste event"),
+        }
+    }
 }

@@ -32,7 +32,7 @@ use super::{
     list,
     modal::ModalSignal,
     nav,
-    overlay::{self, PopupFlow, popup},
+    overlay::{self, PopupFlow, popup_with_paste},
     shortcut_hints, style,
     terminal::Tui,
     text::truncate,
@@ -226,7 +226,7 @@ pub fn path_picker(
         root,
     } = config;
     let mut state = State::new(start, allow_files, root);
-    popup(
+    popup_with_paste(
         tui,
         &mut state,
         |area, _| centered_fraction(area, 2, 3, 36, 8),
@@ -299,6 +299,11 @@ pub fn path_picker(
                 }
                 PopupFlow::Continue
             }
+        },
+        |state, text| {
+            state.filter.paste(&text);
+            state.refilter();
+            PopupFlow::Continue
         },
     )
 }
