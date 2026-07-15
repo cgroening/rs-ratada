@@ -10,6 +10,7 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ### Changed
 
+- **The `F1` hints toggle now governs only the host's main-app footer, not popups.** A modal's key prompt (a confirm's `y/n`, an input's `enter/esc`, a picker's hints) is essential, so every popup always shows its footer regardless of the toggle. Concretely, the flat popup API `shortcut_hints::lines`/`footer_height` no longer follows `visible()` (they always render and reserve their rows); only the grouped main-footer API `group_lines`/`height`/`render` still collapses while the hints are hidden. This reverts the part of 0.3.0's "`lines`/`footer_height` return nothing while hidden" for popups. A popup that *does* want its footer to follow `F1` opts in by guarding its hint construction with `shortcut_hints::visible()`. Fixes confirm/input/picker modals rendering with no key hint at all once a host had hidden its footer.
 - **Windows clipboard is now native.** `Ctrl+C`/`X`/`V` on Windows talk to the Win32 clipboard directly (new Windows-only `clipboard-win` dependency) instead of spawning a `powershell.exe` per operation, which added ~200-700 ms of lag per keypress. The Win32 API also returns correct Unicode with no OEM-codepage mojibake and no BOM. macOS/Linux keep the `pbcopy`/`pbpaste`, `wl-copy`/`xclip`/`xsel` tools unchanged.
 
 ### Fixed

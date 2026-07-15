@@ -9,10 +9,14 @@
 //!
 //! # The global toggle
 //!
-//! Every hint footer in the toolkit is built here, so hiding hints is a single
-//! switch: while [`visible`] is false, [`lines`] and [`group_lines`] yield
-//! nothing, [`render`] draws nothing (not even its top margin) and [`height`]
-//! reports zero rows. `driver::run` and `overlay::popup` consume the toggle
+//! The `F1` toggle governs **only the host's main-app footer**, drawn through
+//! the grouped API: while [`visible`] is false, [`group_lines`] yields nothing,
+//! [`render`] draws nothing (not even its top margin) and [`height`] reports
+//! zero rows. The flat popup API ([`lines`], [`footer_height`]) ignores the
+//! toggle and always renders, because a modal's key prompt (a confirm's `y/n`,
+//! a picker's `enter/esc`) is essential and must show regardless. A popup that
+//! *does* want its footer to follow the toggle guards its hints with
+//! [`visible`] itself. `driver::run` and `overlay::popup` consume the toggle
 //! chord ([`default_toggle_key`], `F1`), so every screen and every modal
 //! inherits it without the host wiring anything up. Hints start out shown.
 //!
