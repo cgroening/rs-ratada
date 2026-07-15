@@ -146,7 +146,7 @@ pub fn filter(items: &[String], query: &str) -> Vec<usize> {
             fuzzy::score(item, query).map(|score| (score, index))
         })
         .collect();
-    scored.sort_by(|left, right| right.0.cmp(&left.0));
+    scored.sort_by_key(|entry| std::cmp::Reverse(entry.0));
     scored.into_iter().map(|(_, index)| index).collect()
 }
 

@@ -277,7 +277,7 @@ fn ranked_rows<'a>(items: &'a [CommandItem<'a>], query: &str) -> RowLayout<'a> {
             fuzzy::score(&haystack, query).map(|score| (score, index))
         })
         .collect();
-    scored.sort_by(|left, right| right.0.cmp(&left.0));
+    scored.sort_by_key(|entry| std::cmp::Reverse(entry.0));
 
     let mut rows: Vec<Row<'a>> = Vec::new();
     let mut selectable: Vec<usize> = Vec::new();
