@@ -247,8 +247,8 @@ fn render_body<B: AsRef<str>>(
     let palette = &skin.palette;
     let layout = layout_rows(sections, &state.query);
 
-    // The footer collapses to nothing while the hints are hidden, handing its
-    // row to the list.
+    // The popup footer always reserves its row (popup hints ignore the global
+    // F1 toggle, which governs only the main-app footer).
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

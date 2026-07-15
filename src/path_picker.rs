@@ -313,7 +313,7 @@ fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
     let inner_width = inner.width as usize;
 
     // Header (current dir), filter line, the scrollable entry list, footer. The
-    // footer collapses to nothing while the hints are hidden.
+    // footer always reserves its row (popup hints ignore the F1 toggle).
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

@@ -133,10 +133,14 @@ pub fn global_bindings() -> Vec<(String, String)> {
     bindings
 }
 
-/// The rows a hint footer of `rows` lines occupies: `rows` while hints are
-/// shown, `0` once they are hidden. For a layout that reserves a fixed footer.
+/// The rows a popup's hint footer of `rows` lines occupies: always `rows`.
+///
+/// Popup hints are essential key prompts, so they ignore the global F1 toggle
+/// (which governs only the main-app footer via the grouped [`height`]/[`render`]
+/// API). A popup that does want its footer to follow the toggle reserves
+/// `if visible() { footer_height(rows) } else { 0 }` itself.
 pub fn footer_height(rows: u16) -> u16 {
-    if visible() { rows } else { 0 }
+    rows
 }
 
 /// Consumes `key` when it is the bound hints toggle, flipping the visibility.
@@ -258,16 +262,15 @@ impl Default for HintStyle {
 /// Wraps `(key, description)` hints into lines at `width` without splitting a
 /// token across lines. `key_color` styles the keys (e.g. a dimmed accent).
 ///
-/// Yields nothing while the hints are hidden (see [`visible`]), which is what
-/// lets every footer in the toolkit vanish from this one place.
+/// The lines are built regardless of the global F1 toggle: a popup's key hints
+/// are essential prompts and always show. The toggle governs only the main-app
+/// footer, drawn through the grouped [`height`]/[`render`] API. A popup that
+/// does want its hints to follow the toggle guards this call with [`visible`].
 pub fn lines<S: AsRef<str>>(
     items: &[(S, S)],
     key_color: Color,
     width: usize,
 ) -> Vec<Line<'static>> {
-    if !visible() {
-        return Vec::new();
-    }
     let key_style = style::fg(key_color).add_modifier(Modifier::BOLD);
     wrap(items, key_style, style::dim(), width)
         .into_iter()
@@ -539,9 +542,12 @@ mod tests {
     }
 
     #[test]
-    fn hidden_hints_yield_no_lines() {
+    fn hiding_the_hints_affects_only_the_grouped_footer() {
+        // The flat popup API always renders; only the grouped main-footer API
+        // follows the global toggle.
+        let flat = lines(ITEMS, Color::Default, 80);
         while_hidden(|| {
-            assert!(lines(ITEMS, Color::Default, 80).is_empty());
+            assert_eq!(lines(ITEMS, Color::Default, 80), flat);
             let groups = [HintGroup {
                 label: "A",
                 hints: ITEMS,
@@ -551,20 +557,22 @@ mod tests {
     }
 
     #[test]
-    fn hidden_hints_reclaim_their_rows_and_the_top_margin() {
+    fn hidden_hints_reclaim_only_the_grouped_footer_rows() {
         while_hidden(|| {
             let groups = [HintGroup {
                 label: "A",
                 hints: ITEMS,
             }];
+            // The grouped main-app footer collapses with the toggle.
             assert_eq!(height(&groups, 80, 1), 0);
-            assert_eq!(footer_height(1), 0);
-            assert_eq!(footer_height(2), 0);
+            // A popup footer keeps its reserved rows.
+            assert_eq!(footer_height(1), 1);
+            assert_eq!(footer_height(2), 2);
         });
     }
 
     #[test]
-    fn footer_height_passes_the_rows_through_while_visible() {
+    fn footer_height_passes_the_rows_through_regardless_of_visibility() {
         assert!(visible());
         assert_eq!(footer_height(1), 1);
         assert_eq!(footer_height(2), 2);

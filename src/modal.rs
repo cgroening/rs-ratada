@@ -779,9 +779,9 @@ fn input_area_wide(area: Rect) -> Rect {
     centered_rect(width, hinted_box_height(), area)
 }
 
-/// The blank spacer and the hint line closing a modal body. Both vanish
-/// together while the hints are hidden, which is why the spacer lives here and
-/// not at the call site.
+/// The blank spacer and the hint line closing a modal body. A modal's key
+/// prompt is essential, so it always shows, independent of the global F1 toggle
+/// (which governs only the main-app footer).
 fn hint_block(
     items: &[(&str, &str)],
     palette: &Palette,
@@ -794,8 +794,8 @@ fn hint_block(
         .collect()
 }
 
-/// The height of a modal box whose body is one row plus a [`hint_block`]:
-/// two border rows, the row itself, and the hint block when shown.
+/// The height of a modal box whose body is one row plus a [`hint_block`]: two
+/// border rows, the row itself, and the always-shown hint block.
 fn hinted_box_height() -> u16 {
     3 + shortcut_hints::footer_height(HINT_BLOCK_ROWS)
 }
@@ -868,5 +868,16 @@ mod tests {
         let question = Question::declining("Delete everything?");
         assert!(!question.default_yes);
         assert_eq!(question.hints(), [("y", "yes"), ("enter/n", "no")]);
+    }
+
+    /// A confirm's key prompt is essential, so the box reserves its hint rows
+    /// even while the global F1 hints are hidden (that toggle governs only the
+    /// main-app footer).
+    #[test]
+    fn a_confirm_box_keeps_its_hint_rows_while_global_hints_are_hidden() {
+        assert_eq!(hinted_box_height(), 3 + HINT_BLOCK_ROWS);
+        shortcut_hints::set_visible(false);
+        assert_eq!(hinted_box_height(), 3 + HINT_BLOCK_ROWS);
+        shortcut_hints::set_visible(true);
     }
 }

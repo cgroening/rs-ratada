@@ -373,7 +373,7 @@ impl Form {
         let body: u16 = self.fields.iter().map(Field::height).sum();
         let footer = shortcut_hints::footer_height(1);
         let width = (outer.width * 2 / 3).clamp(40, outer.width);
-        // Two border rows plus the footer, which vanishes with the hints.
+        // Two border rows plus the always-shown popup footer.
         let height = (body + 2 + footer).min(outer.height);
         let area = centered_rect(width, height, outer);
         frame.render_widget(Clear, area);

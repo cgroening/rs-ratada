@@ -33,7 +33,7 @@ use crate::theme::{Color, Palette, Skin};
 const LIST_WIDTH: u16 = 30;
 /// Visible list rows before a list-style mode scrolls.
 const VISIBLE_ROWS: u16 = 12;
-/// Rows the hint footer occupies while the hints are shown.
+/// Rows the hint footer occupies (always shown: popup hints ignore F1).
 const FOOTER_ROWS: u16 = 2;
 /// Width of the color swatch shown at the start of each list row.
 const SWATCH_WIDTH: usize = 4;
@@ -457,8 +457,8 @@ fn run_swatch(
 }
 
 /// The modal's `(width, height)` for the current mode. Layout parts: a mode bar,
-/// an optional filter row, the content, a blank, a 4-row preview and the footer
-/// (two rows, or none while the hints are hidden), all inside the border.
+/// an optional filter row, the content, a blank, a 4-row preview and the
+/// two-row footer (always shown), all inside the border.
 fn box_size(state: &State) -> (u16, u16) {
     let footer = shortcut_hints::footer_height(FOOTER_ROWS);
     let extras = 1 + 1 + 4 + footer + 2; // bar + blank + preview + footer + border
