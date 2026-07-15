@@ -1,16 +1,70 @@
-//! Best-effort clipboard access via the platform's command-line tools.
+//! Best-effort clipboard access.
 //!
-//! Spawning a small helper process avoids an extra dependency. Failures are
-//! reported as `false`/`None` and logged, never propagated, so a missing
-//! clipboard tool degrades gracefully instead of breaking the TUI.
+//! On Windows this talks to the native Win32 clipboard (via `clipboard-win`),
+//! so a copy/paste is instant and returns correct Unicode - no PowerShell
+//! subprocess, no OEM-codepage mojibake, no BOM. On macOS and Linux it spawns
+//! the platform's small clipboard tool (`pbcopy`/`pbpaste`,
+//! `wl-copy`/`xclip`/`xsel`), which is fast enough and needs no dependency.
+//!
+//! Failures are reported as `false`/`None` and logged, never propagated, so a
+//! missing clipboard tool degrades gracefully instead of breaking the TUI.
 
+/// Copies `text` to the system clipboard. Returns whether it succeeded.
+pub fn copy(text: &str) -> bool {
+    copy_impl(text)
+}
+
+/// Reads the system clipboard, or `None` if it cannot be read.
+pub fn paste() -> Option<String> {
+    paste_impl()
+}
+
+// ---------------------------------------------------------------------------
+// Windows: native Win32 clipboard.
+// ---------------------------------------------------------------------------
+
+#[cfg(windows)]
+fn copy_impl(text: &str) -> bool {
+    match clipboard_win::set_clipboard_string(text) {
+        Ok(()) => true,
+        Err(error) => {
+            log::warn!("clipboard copy failed: {error}");
+            false
+        }
+    }
+}
+
+#[cfg(windows)]
+fn paste_impl() -> Option<String> {
+    match clipboard_win::get_clipboard_string() {
+        Ok(text) => Some(normalize_newlines(&text)),
+        Err(error) => {
+            log::warn!("clipboard paste failed: {error}");
+            None
+        }
+    }
+}
+
+/// Collapses the `\r\n` (and lone `\r`) line endings the Windows clipboard uses
+/// to `\n`, so a native paste matches the `\n`-only shape the rest of the
+/// toolkit expects (mirrors `terminal::normalize_newlines`).
+#[cfg(windows)]
+fn normalize_newlines(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+// ---------------------------------------------------------------------------
+// macOS / Linux: command-line clipboard tools.
+// ---------------------------------------------------------------------------
+
+#[cfg(not(windows))]
 use std::{
     io::Write,
     process::{Command, Stdio},
 };
 
-/// Copies `text` to the system clipboard. Returns whether it succeeded.
-pub fn copy(text: &str) -> bool {
+#[cfg(not(windows))]
+fn copy_impl(text: &str) -> bool {
     for (program, args) in copy_candidates() {
         if pipe_to(program, args, text).is_ok() {
             return true;
@@ -20,8 +74,8 @@ pub fn copy(text: &str) -> bool {
     false
 }
 
-/// Reads the system clipboard, or `None` if it cannot be read.
-pub fn paste() -> Option<String> {
+#[cfg(not(windows))]
+fn paste_impl() -> Option<String> {
     for (program, args) in paste_candidates() {
         if let Some(text) = read_from(program, args) {
             return Some(text);
@@ -31,6 +85,7 @@ pub fn paste() -> Option<String> {
     None
 }
 
+#[cfg(not(windows))]
 fn pipe_to(program: &str, args: &[&str], text: &str) -> std::io::Result<()> {
     let mut child = Command::new(program)
         .args(args)
@@ -38,9 +93,8 @@ fn pipe_to(program: &str, args: &[&str], text: &str) -> std::io::Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()?;
-    // Close stdin before waiting: tools that read to EOF (e.g. PowerShell's
-    // `[Console]::In.ReadToEnd()`) block until the pipe closes, so holding the
-    // handle open across `wait` would deadlock.
+    // Close stdin before waiting: tools that read to EOF block until the pipe
+    // closes, so holding the handle open across `wait` would deadlock.
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(text.as_bytes())?;
     }
@@ -51,6 +105,7 @@ fn pipe_to(program: &str, args: &[&str], text: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(not(windows))]
 fn read_from(program: &str, args: &[&str]) -> Option<String> {
     let output = Command::new(program)
         .args(args)
@@ -62,7 +117,7 @@ fn read_from(program: &str, args: &[&str]) -> Option<String> {
         return None;
     }
     match String::from_utf8(output.stdout) {
-        Ok(text) => Some(strip_bom(&text).to_string()),
+        Ok(text) => Some(text),
         Err(error) => {
             log::debug!(
                 "clipboard tool '{program}' returned invalid UTF-8: {error}"
@@ -72,52 +127,13 @@ fn read_from(program: &str, args: &[&str]) -> Option<String> {
     }
 }
 
-/// Removes a leading UTF-8 byte-order mark, if present.
-///
-/// Forcing a Windows tool's output encoding to UTF-8 can prepend a BOM
-/// (`U+FEFF`); it must not leak into pasted text as a stray leading character.
-fn strip_bom(text: &str) -> &str {
-    text.strip_prefix('\u{feff}').unwrap_or(text)
-}
-
-/// PowerShell one-liner that stores stdin verbatim in the clipboard.
-///
-/// Forcing `InputEncoding` to UTF-8 without a BOM lets it read the UTF-8 bytes
-/// we pipe in correctly, where `clip` would misread them as the OEM code page
-/// and corrupt umlauts. `ReadToEnd` keeps the text (order, line breaks) whole.
-#[cfg(target_os = "windows")]
-const WINDOWS_COPY_SCRIPT: &str = concat!(
-    "[Console]::InputEncoding = ",
-    "[System.Text.UTF8Encoding]::new($false); ",
-    "Set-Clipboard -Value ([Console]::In.ReadToEnd())",
-);
-
-/// PowerShell one-liner that reads the clipboard as one UTF-8 string.
-///
-/// `Get-Clipboard -Raw` returns the whole clipboard verbatim (order and line
-/// breaks intact); forcing `OutputEncoding` to UTF-8 without a BOM and writing
-/// through `[Console]::Out` avoids both the OEM-codepage mojibake and the
-/// trailing newline the normal output stream would append.
-#[cfg(target_os = "windows")]
-const WINDOWS_PASTE_SCRIPT: &str = concat!(
-    "[Console]::OutputEncoding = ",
-    "[System.Text.UTF8Encoding]::new($false); ",
-    "[Console]::Out.Write([string](Get-Clipboard -Raw))",
-);
-
+#[cfg(not(windows))]
 fn copy_candidates() -> &'static [(&'static str, &'static [&'static str])] {
     #[cfg(target_os = "macos")]
     {
         &[("pbcopy", &[])]
     }
-    #[cfg(target_os = "windows")]
-    {
-        &[(
-            "powershell",
-            &["-NoProfile", "-Command", WINDOWS_COPY_SCRIPT],
-        )]
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(target_os = "macos"))]
     {
         &[
             ("wl-copy", &[]),
@@ -127,19 +143,13 @@ fn copy_candidates() -> &'static [(&'static str, &'static [&'static str])] {
     }
 }
 
+#[cfg(not(windows))]
 fn paste_candidates() -> &'static [(&'static str, &'static [&'static str])] {
     #[cfg(target_os = "macos")]
     {
         &[("pbpaste", &[])]
     }
-    #[cfg(target_os = "windows")]
-    {
-        &[(
-            "powershell",
-            &["-NoProfile", "-Command", WINDOWS_PASTE_SCRIPT],
-        )]
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(target_os = "macos"))]
     {
         &[
             ("wl-paste", &["--no-newline"]),
@@ -149,22 +159,17 @@ fn paste_candidates() -> &'static [(&'static str, &'static [&'static str])] {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 
     #[test]
-    fn strip_bom_removes_a_leading_byte_order_mark() {
-        assert_eq!(strip_bom("\u{feff}hello"), "hello");
+    fn normalize_newlines_collapses_crlf_and_lone_cr() {
+        assert_eq!(normalize_newlines("a\r\nb\rc\nd"), "a\nb\nc\nd");
     }
 
     #[test]
-    fn strip_bom_leaves_text_without_a_mark_untouched() {
-        assert_eq!(strip_bom("hello"), "hello");
-    }
-
-    #[test]
-    fn strip_bom_only_removes_a_leading_mark() {
-        assert_eq!(strip_bom("a\u{feff}b"), "a\u{feff}b");
+    fn normalize_newlines_leaves_plain_text_untouched() {
+        assert_eq!(normalize_newlines("no breaks here"), "no breaks here");
     }
 }

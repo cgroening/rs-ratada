@@ -45,5 +45,10 @@ chrono = "0.4"
 # https://crates.io/crates/log
 log = { version = "0.4", features = ["std"] }
 
+[target.'cfg(windows)'.dependencies]
+# Native Win32 clipboard access, avoiding a slow PowerShell subprocess per
+# copy/paste. https://crates.io/crates/clipboard-win
+clipboard-win = "5"
+
 [lints.clippy]
 all = { level = "warn", priority = -1 }

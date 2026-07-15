@@ -6,16 +6,18 @@ use std::{
 };
 
 use crossterm::{
-    event::{
-        self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode,
-        KeyEvent, KeyEventKind, KeyModifiers,
-    },
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
     terminal::{
         EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
         enable_raw_mode,
     },
 };
+// Bracketed paste is only wired up where crossterm can actually deliver it as
+// an `Event::Paste`, which its Windows event source never does (see
+// `enter_screen`).
+#[cfg(not(windows))]
+use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
 use ratatui::{Frame, Terminal, backend::CrosstermBackend};
 
 type Backend = CrosstermBackend<Stdout>;
@@ -28,6 +30,11 @@ pub enum TuiEvent {
     /// A key press.
     Key(KeyEvent),
     /// A bracketed paste from the terminal, with newlines normalized to `\n`.
+    ///
+    /// Only produced on macOS and Linux. On Windows crossterm's event source
+    /// emits key events only and never a paste, so a paste there arrives
+    /// through the `Ctrl+V` key path (which reads the clipboard directly) and
+    /// bracketed paste is left disabled - see `enter_screen`.
     Paste(String),
     /// The terminal was resized; the surface should redraw.
     Resize,
@@ -70,7 +77,7 @@ impl Tui {
     ) -> io::Result<Self> {
         enable_raw_mode()?;
         let mut out = io::stdout();
-        execute!(out, EnterAlternateScreen, EnableBracketedPaste)?;
+        enter_screen(&mut out)?;
         let on_enter: Box<dyn Fn()> = Box::new(on_enter);
         let on_leave: Box<dyn Fn()> = Box::new(on_leave);
         on_enter();
@@ -118,7 +125,7 @@ impl Tui {
         (self.on_leave)();
         let result = action();
         enable_raw_mode()?;
-        execute!(io::stdout(), EnterAlternateScreen, EnableBracketedPaste)?;
+        enter_screen(&mut io::stdout())?;
         (self.on_enter)();
         self.terminal.clear()?;
         Ok(result)
@@ -168,8 +175,32 @@ fn is_global_quit(key: &KeyEvent) -> bool {
         && key.modifiers.contains(KeyModifiers::CONTROL)
 }
 
+/// Enters the alternate screen, additionally enabling bracketed paste where
+/// crossterm can deliver it.
+///
+/// crossterm's Windows event source reads console key records and never emits
+/// an `Event::Paste`, so enabling bracketed paste there would only make the
+/// terminal send `\e[200~ … \e[201~` sequences the app cannot parse (they
+/// surface as mangled key events). On Windows a paste therefore comes through
+/// the `Ctrl+V` key path instead, which reads the clipboard directly.
+fn enter_screen(out: &mut Stdout) -> io::Result<()> {
+    execute!(out, EnterAlternateScreen)?;
+    #[cfg(not(windows))]
+    execute!(out, EnableBracketedPaste)?;
+    Ok(())
+}
+
+/// Leaves the alternate screen, mirroring [`enter_screen`] by disabling
+/// bracketed paste only where it was enabled.
+fn leave_screen(out: &mut Stdout) -> io::Result<()> {
+    #[cfg(not(windows))]
+    execute!(out, DisableBracketedPaste)?;
+    execute!(out, LeaveAlternateScreen)?;
+    Ok(())
+}
+
 fn restore() -> io::Result<()> {
-    execute!(io::stdout(), LeaveAlternateScreen, DisableBracketedPaste)?;
+    leave_screen(&mut io::stdout())?;
     disable_raw_mode()
 }
 

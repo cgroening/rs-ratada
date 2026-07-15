@@ -35,7 +35,7 @@ src/
   textarea.rs       TextArea (wrapped multi-line editor; reuses input's core)
   autocomplete.rs   inline suggestion dropdown
   editor.rs         launch $EDITOR via Tui::suspend
-  clipboard.rs      best-effort copy/paste via platform tools
+  clipboard.rs      best-effort copy/paste (native Win32 on Windows, CLI tools elsewhere)
 
   # data display
   table/            Table (type-aware sort, fuzzy filter, row/cell select),

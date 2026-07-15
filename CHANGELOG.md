@@ -8,6 +8,14 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 - `StyleSheet::preserve_line_breaks` – renders a single source newline (a CommonMark soft break) as a real line break instead of collapsing it to a space (display only). Off by default, so reflowed text is unchanged; a host whose Markdown carries meaningful hard-wrapped lines opts in. Like every `StyleSheet` field it is public, so a struct-literal construction must name it, while `StyleSheet::default` and `from_skin` fill it in.
 
+### Changed
+
+- **Windows clipboard is now native.** `Ctrl+C`/`X`/`V` on Windows talk to the Win32 clipboard directly (new Windows-only `clipboard-win` dependency) instead of spawning a `powershell.exe` per operation, which added ~200-700 ms of lag per keypress. The Win32 API also returns correct Unicode with no OEM-codepage mojibake and no BOM. macOS/Linux keep the `pbcopy`/`pbpaste`, `wl-copy`/`xclip`/`xsel` tools unchanged.
+
+### Fixed
+
+- **A multi-line paste no longer lands with its lines reversed on Windows.** crossterm's Windows event source reads console key records and never emits an `Event::Paste`, so ratada no longer enables bracketed paste there. With it off, a terminal that maps a key to paste (e.g. WezTerm's `Ctrl+V` → `PasteFrom`) delivers plain, in-order text instead of the `\e[200~…\e[201~` sequence crossterm would mangle into reversed lines. On Windows a paste now arrives through the `Ctrl+V` key path (a direct clipboard read); macOS and Linux keep the full `TuiEvent::Paste` / `Screen::handle_paste` seam.
+
 ## [0.3.0] - 2026-07-11
 
 ### Added
