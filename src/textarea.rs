@@ -377,8 +377,73 @@ fn locate(rows: &[(usize, usize)], pos: usize) -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use crossterm::event::{KeyCode, KeyModifiers};
+    use unicode_width::UnicodeWidthStr;
 
     use super::*;
+
+    /// Texts covering every branch of the wrap: a plain run, runs of spaces, an
+    /// explicit break, a trailing break, an over-long word and wide chars.
+    const WRAP_SAMPLES: [&str; 8] = [
+        "",
+        "hello world",
+        "aaaa  bbbb   cccc",
+        "one\ntwo three",
+        "trailing\n",
+        "supercalifragilistic word",
+        "日本語 テスト",
+        "a b c d e f g h i j k",
+    ];
+
+    #[test]
+    fn narrower_boxes_never_wrap_to_more_columns_of_text() {
+        // A box only ever needs *more* rows as it gets narrower. Callers lean on
+        // this to probe a layout once: a box that overflows at its full width
+        // still overflows a column in, so reserving that column for a scroll
+        // indicator can never turn an overflowing box into a fitting one.
+        for text in WRAP_SAMPLES {
+            for width in 1..40usize {
+                let wide = wrap_offsets(text, width + 1).len();
+                let narrow = wrap_offsets(text, width).len();
+                assert!(
+                    narrow >= wide,
+                    "{text:?}: width {width} wrapped to {narrow} rows, \
+                     but width {} wrapped to {wide}",
+                    width + 1,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_soft_break_leaves_its_row_a_column_short() {
+        // A soft break falls on a space *inside* the width and consumes it, so
+        // the row it ends is always at least one column short. Only a hard split
+        // or an explicit newline can leave a row exactly full - which is why a
+        // caller cannot read "this row is full" as "this row is the last one".
+        let chars: Vec<Vec<char>> =
+            WRAP_SAMPLES.iter().map(|t| t.chars().collect()).collect();
+        for (text, chars) in WRAP_SAMPLES.iter().zip(&chars) {
+            for width in 1..40usize {
+                let rows = wrap_offsets(text, width);
+                for (index, (row, start)) in rows.iter().enumerate() {
+                    let end = start + row.chars().count();
+                    // The break is soft only when the consumed char is a space;
+                    // a newline is the caller's own break, not the wrap's.
+                    let soft = rows
+                        .get(index + 1)
+                        .is_some_and(|(_, next)| *next == end + 1)
+                        && chars.get(end) == Some(&' ');
+                    if soft {
+                        assert!(
+                            row.width() < width,
+                            "{text:?} at {width}: soft-broken row {index} \
+                             ({row:?}) fills the box",
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     #[test]
     fn altgr_char_is_typed_not_swallowed() {
