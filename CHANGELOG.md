@@ -4,6 +4,8 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-16
+
 ### Added
 
 - `StyleSheet::preserve_line_breaks` – renders a single source newline (a CommonMark soft break) as a real line break instead of collapsing it to a space (display only). Off by default, so reflowed text is unchanged; a host whose Markdown carries meaningful hard-wrapped lines opts in. Like every `StyleSheet` field it is public, so a struct-literal construction must name it, while `StyleSheet::default` and `from_skin` fill it in.
@@ -101,4 +103,8 @@ Crate-wide cleanup and API consolidation. This release contains breaking changes
 - `textarea` now reuses the shared single-line edit core from `input` (SSOT).
 - Documentation synced with the code and the public API surface tightened.
 
-[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.3.0...HEAD [0.3.0]: https://github.com/cgroening/rs-ratada/compare/v0.2.0...v0.3.0 [0.2.0]: https://github.com/cgroening/rs-ratada/compare/v0.1.0...v0.2.0 [0.1.0]: https://github.com/cgroening/rs-ratada/releases/tag/v0.1.0
+[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/cgroening/rs-ratada/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/cgroening/rs-ratada/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/cgroening/rs-ratada/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/cgroening/rs-ratada/releases/tag/v0.1.0

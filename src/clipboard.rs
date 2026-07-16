@@ -1,7 +1,7 @@
 //! Best-effort clipboard access.
 //!
 //! On Windows this talks to the native Win32 clipboard (via `clipboard-win`),
-//! so a copy/paste is instant and returns correct Unicode - no PowerShell
+//! so a copy/paste is instant and returns correct Unicode - no `PowerShell`
 //! subprocess, no OEM-codepage mojibake, no BOM. On macOS and Linux it spawns
 //! the platform's small clipboard tool (`pbcopy`/`pbpaste`,
 //! `wl-copy`/`xclip`/`xsel`), which is fast enough and needs no dependency.

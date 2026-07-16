@@ -1,6 +1,6 @@
 [package]
 name = "ratada"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 # Uses `let`-chains, stabilized in Rust 1.88.
 rust-version = "1.88"
