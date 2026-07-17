@@ -7,7 +7,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::model::{filter_indices, sort_indices};
 use super::{FilterScope, SelectMode, SortDir, Table, TableAction};
-use crate::nav;
+use crate::{input, nav};
 
 impl Table {
     /// Handles a key press; returns whether the host should act on it.
@@ -16,12 +16,20 @@ impl Table {
             self.handle_filter_key(key);
             return TableAction::None;
         }
+        // Ctrl+A is the only chord this table binds; every other one must be
+        // kept away from the plain keys below, or Ctrl+S would re-sort and
+        // Ctrl+J/H would navigate (in raw mode crossterm reports those as
+        // `Char('j')`/`Char('h')` plus CONTROL).
+        if input::is_command(key) {
+            if key.code == KeyCode::Char('a') {
+                self.select_all();
+            }
+            return TableAction::None;
+        }
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let page = self.viewport.get().max(1) as isize;
         let last = self.view.len().saturating_sub(1);
         match key.code {
-            KeyCode::Char('a') if ctrl => self.select_all(),
             KeyCode::Up | KeyCode::Char('k') => self.move_rows(-1, shift),
             KeyCode::Down | KeyCode::Char('j') => self.move_rows(1, shift),
             KeyCode::PageUp => self.move_rows(-page, shift),
@@ -59,7 +67,12 @@ impl Table {
                 self.filter.pop();
                 self.rebuild_view();
             }
-            KeyCode::Char(ch) => {
+            // Anything that is not a command chord is filter text: Ctrl+U
+            // would otherwise append a `u` instead of being left as an editing
+            // key. Deliberately not `is_bare_character`, which would also
+            // reject AltGr - `@`, `\` and `[` must reach the filter, exactly as
+            // in `input::apply_edit_key`.
+            KeyCode::Char(ch) if !input::is_command(key) => {
                 self.filter.push(ch);
                 self.rebuild_view();
             }

@@ -16,7 +16,7 @@ use ratatui::{
 
 use super::{Link, StyleSheet};
 use crate::{
-    chrome,
+    chrome, input,
     layout::centered_fraction,
     modal::ModalSignal,
     nav,
@@ -104,7 +104,13 @@ impl MarkdownView {
     ///
     /// `Up`/`k`, `Down`/`j`, `PageUp`/`PageDown`, `Home`/`End` scroll (clamped,
     /// not cyclic); `Tab`/`BackTab` cycle the active link.
+    ///
+    /// Scrolling is bare keys only: a Ctrl chord is left unconsumed, so `Ctrl+J`
+    /// cannot scroll and a host stays free to bind `Ctrl+<key>` itself.
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
+        if input::is_command(key) {
+            return false;
+        }
         let page = self.viewport.get().max(1);
         let offset = self.offset.get();
         match key.code {
@@ -226,16 +232,27 @@ pub fn viewer(
         },
         |view, key| match key.code {
             KeyCode::Esc => PopupFlow::Cancelled,
-            KeyCode::Enter | KeyCode::Char('o') => match view.selected_link() {
-                Some(link) => PopupFlow::Done(link.clone()),
-                None => PopupFlow::Continue,
-            },
+            KeyCode::Enter => open_selected(view),
+            // `o` is a plain letter, so only a bare one opens the link: a host
+            // binding `Ctrl+O` must not have the viewer act on it too.
+            KeyCode::Char('o') if input::is_bare_character(key) => {
+                open_selected(view)
+            }
             _ => {
                 view.handle_key(key);
                 PopupFlow::Continue
             }
         },
     )
+}
+
+/// The highlighted link as a picked value, or `Continue` when the document has
+/// no links to open.
+fn open_selected(view: &MarkdownView) -> PopupFlow<Link> {
+    match view.selected_link() {
+        Some(link) => PopupFlow::Done(link.clone()),
+        None => PopupFlow::Continue,
+    }
 }
 
 /// Splits `inner` into the scrolling body and, when the source has links, a
@@ -287,6 +304,40 @@ mod tests {
 
     fn press(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL)
+    }
+
+    /// `Ctrl+J`/`Ctrl+K` are commands, not motions: in raw mode crossterm
+    /// reports Ctrl+J as `Char('j') + CONTROL`, so without the guard a chord
+    /// would scroll the view. The key must be left for the host.
+    #[test]
+    fn handle_key_leaves_ctrl_chords_to_the_host() {
+        let mut view = MarkdownView::new("a\n\nb\n\nc");
+        view.total.set(3);
+        view.viewport.set(1);
+        for code in [
+            KeyCode::Char('j'),
+            KeyCode::Char('k'),
+            KeyCode::Down,
+            KeyCode::End,
+            KeyCode::PageDown,
+        ] {
+            assert!(
+                !view.handle_key(ctrl(code)),
+                "Ctrl+{code:?} must not be consumed as scrolling"
+            );
+            assert_eq!(
+                view.offset.get(),
+                0,
+                "Ctrl+{code:?} must not scroll the view"
+            );
+        }
+        // The bare key still scrolls.
+        assert!(view.handle_key(press(KeyCode::Down)));
+        assert_eq!(view.offset.get(), 1);
     }
 
     #[test]

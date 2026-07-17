@@ -10,7 +10,7 @@
 use std::io;
 
 use chrono::NaiveDate;
-use crossterm::event::{KeyCode, KeyModifiers};
+use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -19,7 +19,7 @@ use ratatui::{
 };
 
 use super::{
-    chrome, date_picker, editor,
+    chrome, date_picker, editor, input,
     input::InputField,
     layout::centered_rect,
     modal::ModalSignal,
@@ -236,7 +236,9 @@ impl Form {
                 TuiEvent::Resize => {}
                 TuiEvent::Paste(text) => self.paste_into_focus(&text),
                 TuiEvent::Key(key) => {
-                    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                    // Control *without* Alt: AltGr is reported as Ctrl+Alt and
+                    // types real characters, which must reach the fields.
+                    let ctrl = input::is_command(key);
                     match key.code {
                         KeyCode::Esc => return Ok(FormOutcome::Cancelled),
                         KeyCode::Char('s') if ctrl => {
@@ -281,7 +283,9 @@ impl Form {
         tui: &mut Tui,
         skin: &Skin,
     ) -> io::Result<Option<FormOutcome>> {
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // Control *without* Alt: AltGr is reported as Ctrl+Alt and types real
+        // characters, which must reach the fields rather than open `$EDITOR`.
+        let ctrl = input::is_command(key);
 
         // Date opens a sub-modal that renders the form as its background, so it
         // is handled with whole-self borrows before the per-field borrow.
@@ -303,7 +307,7 @@ impl Form {
                 area.handle_key(key);
             }
             FieldState::Bool { value, .. } => {
-                if matches!(key.code, KeyCode::Char(' ') | KeyCode::Enter) {
+                if toggles_checkbox(key) {
                     *value = !*value;
                 }
             }
@@ -487,9 +491,54 @@ impl Form {
     }
 }
 
+/// Whether `key` flips a checkbox field.
+///
+/// Only a *bare* `Space` toggles: crossterm reports `Ctrl+Space` as
+/// `Char(' ') + CONTROL`, so an unguarded match would let a host's `Ctrl+Space`
+/// chord silently flip the focused checkbox as well.
+fn toggles_checkbox(key: crossterm::event::KeyEvent) -> bool {
+    match key.code {
+        KeyCode::Char(' ') => input::is_bare_character(key),
+        KeyCode::Enter => true,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crossterm::event::{KeyEvent, KeyModifiers};
+
     use super::*;
+
+    /// `Ctrl+Space` is a chord, not a toggle: crossterm reports it as
+    /// `Char(' ') + CONTROL`, so without the guard a host's `Ctrl+Space` would
+    /// also flip the focused checkbox. `AltGr+Space` counts too - a character,
+    /// but not a bare one.
+    #[test]
+    fn only_a_bare_space_toggles_a_checkbox() {
+        for modified in [
+            KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL),
+            KeyEvent::new(
+                KeyCode::Char(' '),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            ),
+            KeyEvent::new(KeyCode::Char(' '), KeyModifiers::ALT),
+        ] {
+            assert!(
+                !toggles_checkbox(modified),
+                "{modified:?} must not toggle the checkbox"
+            );
+        }
+        // The bare keys still toggle.
+        assert!(toggles_checkbox(KeyEvent::new(
+            KeyCode::Char(' '),
+            KeyModifiers::NONE
+        )));
+        assert!(toggles_checkbox(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE
+        )));
+    }
 
     #[test]
     fn dirty_tracks_changes() {

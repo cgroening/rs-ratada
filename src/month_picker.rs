@@ -16,6 +16,7 @@ use ratatui::{
 };
 
 use super::{
+    input,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup},
@@ -81,45 +82,55 @@ pub fn month_picker(
             );
             frame.render_widget(Paragraph::new(lines), inner);
         },
-        |state, key| match key.code {
-            KeyCode::Left | KeyCode::Char('h') => {
-                state.month = step(state.month, -1);
-                PopupFlow::Continue
+        |state, key| {
+            // The grid moves on bare keys only: in raw mode crossterm reports
+            // Ctrl+H as `Char('h') + CONTROL`, so without this guard a chord
+            // would silently walk the month cursor.
+            if input::is_command(key) {
+                return PopupFlow::Continue;
             }
-            KeyCode::Right | KeyCode::Char('l') => {
-                state.month = step(state.month, 1);
-                PopupFlow::Continue
+            match key.code {
+                KeyCode::Left | KeyCode::Char('h') => {
+                    state.month = step(state.month, -1);
+                    PopupFlow::Continue
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    state.month = step(state.month, 1);
+                    PopupFlow::Continue
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    state.month = step(state.month, -3);
+                    PopupFlow::Continue
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    state.month = step(state.month, 3);
+                    PopupFlow::Continue
+                }
+                KeyCode::PageUp => {
+                    state.year -= 1;
+                    PopupFlow::Continue
+                }
+                KeyCode::PageDown => {
+                    state.year += 1;
+                    PopupFlow::Continue
+                }
+                KeyCode::Home => {
+                    state.month = 1;
+                    PopupFlow::Continue
+                }
+                KeyCode::End => {
+                    state.month = 12;
+                    PopupFlow::Continue
+                }
+                KeyCode::Enter => {
+                    PopupFlow::Done(Some((state.year, state.month)))
+                }
+                KeyCode::Delete | KeyCode::Backspace if allow_clear => {
+                    PopupFlow::Done(None)
+                }
+                KeyCode::Esc => PopupFlow::Cancelled,
+                _ => PopupFlow::Continue,
             }
-            KeyCode::Up | KeyCode::Char('k') => {
-                state.month = step(state.month, -3);
-                PopupFlow::Continue
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                state.month = step(state.month, 3);
-                PopupFlow::Continue
-            }
-            KeyCode::PageUp => {
-                state.year -= 1;
-                PopupFlow::Continue
-            }
-            KeyCode::PageDown => {
-                state.year += 1;
-                PopupFlow::Continue
-            }
-            KeyCode::Home => {
-                state.month = 1;
-                PopupFlow::Continue
-            }
-            KeyCode::End => {
-                state.month = 12;
-                PopupFlow::Continue
-            }
-            KeyCode::Enter => PopupFlow::Done(Some((state.year, state.month))),
-            KeyCode::Delete | KeyCode::Backspace if allow_clear => {
-                PopupFlow::Done(None)
-            }
-            KeyCode::Esc => PopupFlow::Cancelled,
-            _ => PopupFlow::Continue,
         },
     )
 }

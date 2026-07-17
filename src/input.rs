@@ -315,6 +315,49 @@ pub fn is_command(key: KeyEvent) -> bool {
         && !key.modifiers.contains(KeyModifiers::ALT)
 }
 
+/// Whether `key` is a bare printable character: one that has to reach a text
+/// field, or trigger a plain single-letter binding, rather than a chord.
+///
+/// The counterpart of [`is_command`], and deliberately stricter than its
+/// negation: this also excludes `AltGr` (`Control + Alt`) and plain `Alt`,
+/// which do produce characters but never a bare one. A widget matching a plain
+/// letter (`y` to confirm, `j` to move) must gate on this, or both `Ctrl+Y`
+/// and `AltGr+Y` silently answer the dialog. `Shift` stays allowed: it is what
+/// makes the character uppercase.
+///
+/// # Examples
+///
+/// ```
+/// use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+/// use ratada::input::is_bare_character;
+///
+/// let plain = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE);
+/// assert!(is_bare_character(plain));
+///
+/// // Shift only decides the character's case.
+/// let shifted = KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::SHIFT);
+/// assert!(is_bare_character(shifted));
+///
+/// let ctrl_y = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL);
+/// assert!(!is_bare_character(ctrl_y));
+///
+/// let alt_gr = KeyEvent::new(
+///     KeyCode::Char('@'),
+///     KeyModifiers::CONTROL | KeyModifiers::ALT,
+/// );
+/// assert!(!is_bare_character(alt_gr));
+///
+/// // Not a character at all.
+/// let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+/// assert!(!is_bare_character(enter));
+/// ```
+#[must_use]
+pub fn is_bare_character(key: KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char(_))
+        && !key.modifiers.contains(KeyModifiers::CONTROL)
+        && !key.modifiers.contains(KeyModifiers::ALT)
+}
+
 /// Applies one editing key to `text`/`cursor`, returning whether it was
 /// consumed (so the caller stops handling it). Steering keys the caller owns -
 /// `Esc`, a confirming `Enter` in [`EditMode::SingleLine`], other chords - must

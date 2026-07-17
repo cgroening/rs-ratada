@@ -6,7 +6,7 @@ use std::{
 };
 
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     execute,
     terminal::{
         EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
@@ -19,6 +19,8 @@ use crossterm::{
 #[cfg(not(windows))]
 use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
 use ratatui::{Frame, Terminal, backend::CrosstermBackend};
+
+use crate::input;
 
 type Backend = CrosstermBackend<Stdout>;
 
@@ -170,9 +172,13 @@ fn normalize_newlines(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
+/// Whether `key` is the app-wide quit chord.
+///
+/// Goes through `is_command`, not a bare CONTROL check, so `AltGr` (reported as
+/// `Control + Alt`) can never quit. No German `AltGr` glyph is a `q` today, so
+/// this cannot fire by accident - but the rule should not depend on that.
 fn is_global_quit(key: &KeyEvent) -> bool {
-    key.code == KeyCode::Char('q')
-        && key.modifiers.contains(KeyModifiers::CONTROL)
+    key.code == KeyCode::Char('q') && input::is_command(*key)
 }
 
 /// Enters the alternate screen, additionally enabling bracketed paste where

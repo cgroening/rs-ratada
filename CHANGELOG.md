@@ -4,6 +4,29 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-17
+
+### Added
+
+- **`keymap` – user-remappable key bindings, the shared chord layer.** An app implements `keymap::Action` for its own action enum (`all`/`config_name`/`description`/`default_keys`, plus an optional `overlaps` for scoped actions and a defaulted `from_config_name`) and gets:
+  - `KeyChord` – `parse` (`"ctrl+s"`, `"shift+left"`, `"pgup"`, `"G"`), `matches`, `display`, plus `from_key`/`to_key` to convert to and from a live `KeyEvent` and `code`.
+  - `Keymap<A>` – `from_overrides` (every action), `for_actions` (a subset, for an app that builds one map per view), `action_for`, `action_for_where` (a filtered lookup for scoped actions), `keys_for`, `hints` (`(keys, description)` pairs for a footer), `conflicts`, and `Default`.
+  - `Conflict<A>`, the `KeyBinding` serde enum (`key = "ctrl+s"` and `key = ["ctrl+s", "f2"]` both deserialize) and `warn_unknown`.
+
+  This replaces the ~285 lines of chord machinery each consuming app had copied; the action table stays in the app, the chord grammar lives here once. `KeyChord::matches` compares `ctrl`/`alt` **exactly**, never with `contains`, which is what keeps `AltGr` (reported as `Control + Alt`) from triggering a `ctrl+…` binding. `Action::all` returns an iterator rather than a slice, because an app's actions are typically one column of a catalog table and a `&'static [Self]` would force a second, redundant list. The grammar also gained `backtab` and `insert`, which the hints renderer knew but the chord parser did not.
+- `input::is_bare_character` – the counterpart of `input::is_command`: whether a key is a plain typed character (`Char(_)` without Control or Alt). Stricter than `!is_command`, because it also excludes `AltGr`. A widget matching a plain letter (`y` to confirm, `j` to move) gates on this; a widget filling a **text buffer** keeps using `!is_command`, since `AltGr` must type there.
+
+### Changed
+
+- **Breaking (behaviour, not signature): `shift` is significant for non-character keys.** In `keymap::KeyChord`, `left` matches `Left` *without* Shift, and `shift+left` is a separate chord an app can bind. A character key is unaffected: its Shift lives in the case (`G`, not `shift+g`) and is not compared. An app that relied on a bare arrow chord also firing on `Shift`+arrow must bind `shift+…` explicitly - which is the point, since it removes the need to handle `Shift`+arrow beside the keymap.
+- **One rendering of a key.** `shortcut_hints`' private `chord_label`/`key_label` now render through `keymap::KeyChord::display`, so a footer hint, a config `[keys]` entry and the chord a handler matches on are the same text, and it round-trips through `KeyChord::parse`. This changes three tokens (`delete` → `del`, `pageup`/`pagedown` → `pgup`/`pgdn`) and, deliberately, **stops lower-casing a character**: an app binding both `g` and `G` used to show one footer token for two actions. `global_bindings()` still returns `String`s.
+
+### Fixed
+
+- **A Ctrl chord no longer triggers a widget's plain-key action.** Every key handler matched on `key.code` while ignoring the modifiers, so - in raw mode, where crossterm reports `Ctrl+J`/`Ctrl+H` as `Char('j')`/`Char('h')` plus CONTROL - a chord fired the bare binding. Most severe: **`Ctrl+Y` silently confirmed a `modal::confirm`**, defeating `Question::declining` on a destructive prompt (`AltGr+Y` did too). Also fixed in `modal`'s list navigation and multi-select, `table` (`Ctrl+S` re-sorted, colliding with `form`'s `Ctrl+S` = save), `tree`, `sidebar`, `pager` (`Ctrl+N` jumped to the next match), `swatches` and `color_picker` (`Ctrl+Y` copied, `Ctrl+S` switched view), the three date pickers, `slider`, `markdown::view` (`Ctrl+O` opened a link) and `form`'s checkbox.
+- **A Ctrl chord is no longer typed into a filter or search buffer** as its plain letter, so `Ctrl+U` clears the line instead of inserting a `u` (`command_palette`, `finder`, `help`, `pager`, `sidebar`, `table`, `swatches`). `AltGr` characters (`@`, `\`, `[`, `~`) still reach those buffers, as they always must.
+- `terminal`'s global quit and `path_picker`'s `Ctrl+H` now test `input::is_command` rather than a bare `CONTROL` check, so `AltGr` cannot reach them. Neither was reachable in practice - no German `AltGr` glyph collides with `q` or `h` - but the rule no longer depends on that.
+
 ## [0.3.1] - 2026-07-16
 
 ### Added

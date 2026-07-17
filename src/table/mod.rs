@@ -492,6 +492,54 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_s_does_not_sort_and_ctrl_chords_do_not_navigate() {
+        let mut table = Table::new(columns(), rows());
+        // Ctrl+S is the host's Save; it must not reach the `s` sort binding.
+        table.handle_key(ctrl(KeyCode::Char('s')));
+        assert!(table.sort.is_none());
+        // Ctrl+F must not flip the filter scope.
+        table.handle_key(ctrl(KeyCode::Char('f')));
+        assert_eq!(table.filter_scope, FilterScope::AllColumns);
+        // crossterm reports Ctrl+J/Ctrl+H as plain chars, so without a guard
+        // they would move the row cursor and the active column.
+        table.handle_key(ctrl(KeyCode::Char('j')));
+        table.handle_key(ctrl(KeyCode::Char('l')));
+        assert_eq!((table.cursor, table.active_col), (0, 0));
+        // The table's own chord still works.
+        table.handle_key(ctrl(KeyCode::Char('a')));
+        assert_eq!(table.selected_rows(), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn ctrl_chords_are_not_typed_into_the_filter() {
+        let mut table = Table::new(columns(), rows());
+        table.handle_key(key(KeyCode::Char('/')));
+        assert!(table.is_filtering());
+        table.handle_key(ctrl(KeyCode::Char('u')));
+        assert!(table.filter.is_empty());
+        // A bare character still types.
+        table.handle_key(key(KeyCode::Char('u')));
+        assert_eq!(table.filter, "u");
+    }
+
+    /// The other half of the rule: `AltGr` is reported as `Ctrl+Alt` yet types
+    /// a real character, so the filter must accept it. Guarding this arm with
+    /// `is_bare_character` instead of `!is_command` would make `@`, `\` and `[`
+    /// untypeable on a German keyboard.
+    #[test]
+    fn altgr_characters_still_reach_the_filter() {
+        let mut table = Table::new(columns(), rows());
+        table.handle_key(key(KeyCode::Char('/')));
+        for ch in ['@', '\\', '['] {
+            table.handle_key(KeyEvent::new(
+                KeyCode::Char(ch),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            ));
+        }
+        assert_eq!(table.filter, "@\\[");
+    }
+
+    #[test]
     fn shift_down_extends_a_row_range() {
         let mut table = Table::new(columns(), rows());
         table.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
@@ -511,5 +559,9 @@ mod tests {
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL)
     }
 }

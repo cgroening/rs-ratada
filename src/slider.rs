@@ -11,6 +11,7 @@ use ratatui::{
 };
 
 use super::{
+    input,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup},
@@ -60,26 +61,34 @@ pub fn slider(
                 inner,
             );
         },
-        |value, key| match key.code {
-            KeyCode::Left | KeyCode::Char('h') => {
-                *value = step_value(*value, -cfg.step, cfg.min, cfg.max);
-                PopupFlow::Continue
+        |value, key| {
+            // The value steps on bare keys only: in raw mode crossterm reports
+            // Ctrl+H as `Char('h') + CONTROL`, so without this guard a chord
+            // would silently adjust the value.
+            if input::is_command(key) {
+                return PopupFlow::Continue;
             }
-            KeyCode::Right | KeyCode::Char('l') => {
-                *value = step_value(*value, cfg.step, cfg.min, cfg.max);
-                PopupFlow::Continue
+            match key.code {
+                KeyCode::Left | KeyCode::Char('h') => {
+                    *value = step_value(*value, -cfg.step, cfg.min, cfg.max);
+                    PopupFlow::Continue
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    *value = step_value(*value, cfg.step, cfg.min, cfg.max);
+                    PopupFlow::Continue
+                }
+                KeyCode::Home => {
+                    *value = cfg.min;
+                    PopupFlow::Continue
+                }
+                KeyCode::End => {
+                    *value = cfg.max;
+                    PopupFlow::Continue
+                }
+                KeyCode::Enter => PopupFlow::Done(*value),
+                KeyCode::Esc => PopupFlow::Cancelled,
+                _ => PopupFlow::Continue,
             }
-            KeyCode::Home => {
-                *value = cfg.min;
-                PopupFlow::Continue
-            }
-            KeyCode::End => {
-                *value = cfg.max;
-                PopupFlow::Continue
-            }
-            KeyCode::Enter => PopupFlow::Done(*value),
-            KeyCode::Esc => PopupFlow::Cancelled,
-            _ => PopupFlow::Continue,
         },
     )
 }

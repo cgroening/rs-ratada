@@ -20,6 +20,7 @@ use super::{
         add_months, day_grid, first_of_month, is_weekend, last_of_month, shift,
         today, weekday_header,
     },
+    input,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup},
@@ -71,48 +72,58 @@ pub fn date_range_picker(
             let lines = body_lines(skin, state.cursor, state.start);
             frame.render_widget(Paragraph::new(lines), inner);
         },
-        |state, key| match key.code {
-            KeyCode::Left | KeyCode::Char('h') => {
-                state.cursor = shift(state.cursor, -1);
-                PopupFlow::Continue
+        |state, key| {
+            // The grid moves on bare keys only: in raw mode crossterm reports
+            // Ctrl+H as `Char('h') + CONTROL`, so without this guard a chord
+            // would silently walk the day cursor.
+            if input::is_command(key) {
+                return PopupFlow::Continue;
             }
-            KeyCode::Right | KeyCode::Char('l') => {
-                state.cursor = shift(state.cursor, 1);
-                PopupFlow::Continue
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                state.cursor = shift(state.cursor, -7);
-                PopupFlow::Continue
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                state.cursor = shift(state.cursor, 7);
-                PopupFlow::Continue
-            }
-            KeyCode::PageUp => {
-                state.cursor = add_months(state.cursor, -1);
-                PopupFlow::Continue
-            }
-            KeyCode::PageDown => {
-                state.cursor = add_months(state.cursor, 1);
-                PopupFlow::Continue
-            }
-            KeyCode::Home => {
-                state.cursor = first_of_month(state.cursor);
-                PopupFlow::Continue
-            }
-            KeyCode::End => {
-                state.cursor = last_of_month(state.cursor);
-                PopupFlow::Continue
-            }
-            KeyCode::Enter => match state.start {
-                None => {
-                    state.start = Some(state.cursor);
+            match key.code {
+                KeyCode::Left | KeyCode::Char('h') => {
+                    state.cursor = shift(state.cursor, -1);
                     PopupFlow::Continue
                 }
-                Some(begin) => PopupFlow::Done(ordered(begin, state.cursor)),
-            },
-            KeyCode::Esc => PopupFlow::Cancelled,
-            _ => PopupFlow::Continue,
+                KeyCode::Right | KeyCode::Char('l') => {
+                    state.cursor = shift(state.cursor, 1);
+                    PopupFlow::Continue
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    state.cursor = shift(state.cursor, -7);
+                    PopupFlow::Continue
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    state.cursor = shift(state.cursor, 7);
+                    PopupFlow::Continue
+                }
+                KeyCode::PageUp => {
+                    state.cursor = add_months(state.cursor, -1);
+                    PopupFlow::Continue
+                }
+                KeyCode::PageDown => {
+                    state.cursor = add_months(state.cursor, 1);
+                    PopupFlow::Continue
+                }
+                KeyCode::Home => {
+                    state.cursor = first_of_month(state.cursor);
+                    PopupFlow::Continue
+                }
+                KeyCode::End => {
+                    state.cursor = last_of_month(state.cursor);
+                    PopupFlow::Continue
+                }
+                KeyCode::Enter => match state.start {
+                    None => {
+                        state.start = Some(state.cursor);
+                        PopupFlow::Continue
+                    }
+                    Some(begin) => {
+                        PopupFlow::Done(ordered(begin, state.cursor))
+                    }
+                },
+                KeyCode::Esc => PopupFlow::Cancelled,
+                _ => PopupFlow::Continue,
+            }
         },
     )
 }

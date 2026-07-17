@@ -57,6 +57,12 @@ impl Pager {
             self.handle_search_key(key, max_offset);
             return PopupFlow::Continue;
         }
+        // The pager binds no Ctrl chord of its own, so one must not reach the
+        // bare keys below: Ctrl+N would jump to the next search match, and
+        // Ctrl+J/Ctrl+H arrive as plain characters and would scroll.
+        if input::is_command(key) {
+            return PopupFlow::Continue;
+        }
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => return PopupFlow::Done(()),
             KeyCode::Down | KeyCode::Char('j') => {
@@ -103,7 +109,12 @@ impl Pager {
                 self.recompute();
                 self.jump_to_match(max_offset);
             }
-            KeyCode::Char(ch) => {
+            // Anything that is not a command chord is query text: without this,
+            // Ctrl+U would insert a `u` instead of being left for a line-clear.
+            // Deliberately not `is_bare_character`, which would also reject
+            // AltGr - `@`, `\` and `[` must reach the query, exactly as in
+            // `input::apply_edit_key`.
+            KeyCode::Char(ch) if !input::is_command(key) => {
                 self.query.push(ch);
                 self.recompute();
                 self.jump_to_match(max_offset);
@@ -255,6 +266,8 @@ fn highlight_line(line: &str, query: &str, skin: &Skin) -> Line<'static> {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyModifiers;
+
     use super::*;
 
     fn lines() -> Vec<String> {
@@ -262,6 +275,23 @@ mod tests {
             .iter()
             .map(|s| (*s).to_string())
             .collect()
+    }
+
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL)
+    }
+
+    /// A pager over `lines()` with a one-row viewport, so every line scrolls.
+    fn pager_state() -> Pager {
+        Pager {
+            lines: lines(),
+            offset: 0,
+            query: String::new(),
+            searching: false,
+            matches: Vec::new(),
+            match_pos: 0,
+            viewport: Cell::new(1),
+        }
     }
 
     #[test]
@@ -272,5 +302,47 @@ mod tests {
     #[test]
     fn empty_query_matches_nothing() {
         assert!(search_matches(&lines(), "").is_empty());
+    }
+
+    #[test]
+    fn ctrl_chords_do_not_scroll_or_jump_between_matches() {
+        let mut state = pager_state();
+        // Crossterm reports Ctrl+J as `Char('j') + CONTROL`, so a bare match on
+        // the code alone would scroll.
+        state.handle_key(ctrl(KeyCode::Char('j')));
+        assert_eq!(state.offset, 0);
+        state.handle_key(ctrl(KeyCode::Char('G')));
+        assert_eq!(state.offset, 0);
+
+        // With matches loaded, Ctrl+N must not step to the next one.
+        state.query = "beta".to_string();
+        state.recompute();
+        state.handle_key(ctrl(KeyCode::Char('n')));
+        assert_eq!(state.match_pos, 0);
+        state.handle_key(ctrl(KeyCode::Char('N')));
+        assert_eq!(state.match_pos, 0);
+    }
+
+    #[test]
+    fn a_ctrl_chord_does_not_type_into_the_search_query() {
+        let mut state = pager_state();
+        state.searching = true;
+        state.handle_key(ctrl(KeyCode::Char('u')));
+        assert_eq!(state.query, "", "Ctrl+U typed a character");
+
+        // A bare character still reaches the query.
+        state.handle_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE));
+        assert_eq!(state.query, "u");
+    }
+
+    #[test]
+    fn bare_keys_still_scroll_and_open_the_search() {
+        let mut state = pager_state();
+        state.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+        assert_eq!(state.offset, 1);
+        state.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+        assert_eq!(state.offset, 0);
+        state.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        assert!(state.searching);
     }
 }

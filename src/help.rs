@@ -101,63 +101,74 @@ pub fn show<B: AsRef<str>>(
             let badge = chrome::position_badge(cursor, count);
             chrome::render_badge(frame, rect, skin, &badge);
         },
-        |state, key| match key.code {
-            KeyCode::Esc | KeyCode::Char('?') => PopupFlow::Done(()),
-            KeyCode::Up => {
-                let count =
-                    layout_rows(sections, &state.query).selectable.len();
-                state.cursor = nav::cycle(state.cursor, count, -1);
-                PopupFlow::Continue
+        |state, key| {
+            // The overlay binds no chord of its own, so a Ctrl command is not
+            // ours to act on: without this `Ctrl+U` types a `u` into the search
+            // instead of clearing the line, and `Ctrl+?` would close the help.
+            // Alt alone and AltGr (Ctrl+Alt) still type, as they do in every
+            // text field - see `input::is_command`.
+            if input::is_command(key) {
+                return PopupFlow::Continue;
             }
-            KeyCode::Down => {
-                let count =
-                    layout_rows(sections, &state.query).selectable.len();
-                state.cursor = nav::cycle(state.cursor, count, 1);
-                PopupFlow::Continue
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('?') => PopupFlow::Done(()),
+                KeyCode::Up => {
+                    let count =
+                        layout_rows(sections, &state.query).selectable.len();
+                    state.cursor = nav::cycle(state.cursor, count, -1);
+                    PopupFlow::Continue
+                }
+                KeyCode::Down => {
+                    let count =
+                        layout_rows(sections, &state.query).selectable.len();
+                    state.cursor = nav::cycle(state.cursor, count, 1);
+                    PopupFlow::Continue
+                }
+                KeyCode::PageUp => {
+                    let count =
+                        layout_rows(sections, &state.query).selectable.len();
+                    let page = state.viewport.get().max(1) as isize;
+                    state.cursor =
+                        nav::step_clamped(state.cursor, count, -page);
+                    PopupFlow::Continue
+                }
+                KeyCode::PageDown => {
+                    let count =
+                        layout_rows(sections, &state.query).selectable.len();
+                    let page = state.viewport.get().max(1) as isize;
+                    state.cursor = nav::step_clamped(state.cursor, count, page);
+                    PopupFlow::Continue
+                }
+                KeyCode::Home => {
+                    state.cursor = 0;
+                    PopupFlow::Continue
+                }
+                KeyCode::End => {
+                    let count =
+                        layout_rows(sections, &state.query).selectable.len();
+                    state.cursor = count.saturating_sub(1);
+                    PopupFlow::Continue
+                }
+                KeyCode::Tab => {
+                    jump_section(state, sections, 1);
+                    PopupFlow::Continue
+                }
+                KeyCode::BackTab => {
+                    jump_section(state, sections, -1);
+                    PopupFlow::Continue
+                }
+                KeyCode::Backspace => {
+                    state.query.pop();
+                    state.cursor = 0;
+                    PopupFlow::Continue
+                }
+                KeyCode::Char(ch) => {
+                    state.query.push(ch);
+                    state.cursor = 0;
+                    PopupFlow::Continue
+                }
+                _ => PopupFlow::Continue,
             }
-            KeyCode::PageUp => {
-                let count =
-                    layout_rows(sections, &state.query).selectable.len();
-                let page = state.viewport.get().max(1) as isize;
-                state.cursor = nav::step_clamped(state.cursor, count, -page);
-                PopupFlow::Continue
-            }
-            KeyCode::PageDown => {
-                let count =
-                    layout_rows(sections, &state.query).selectable.len();
-                let page = state.viewport.get().max(1) as isize;
-                state.cursor = nav::step_clamped(state.cursor, count, page);
-                PopupFlow::Continue
-            }
-            KeyCode::Home => {
-                state.cursor = 0;
-                PopupFlow::Continue
-            }
-            KeyCode::End => {
-                let count =
-                    layout_rows(sections, &state.query).selectable.len();
-                state.cursor = count.saturating_sub(1);
-                PopupFlow::Continue
-            }
-            KeyCode::Tab => {
-                jump_section(state, sections, 1);
-                PopupFlow::Continue
-            }
-            KeyCode::BackTab => {
-                jump_section(state, sections, -1);
-                PopupFlow::Continue
-            }
-            KeyCode::Backspace => {
-                state.query.pop();
-                state.cursor = 0;
-                PopupFlow::Continue
-            }
-            KeyCode::Char(ch) => {
-                state.query.push(ch);
-                state.cursor = 0;
-                PopupFlow::Continue
-            }
-            _ => PopupFlow::Continue,
         },
         |state, text| {
             state

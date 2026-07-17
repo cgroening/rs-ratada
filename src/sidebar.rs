@@ -166,10 +166,19 @@ impl Sidebar {
     /// Handles a key, reporting whether it activated an item, was consumed or is
     /// irrelevant. Navigation, panning and the `/` filter are consumed; `Enter`
     /// on an item activates it; everything else is ignored so the caller can act.
+    ///
+    /// The bindings are bare keys only: a Ctrl chord is reported `Ignored`, so
+    /// a caller stays free to bind `Ctrl+<key>` itself.
     pub fn handle_key(&mut self, key: KeyEvent) -> SidebarOutcome {
         if self.filtering {
             self.handle_filter_key(key);
             return SidebarOutcome::Consumed;
+        }
+        // The sidebar binds no chord of its own, and crossterm reports Ctrl+J
+        // as `Char('j')` and Ctrl+H as `Char('h')` - without this they would
+        // move the cursor and pan the labels.
+        if input::is_command(key) {
+            return SidebarOutcome::Ignored;
         }
         let len = self.filtered_items().count();
         let page = self.viewport.get().max(1) as isize;
@@ -218,7 +227,12 @@ impl Sidebar {
                 self.filter.pop();
                 self.selected = 0;
             }
-            KeyCode::Char(ch) => {
+            // Anything that is not a command chord is filter text: Ctrl+U
+            // would otherwise append a `u` instead of being left as an editing
+            // key. Deliberately not `is_bare_character`, which would also
+            // reject AltGr - `@`, `\` and `[` must reach the filter, exactly as
+            // in `input::apply_edit_key`.
+            KeyCode::Char(ch) if !input::is_command(key) => {
                 self.filter.push(ch);
                 self.selected = 0;
             }
@@ -505,6 +519,10 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL)
+    }
+
     fn sample() -> Sidebar {
         Sidebar::new(vec![
             SidebarSection::new(
@@ -620,6 +638,32 @@ mod tests {
             SidebarOutcome::Ignored,
         );
         assert!(!sidebar.is_filtering());
+    }
+
+    #[test]
+    fn ctrl_chords_do_not_navigate() {
+        let mut sidebar = sample().overflow(Overflow::Scroll);
+        // crossterm reports Ctrl+J as `Char('j')`; reporting the chord Ignored
+        // leaves the caller free to bind it.
+        assert_eq!(
+            sidebar.handle_key(ctrl(KeyCode::Char('j'))),
+            SidebarOutcome::Ignored,
+        );
+        assert_eq!(sidebar.selected_id(), Some(10));
+        // Ctrl+L must not pan the labels either.
+        sidebar.handle_key(ctrl(KeyCode::Char('l')));
+        assert_eq!(sidebar.h_offset.get(), 0);
+    }
+
+    #[test]
+    fn ctrl_chords_are_not_typed_into_the_filter() {
+        let mut sidebar = sample().filterable();
+        sidebar.handle_key(key(KeyCode::Char('/')));
+        sidebar.handle_key(ctrl(KeyCode::Char('u')));
+        assert!(sidebar.filter.is_empty());
+        // A bare character still types.
+        sidebar.handle_key(key(KeyCode::Char('u')));
+        assert_eq!(sidebar.filter, "u");
     }
 
     #[test]

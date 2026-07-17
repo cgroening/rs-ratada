@@ -8,7 +8,7 @@ use std::{cell::Cell, collections::HashSet};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{Frame, layout::Rect, text::Line};
 
-use super::{chrome, list, nav};
+use super::{chrome, input, list, nav};
 use crate::theme::{GlyphVariant, Skin};
 
 /// A node in a tree: a label plus zero or more children.
@@ -124,7 +124,16 @@ impl TreeView {
     /// `PageUp`/`PageDown` by a page, `Home`/`End`/`g`/`G` to the ends),
     /// expand/collapse (`Left`/`Right`/`h`/`l`) or toggle (`Enter`/`Space`) the
     /// current node.
+    ///
+    /// These are bare keys only: a Ctrl chord is ignored, so a caller stays
+    /// free to bind `Ctrl+<key>` itself.
     pub fn handle_key(&mut self, key: KeyEvent) {
+        // The tree binds no chord of its own, and crossterm reports Ctrl+L and
+        // Ctrl+H as `Char('l')`/`Char('h')` - without this they would expand
+        // and collapse the node, and Ctrl+J would move the cursor.
+        if input::is_command(key) {
+            return;
+        }
         let flat = self.flatten();
         if flat.is_empty() {
             return;
@@ -281,6 +290,10 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL)
+    }
+
     fn sample() -> TreeView {
         TreeView::new(vec![
             TreeItem::node(
@@ -344,6 +357,22 @@ mod tests {
         assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
         view.handle_key(key(KeyCode::PageDown));
         assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
+    }
+
+    #[test]
+    fn ctrl_chords_do_not_navigate_or_expand() {
+        let mut view = sample();
+        // crossterm reports Ctrl+L/Ctrl+H as `Char('l')`/`Char('h')`, which
+        // would expand and collapse the node under the cursor.
+        view.handle_key(ctrl(KeyCode::Char('l')));
+        assert_eq!(view.flatten().len(), 2, "Ctrl+L must not expand");
+        view.handle_key(key(KeyCode::Right)); // expand src for real
+        view.handle_key(ctrl(KeyCode::Char('h')));
+        assert_eq!(view.flatten().len(), 4, "Ctrl+H must not collapse");
+        // Ctrl+J/Ctrl+G must not move the cursor either.
+        view.handle_key(ctrl(KeyCode::Char('j')));
+        view.handle_key(ctrl(KeyCode::Char('G')));
+        assert_eq!(view.selected_label().as_deref(), Some("src"));
     }
 
     /// A folder holding two identically labelled leaves, so only the ids can

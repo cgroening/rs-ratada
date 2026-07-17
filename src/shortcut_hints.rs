@@ -37,7 +37,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use super::style;
+use super::{keymap, style};
 use crate::theme::Color;
 
 const SEPARATOR: &str = " \u{00b7} ";
@@ -184,44 +184,12 @@ pub fn consume_toggle(key: KeyEvent) -> bool {
 }
 
 /// A chord as a footer token: `"f1"`, `"ctrl+h"`, `"shift+enter"`.
+///
+/// Renders through [`keymap::KeyChord`], so a hint reads exactly like the chord
+/// a user writes in config and a handler matches on: one rendering of a key in
+/// the crate, not one per caller that can drift from the others.
 fn chord_label(key: KeyEvent) -> String {
-    let mut label = String::new();
-    for (modifier, name) in [
-        (KeyModifiers::CONTROL, "ctrl+"),
-        (KeyModifiers::ALT, "alt+"),
-        (KeyModifiers::SHIFT, "shift+"),
-    ] {
-        if key.modifiers.contains(modifier) {
-            label.push_str(name);
-        }
-    }
-    label.push_str(&key_label(key.code));
-    label
-}
-
-/// A key code's own name, without modifiers.
-fn key_label(code: KeyCode) -> String {
-    match code {
-        KeyCode::Char(' ') => "space".to_string(),
-        KeyCode::Char(ch) => ch.to_lowercase().to_string(),
-        KeyCode::F(number) => format!("f{number}"),
-        KeyCode::Enter => "enter".to_string(),
-        KeyCode::Esc => "esc".to_string(),
-        KeyCode::Tab => "tab".to_string(),
-        KeyCode::BackTab => "backtab".to_string(),
-        KeyCode::Backspace => "backspace".to_string(),
-        KeyCode::Delete => "delete".to_string(),
-        KeyCode::Insert => "insert".to_string(),
-        KeyCode::Home => "home".to_string(),
-        KeyCode::End => "end".to_string(),
-        KeyCode::PageUp => "pageup".to_string(),
-        KeyCode::PageDown => "pagedown".to_string(),
-        KeyCode::Up => "up".to_string(),
-        KeyCode::Down => "down".to_string(),
-        KeyCode::Left => "left".to_string(),
-        KeyCode::Right => "right".to_string(),
-        other => format!("{other:?}").to_lowercase(),
-    }
+    keymap::KeyChord::from_key(key).display()
 }
 
 /// A titled group of key hints. An empty `label` renders without a label
@@ -672,5 +640,38 @@ mod tests {
         assert_eq!(label(KeyCode::Enter, KeyModifiers::SHIFT), "shift+enter");
         assert_eq!(label(KeyCode::Esc, KeyModifiers::NONE), "esc");
         assert_eq!(label(KeyCode::Char(' '), KeyModifiers::NONE), "space");
+    }
+
+    /// A hint must keep an upper-case key upper-case: an app binding both `g`
+    /// and `G` would otherwise show the same footer token for two actions.
+    #[test]
+    fn chord_label_keeps_a_characters_case() {
+        let label =
+            |code, modifiers| chord_label(KeyEvent::new(code, modifiers));
+        assert_eq!(label(KeyCode::Char('G'), KeyModifiers::SHIFT), "G");
+        assert_eq!(label(KeyCode::Char('g'), KeyModifiers::NONE), "g");
+    }
+
+    /// The label and the config grammar are one thing now: every rendered hint
+    /// must parse back into the chord it came from, or a user could not type
+    /// what the footer shows into their `[keys]` table.
+    #[test]
+    fn a_rendered_chord_parses_back_into_itself() {
+        for (code, modifiers) in [
+            (KeyCode::F(1), KeyModifiers::NONE),
+            (KeyCode::Char('h'), KeyModifiers::CONTROL),
+            (KeyCode::Char('G'), KeyModifiers::SHIFT),
+            (KeyCode::Enter, KeyModifiers::SHIFT),
+            (KeyCode::Left, KeyModifiers::ALT),
+            (KeyCode::Char(' '), KeyModifiers::NONE),
+            (KeyCode::Delete, KeyModifiers::NONE),
+            (KeyCode::PageUp, KeyModifiers::NONE),
+        ] {
+            let key = KeyEvent::new(code, modifiers);
+            let label = chord_label(key);
+            let parsed = keymap::KeyChord::parse(&label)
+                .unwrap_or_else(|| panic!("'{label}' must parse back"));
+            assert!(parsed.matches(&key), "'{label}' must match {key:?}");
+        }
     }
 }

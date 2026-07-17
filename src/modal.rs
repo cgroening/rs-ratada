@@ -121,13 +121,27 @@ pub fn confirm_default(
         },
         |frame, (): &()| render_bg(frame),
         |frame, rect, (): &()| render_confirm(frame, skin, question, rect),
-        |(): &mut (), key| match key.code {
-            KeyCode::Char('y' | 'Y') => PopupFlow::Done(true),
-            KeyCode::Char('n' | 'N') | KeyCode::Esc => PopupFlow::Done(false),
-            KeyCode::Enter => PopupFlow::Done(default_yes),
-            _ => PopupFlow::Continue,
-        },
+        |(): &mut (), key| confirm_key(key, default_yes),
     )
+}
+
+/// The answer `key` gives a yes/no question, or `Continue` for anything else.
+///
+/// Only a *bare* `y`/`n` answers: a modified one is a chord, not an answer, and
+/// letting `Ctrl+Y` or `AltGr+Y` through would silently confirm - defeating the
+/// whole point of [`Question::declining`] on a destructive prompt.
+fn confirm_key(key: KeyEvent, default_yes: bool) -> PopupFlow<bool> {
+    match key.code {
+        KeyCode::Char('y' | 'Y') if input::is_bare_character(key) => {
+            PopupFlow::Done(true)
+        }
+        KeyCode::Char('n' | 'N') if input::is_bare_character(key) => {
+            PopupFlow::Done(false)
+        }
+        KeyCode::Esc => PopupFlow::Done(false),
+        KeyCode::Enter => PopupFlow::Done(default_yes),
+        _ => PopupFlow::Continue,
+    }
 }
 
 /// Prompts for a single line of text. `Enter` accepts, `Esc` cancels.
@@ -207,12 +221,18 @@ fn input_impl(
 /// cyclically; `PageUp`/`PageDown` move by `page` rows and `Home`/`End` jump to
 /// the ends, both clamped. The caller handles the picker's own keys (`Enter`,
 /// `Esc`, ...) for the keys this leaves unconsumed.
+///
+/// Navigation is bare keys only: a Ctrl chord is left unconsumed, so `Ctrl+J`
+/// cannot move the cursor and a caller stays free to bind `Ctrl+<key>` itself.
 fn navigate_list(
     cursor: &mut usize,
     key: KeyEvent,
     len: usize,
     page: usize,
 ) -> bool {
+    if input::is_command(key) {
+        return false;
+    }
     let page = page.max(1) as isize;
     match key.code {
         KeyCode::Up | KeyCode::Char('k') => {
@@ -344,8 +364,11 @@ pub fn select_reorderable(
             page_rows.set(viewport);
         },
         |cursor, key| {
-            let alt = key.modifiers.contains(KeyModifiers::ALT);
             // Alt+Up/Down reorder; the plain motions fall to the shared nav.
+            // Alt *without* Ctrl, so AltGr (reported as Ctrl+Alt) is not read
+            // as a reorder chord.
+            let alt = key.modifiers.contains(KeyModifiers::ALT)
+                && !key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
                 KeyCode::Up if alt => {
                     return PopupFlow::Done(ListAction::Move {
@@ -498,7 +521,9 @@ fn number_impl(
                 text.pop();
                 PopupFlow::Continue
             }
-            KeyCode::Char(ch) if is_number_char(ch, text) => {
+            KeyCode::Char(ch)
+                if !input::is_command(key) && is_number_char(ch, text) =>
+            {
                 text.push(ch);
                 PopupFlow::Continue
             }
@@ -572,6 +597,11 @@ impl MultiSelect {
         len: usize,
     ) -> PopupFlow<Vec<usize>> {
         if navigate_list(&mut self.cursor, key, len, self.viewport.get()) {
+            return PopupFlow::Continue;
+        }
+        // This picker binds no Ctrl chord of its own, so one must not reach the
+        // bare keys below (Ctrl+Space would toggle the checked row).
+        if input::is_command(key) {
             return PopupFlow::Continue;
         }
         match key.code {
@@ -826,6 +856,102 @@ mod tests {
         assert_eq!(cursor, 0);
         // A non-navigation key is left for the caller.
         assert!(!navigate_list(&mut cursor, key(KeyCode::Enter), 5, 2));
+    }
+
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL)
+    }
+
+    /// `Ctrl+J`/`Ctrl+K` are commands, not motions: in raw mode crossterm
+    /// reports Ctrl+J as `Char('j') + CONTROL`, so without the guard a chord
+    /// would move the cursor. The key must be left for the caller.
+    #[test]
+    fn navigate_list_leaves_ctrl_chords_to_the_caller() {
+        let mut cursor = 2;
+        for code in [
+            KeyCode::Char('j'),
+            KeyCode::Char('k'),
+            KeyCode::Up,
+            KeyCode::Down,
+            KeyCode::Home,
+            KeyCode::End,
+            KeyCode::PageUp,
+            KeyCode::PageDown,
+        ] {
+            assert!(
+                !navigate_list(&mut cursor, ctrl(code), 5, 2),
+                "Ctrl+{code:?} must not be consumed as navigation"
+            );
+            assert_eq!(cursor, 2, "Ctrl+{code:?} must not move the cursor");
+        }
+    }
+
+    /// The whole point of the guard: a modified `y` must never confirm.
+    /// `confirm_default` is what every destructive dialog goes through, so a
+    /// stray chord answering "yes" is silent and unrecoverable. `AltGr+Y`
+    /// counts too - it is a character, but not a bare one.
+    #[test]
+    fn a_modified_y_does_not_confirm_a_prompt() {
+        let altgr = |ch| {
+            KeyEvent::new(
+                KeyCode::Char(ch),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            )
+        };
+        for modified in [
+            ctrl(KeyCode::Char('y')),
+            ctrl(KeyCode::Char('Y')),
+            altgr('y'),
+            KeyEvent::new(KeyCode::Char('y'), KeyModifiers::ALT),
+        ] {
+            assert!(
+                matches!(confirm_key(modified, false), PopupFlow::Continue),
+                "{modified:?} must not confirm"
+            );
+        }
+        // The bare key still answers, in either case.
+        assert!(matches!(
+            confirm_key(key(KeyCode::Char('y')), false),
+            PopupFlow::Done(true)
+        ));
+        assert!(matches!(
+            confirm_key(
+                KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::SHIFT),
+                false
+            ),
+            PopupFlow::Done(true)
+        ));
+    }
+
+    /// The same rule for the declining answer, so a chord cannot dismiss a
+    /// prompt the user never read either.
+    #[test]
+    fn a_modified_n_does_not_decline_a_prompt() {
+        assert!(matches!(
+            confirm_key(ctrl(KeyCode::Char('n')), true),
+            PopupFlow::Continue
+        ));
+        assert!(matches!(
+            confirm_key(key(KeyCode::Char('n')), true),
+            PopupFlow::Done(false)
+        ));
+    }
+
+    /// `Enter` follows the question's default, and `Esc` always declines.
+    #[test]
+    fn confirm_honours_the_default_and_esc_declines() {
+        assert!(matches!(
+            confirm_key(key(KeyCode::Enter), true),
+            PopupFlow::Done(true)
+        ));
+        assert!(matches!(
+            confirm_key(key(KeyCode::Enter), false),
+            PopupFlow::Done(false)
+        ));
+        assert!(matches!(
+            confirm_key(key(KeyCode::Esc), true),
+            PopupFlow::Done(false)
+        ));
     }
 
     /// Every popup wants a minimum width or height. A terminal smaller than

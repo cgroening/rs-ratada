@@ -17,7 +17,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crossterm::event::{KeyCode, KeyModifiers};
+use crossterm::event::KeyCode;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -27,7 +27,7 @@ use ratatui::{
 
 use super::{
     chrome, fuzzy,
-    input::InputField,
+    input::{self, InputField},
     layout::centered_fraction,
     list,
     modal::ModalSignal,
@@ -281,9 +281,8 @@ pub fn path_picker(
                 state.ascend();
                 PopupFlow::Continue
             }
-            KeyCode::Char('h')
-                if key.modifiers.contains(KeyModifiers::CONTROL) =>
-            {
+            // `is_command`, so AltGr (Control+Alt) types instead of toggling.
+            KeyCode::Char('h') if input::is_command(key) => {
                 state.toggle_hidden();
                 PopupFlow::Continue
             }

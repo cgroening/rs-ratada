@@ -13,7 +13,7 @@ use ratatui::{
 
 use super::{
     clipboard,
-    input::InputField,
+    input::{self, InputField},
     layout::centered_rect,
     modal::ModalSignal,
     nav,
@@ -377,6 +377,12 @@ fn handle_channel(
     index: usize,
     key: crossterm::event::KeyEvent,
 ) -> PopupFlow<Outcome> {
+    // This control binds no Ctrl chord of its own, so one must not reach the
+    // bare keys below (Ctrl+Y would copy, Ctrl+S leave for the swatches).
+    // `Shift` stays honoured: it only picks the fine step.
+    if input::is_command(key) {
+        return PopupFlow::Continue;
+    }
     let channel = state.model.channels()[index];
     let step = if key.modifiers.contains(KeyModifiers::SHIFT) {
         1.0
@@ -405,6 +411,11 @@ fn handle_presets(
     state: &mut State,
     key: crossterm::event::KeyEvent,
 ) -> PopupFlow<Outcome> {
+    // This control binds no Ctrl chord of its own, so one must not reach the
+    // bare keys below (Ctrl+Y would copy, Ctrl+S leave for the swatches).
+    if input::is_command(key) {
+        return PopupFlow::Continue;
+    }
     let count = state.presets.len();
     match key.code {
         KeyCode::Left | KeyCode::Char('h') => {
@@ -630,6 +641,10 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL)
+    }
+
     fn state_from(color: Color) -> State {
         State {
             model: Model::Rgb,
@@ -693,6 +708,40 @@ mod tests {
             handle(&mut state, key(KeyCode::Char('s'))),
             PopupFlow::Done(Outcome::Swatches(_)),
         ));
+    }
+
+    #[test]
+    fn ctrl_chords_do_not_leave_for_swatches_or_adjust() {
+        let mut state = state_from(Color::hex("#8bd3cd"));
+        let before = state.channels;
+        for focus in [Focus::Channel(0), Focus::Presets] {
+            state.focus = focus;
+            // Ctrl+S must not hand off to the swatches; Ctrl+M must not cycle
+            // the model, and Ctrl+H/Ctrl+L must not adjust a channel.
+            for code in ['s', 'm', 'h', 'l', 'y'] {
+                let flow = handle(&mut state, ctrl(KeyCode::Char(code)));
+                assert!(
+                    matches!(flow, PopupFlow::Continue),
+                    "Ctrl+{code} escaped its guard",
+                );
+            }
+            assert!(matches!(state.model, Model::Rgb), "Ctrl+M cycled it");
+        }
+        for (after, was) in state.channels.iter().zip(before) {
+            assert!((after - was).abs() < 1e-3, "a channel moved");
+        }
+        assert_eq!(state.preset, 0);
+    }
+
+    #[test]
+    fn shift_still_picks_the_fine_channel_step() {
+        // Shift has no AltGr interaction, so it must keep reaching the arms.
+        let mut state = state_from(Color::Rgb(100, 100, 100));
+        handle(
+            &mut state,
+            KeyEvent::new(KeyCode::Right, KeyModifiers::SHIFT),
+        );
+        assert!((state.channels[0] - 101.0).abs() < 1e-3);
     }
 
     #[test]

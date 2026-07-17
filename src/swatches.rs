@@ -725,6 +725,11 @@ fn handle(state: &mut State, key: KeyEvent) -> PopupFlow<Choice> {
     if state.mode == Mode::Names && state.filtering {
         return handle_filter(state, key);
     }
+    // This picker binds no Ctrl chord of its own, so one must not reach the
+    // bare keys below (Ctrl+Y would copy the hex, Ctrl+Space pick and close).
+    if input::is_command(key) {
+        return PopupFlow::Continue;
+    }
     let len = state.cells.len();
     match key.code {
         KeyCode::Enter => return done(state, false),
@@ -783,7 +788,12 @@ fn handle_filter(state: &mut State, key: KeyEvent) -> PopupFlow<Choice> {
             state.rebuild();
             state.cursor = 0;
         }
-        KeyCode::Char(ch) => {
+        // Anything that is not a command chord is filter text: without this,
+        // Ctrl+U would insert a `u` instead of being left for a line-clear.
+        // Deliberately not `is_bare_character`, which would also reject AltGr -
+        // `@`, `\` and `[` must reach the filter, exactly as in
+        // `input::apply_edit_key`.
+        KeyCode::Char(ch) if !input::is_command(key) => {
             state.filter.push(ch);
             state.rebuild();
             state.cursor = 0;
@@ -853,6 +863,10 @@ mod tests {
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::CONTROL)
     }
 
     fn state() -> State {
@@ -968,5 +982,33 @@ mod tests {
             }
             _ => panic!("expected an edit hand-off"),
         }
+    }
+
+    #[test]
+    fn ctrl_chords_do_not_pick_move_or_switch_mode() {
+        let mut state = state();
+        state.cursor = 3;
+        // Ctrl+Space would otherwise pick the focused color and close.
+        assert!(matches!(
+            handle(&mut state, ctrl(KeyCode::Char(' '))),
+            PopupFlow::Continue,
+        ));
+        // Crossterm reports Ctrl+J/Ctrl+H as plain characters, so a bare match
+        // on the code alone would move the cursor.
+        handle(&mut state, ctrl(KeyCode::Char('j')));
+        assert_eq!(state.cursor, 3);
+        handle(&mut state, ctrl(KeyCode::Char('m')));
+        assert_eq!(state.mode, Mode::Names);
+    }
+
+    #[test]
+    fn a_ctrl_chord_does_not_type_into_the_filter() {
+        let mut state = state();
+        handle(&mut state, key(KeyCode::Char('/')));
+        handle(&mut state, ctrl(KeyCode::Char('u')));
+        assert_eq!(state.filter, "", "Ctrl+U typed a character");
+        // A bare character still reaches the filter.
+        handle(&mut state, key(KeyCode::Char('u')));
+        assert_eq!(state.filter, "u");
     }
 }

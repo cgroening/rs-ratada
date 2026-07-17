@@ -18,6 +18,7 @@ use ratatui::{
 };
 
 use super::{
+    input,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup},
@@ -59,45 +60,53 @@ pub fn date_picker(
             let lines = body_lines(&skin.palette, cursor, allow_clear);
             frame.render_widget(Paragraph::new(lines), inner);
         },
-        |cursor, key| match key.code {
-            KeyCode::Left | KeyCode::Char('h') => {
-                *cursor = shift(*cursor, -1);
-                PopupFlow::Continue
+        |cursor, key| {
+            // The grid moves on bare keys only: in raw mode crossterm reports
+            // Ctrl+H as `Char('h') + CONTROL`, so without this guard a chord
+            // would silently walk the day cursor.
+            if input::is_command(key) {
+                return PopupFlow::Continue;
             }
-            KeyCode::Right | KeyCode::Char('l') => {
-                *cursor = shift(*cursor, 1);
-                PopupFlow::Continue
+            match key.code {
+                KeyCode::Left | KeyCode::Char('h') => {
+                    *cursor = shift(*cursor, -1);
+                    PopupFlow::Continue
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    *cursor = shift(*cursor, 1);
+                    PopupFlow::Continue
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    *cursor = shift(*cursor, -7);
+                    PopupFlow::Continue
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    *cursor = shift(*cursor, 7);
+                    PopupFlow::Continue
+                }
+                KeyCode::PageUp => {
+                    *cursor = add_months(*cursor, -1);
+                    PopupFlow::Continue
+                }
+                KeyCode::PageDown => {
+                    *cursor = add_months(*cursor, 1);
+                    PopupFlow::Continue
+                }
+                KeyCode::Home => {
+                    *cursor = first_of_month(*cursor);
+                    PopupFlow::Continue
+                }
+                KeyCode::End => {
+                    *cursor = last_of_month(*cursor);
+                    PopupFlow::Continue
+                }
+                KeyCode::Enter => PopupFlow::Done(Some(*cursor)),
+                KeyCode::Delete | KeyCode::Backspace if allow_clear => {
+                    PopupFlow::Done(None)
+                }
+                KeyCode::Esc => PopupFlow::Cancelled,
+                _ => PopupFlow::Continue,
             }
-            KeyCode::Up | KeyCode::Char('k') => {
-                *cursor = shift(*cursor, -7);
-                PopupFlow::Continue
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                *cursor = shift(*cursor, 7);
-                PopupFlow::Continue
-            }
-            KeyCode::PageUp => {
-                *cursor = add_months(*cursor, -1);
-                PopupFlow::Continue
-            }
-            KeyCode::PageDown => {
-                *cursor = add_months(*cursor, 1);
-                PopupFlow::Continue
-            }
-            KeyCode::Home => {
-                *cursor = first_of_month(*cursor);
-                PopupFlow::Continue
-            }
-            KeyCode::End => {
-                *cursor = last_of_month(*cursor);
-                PopupFlow::Continue
-            }
-            KeyCode::Enter => PopupFlow::Done(Some(*cursor)),
-            KeyCode::Delete | KeyCode::Backspace if allow_clear => {
-                PopupFlow::Done(None)
-            }
-            KeyCode::Esc => PopupFlow::Cancelled,
-            _ => PopupFlow::Continue,
         },
     )
 }

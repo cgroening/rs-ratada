@@ -88,6 +88,7 @@ pub mod gauge;
 pub mod header;
 pub mod help;
 pub mod input;
+pub mod keymap;
 pub mod layout;
 pub mod list;
 pub mod markdown;
