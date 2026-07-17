@@ -126,7 +126,8 @@ Crate-wide cleanup and API consolidation. This release contains breaking changes
 - `textarea` now reuses the shared single-line edit core from `input` (SSOT).
 - Documentation synced with the code and the public API surface tightened.
 
-[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/cgroening/rs-ratada/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/cgroening/rs-ratada/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/cgroening/rs-ratada/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/cgroening/rs-ratada/compare/v0.1.0...v0.2.0

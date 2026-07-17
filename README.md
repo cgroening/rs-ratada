@@ -14,6 +14,7 @@ A reusable [ratatui](https://ratatui.rs) widget toolkit for Rust terminal apps.
 - **Widgets** – modals (`confirm`, `confirm_default`, `input`, `input_wide`, `select`, `multi_select`, `number_input`, `message`), forms, single- and multi-line text editing with a shared editor core, autocomplete, tables, trees, selectable lists, sectioned sidebars, tabs, pagers, gauges, spinners, toasts (timed, stacked, each box as tall as its wrapped message).
 - **Pickers** – color, swatch, date, date-range, month, path (with an optional confinement root) and slider pickers.
 - **Overlays & chrome** – a fuzzy help overlay, a command palette, box framing, header and status bars, and wrapping shortcut-hint footers.
+- **Key bindings** – `keymap`: a `KeyChord` grammar (`"ctrl+s"`, `"shift+left"`) and a user-remappable `Keymap<A>` over an app's own `Action` enum, with footer hints and conflict detection.
 - **Markdown** – a CommonMark renderer (headings, lists, task lists, code blocks, quotes, GFM tables/callouts, links) producing styled lines, plus a scrollable `MarkdownView` widget and a viewer modal.
 - **Theming** – a `Skin` bundling a `Palette` (semantic colors) and `Glyphs` (Unicode/ASCII variants); framework-agnostic so a CLI can share it, with a single ratatui adapter in `style`. A theme names a few base colors and the rest is derived: `border_focus` follows `border` unless it is set, and an override on `border` alone drags it along, so a focused frame never sinks into its own border.
 - **Diagnostics** – degraded conditions (a missing clipboard tool, an unreadable directory, an invalid color override, a failed terminal restore) are emitted through the [`log`](https://crates.io/crates/log) facade at `warn`/`error`; install a logger to surface them.
@@ -22,7 +23,7 @@ A reusable [ratatui](https://ratatui.rs) widget toolkit for Rust terminal apps.
 
 ```toml
 [dependencies]
-ratada = "0.3"
+ratada = "0.4"
 ```
 
 Requires Rust 1.88 or newer (the crate uses `let`-chains).

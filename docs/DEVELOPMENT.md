@@ -25,6 +25,8 @@ src/
   chrome.rs         panels / modal frame + BoxDecor (caption + badge) box seam
                     and the two badge renderers (border / frameless corner)
   layout.rs         fit / centered_rect / centered_fraction (shared popup sizing)
+  keymap.rs         KeyChord grammar + Keymap<A> over an app's Action enum
+                    (user-remappable bindings, hints, conflicts)
   nav.rs            cycle / step_clamped / keep_visible + ScrollView
   scroll.rs         overflow-only vertical/horizontal scrollbar (ScrollView)
   style.rs          the single theme::Color -> ratatui adapter
@@ -62,6 +64,7 @@ src/
   shortcut_hints.rs   footer key-hint lines (flat or grouped) + the global
                       hints toggle and its binding
   quit.rs             opt-in confirmation before quitting (policy + guard)
+  opener.rs           open a file in the OS default app (no shell)
   theme_preview.rs    palette/variant preview for a gallery
   header.rs, statusbar.rs, double_press.rs
 tests/
