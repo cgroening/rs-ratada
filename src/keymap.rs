@@ -154,12 +154,6 @@ impl KeyChord {
         text
     }
 
-    /// The chord's key, without its modifiers.
-    #[must_use]
-    pub fn code(&self) -> KeyCode {
-        self.code
-    }
-
     /// A key press that triggers this chord: the inverse of
     /// [`KeyChord::from_key`], and always accepted by [`KeyChord::matches`].
     ///
@@ -753,6 +747,101 @@ mod tests {
             map.action_for(&event(KeyCode::Char('k'), KeyModifiers::NONE)),
             None
         );
+    }
+
+    /// A scoped action set, standing in for an app whose views each own their
+    /// keys: `Submit` and `Rename` both want `enter`, but never at once.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Scoped {
+        Submit,
+        Rename,
+        Quit,
+    }
+
+    impl Scoped {
+        /// Which screen the action belongs to; `None` means everywhere.
+        fn screen(self) -> Option<u8> {
+            match self {
+                Scoped::Submit => Some(1),
+                Scoped::Rename => Some(2),
+                Scoped::Quit => None,
+            }
+        }
+    }
+
+    impl Action for Scoped {
+        fn all() -> impl Iterator<Item = Self> + Clone {
+            [Scoped::Submit, Scoped::Rename, Scoped::Quit].into_iter()
+        }
+
+        fn config_name(&self) -> &'static str {
+            match self {
+                Scoped::Submit => "submit",
+                Scoped::Rename => "rename",
+                Scoped::Quit => "quit",
+            }
+        }
+
+        fn description(&self) -> &'static str {
+            "scoped action"
+        }
+
+        fn default_keys(&self) -> &'static [&'static str] {
+            match self {
+                Scoped::Submit | Scoped::Rename => &["enter"],
+                Scoped::Quit => &["q"],
+            }
+        }
+
+        fn overlaps(&self, other: &Self) -> bool {
+            match (self.screen(), other.screen()) {
+                // A global action competes with everything.
+                (None, _) | (_, None) => true,
+                (Some(a), Some(b)) => a == b,
+            }
+        }
+    }
+
+    /// The point of `overlaps`: two actions on different screens may share a
+    /// chord, so neither is dropped and neither is a conflict. With the default
+    /// `overlaps` (always true) the second binding would lose `enter`.
+    #[test]
+    fn a_chord_shared_across_disjoint_scopes_is_not_a_conflict() {
+        let map: Keymap<Scoped> = Keymap::from_overrides(&BTreeMap::new());
+        assert!(
+            map.conflicts().is_empty(),
+            "disjoint scopes must not collide: {:?}",
+            map.conflicts()
+        );
+        assert_eq!(map.keys_for(Scoped::Submit), vec!["enter"]);
+        assert_eq!(map.keys_for(Scoped::Rename), vec!["enter"]);
+
+        // The caller decides which of the two is live right now.
+        let enter = event(KeyCode::Enter, KeyModifiers::NONE);
+        assert_eq!(
+            map.action_for_where(&enter, |a| a.screen() != Some(2)),
+            Some(Scoped::Submit)
+        );
+        assert_eq!(
+            map.action_for_where(&enter, |a| a.screen() != Some(1)),
+            Some(Scoped::Rename)
+        );
+    }
+
+    /// The other half: a global action overlaps every scope, so sharing a chord
+    /// with it *is* a conflict. `overlaps` narrows the check, it does not
+    /// disable it - and the earlier action still keeps the key.
+    #[test]
+    fn a_chord_shared_with_a_global_action_is_still_a_conflict() {
+        let mut overrides = BTreeMap::new();
+        // `Rename` claims `q` first (it precedes `Quit` in `all`), so the
+        // global `Quit` loses its own default to it.
+        overrides.insert("rename".to_string(), vec!["q".to_string()]);
+        let map: Keymap<Scoped> = Keymap::from_overrides(&overrides);
+        let conflicts = map.conflicts();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].action, Scoped::Quit);
+        assert_eq!(conflicts[0].claimed_by, Scoped::Rename);
     }
 
     /// `to_key` and `from_key` are inverses, and what `to_key` builds is always
