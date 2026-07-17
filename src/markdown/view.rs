@@ -230,20 +230,33 @@ pub fn viewer(
             // what is on screen.
             chrome::render_badge(frame, rect, skin, &view.percent_badge());
         },
-        |view, key| match key.code {
-            KeyCode::Esc => PopupFlow::Cancelled,
-            KeyCode::Enter => open_selected(view),
-            // `o` is a plain letter, so only a bare one opens the link: a host
-            // binding `Ctrl+O` must not have the viewer act on it too.
-            KeyCode::Char('o') if input::is_bare_character(key) => {
-                open_selected(view)
-            }
-            _ => {
-                view.handle_key(key);
-                PopupFlow::Continue
-            }
-        },
+        handle_viewer_key,
     )
+}
+
+/// Applies one key to the viewer's `view`, or reports that the modal is done.
+///
+/// A named function rather than a closure inside [`popup`], so the guard below
+/// is reachable from a test: everything in `popup` needs a live terminal. Named
+/// apart from [`MarkdownView::handle_key`], which it delegates the scroll and
+/// link-cycling keys to.
+fn handle_viewer_key(
+    view: &mut MarkdownView,
+    key: KeyEvent,
+) -> PopupFlow<Link> {
+    match key.code {
+        KeyCode::Esc => PopupFlow::Cancelled,
+        KeyCode::Enter => open_selected(view),
+        // `o` is a plain letter, so only a bare one opens the link: a host
+        // binding `Ctrl+O` must not have the viewer act on it too.
+        KeyCode::Char('o') if input::is_bare_character(key) => {
+            open_selected(view)
+        }
+        _ => {
+            view.handle_key(key);
+            PopupFlow::Continue
+        }
+    }
 }
 
 /// The highlighted link as a picked value, or `Continue` when the document has
@@ -338,6 +351,45 @@ mod tests {
         // The bare key still scrolls.
         assert!(view.handle_key(press(KeyCode::Down)));
         assert_eq!(view.offset.get(), 1);
+    }
+
+    /// The viewer's `o` opens the highlighted link. `Ctrl+O` is already caught
+    /// by `MarkdownView::handle_key`'s own guard, so this arm's real job is
+    /// `AltGr+O` (reported as `Ctrl+Alt`), which types an `o` and must not open
+    /// a link. Dropping `is_bare_character` here would let it through.
+    #[test]
+    fn altgr_o_does_not_open_the_link() {
+        let mut view = MarkdownView::new("[one](http://a)");
+        let altgr = KeyEvent::new(
+            KeyCode::Char('o'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        );
+        assert!(matches!(
+            handle_viewer_key(&mut view, altgr),
+            PopupFlow::Continue
+        ));
+        assert!(matches!(
+            handle_viewer_key(&mut view, ctrl(KeyCode::Char('o'))),
+            PopupFlow::Continue
+        ));
+    }
+
+    #[test]
+    fn bare_o_still_opens_the_link() {
+        let mut view = MarkdownView::new("[one](http://a)");
+        let opened = handle_viewer_key(&mut view, press(KeyCode::Char('o')));
+        assert!(
+            matches!(opened, PopupFlow::Done(link) if link.url == "http://a")
+        );
+        // Enter opens it too, and Esc leaves without a link.
+        assert!(matches!(
+            handle_viewer_key(&mut view, press(KeyCode::Enter)),
+            PopupFlow::Done(_)
+        ));
+        assert!(matches!(
+            handle_viewer_key(&mut view, press(KeyCode::Esc)),
+            PopupFlow::Cancelled
+        ));
     }
 
     #[test]

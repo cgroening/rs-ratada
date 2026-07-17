@@ -9,7 +9,7 @@
 
 use std::{cell::Cell, io};
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -101,75 +101,7 @@ pub fn show<B: AsRef<str>>(
             let badge = chrome::position_badge(cursor, count);
             chrome::render_badge(frame, rect, skin, &badge);
         },
-        |state, key| {
-            // The overlay binds no chord of its own, so a Ctrl command is not
-            // ours to act on: without this `Ctrl+U` types a `u` into the search
-            // instead of clearing the line, and `Ctrl+?` would close the help.
-            // Alt alone and AltGr (Ctrl+Alt) still type, as they do in every
-            // text field - see `input::is_command`.
-            if input::is_command(key) {
-                return PopupFlow::Continue;
-            }
-            match key.code {
-                KeyCode::Esc | KeyCode::Char('?') => PopupFlow::Done(()),
-                KeyCode::Up => {
-                    let count =
-                        layout_rows(sections, &state.query).selectable.len();
-                    state.cursor = nav::cycle(state.cursor, count, -1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Down => {
-                    let count =
-                        layout_rows(sections, &state.query).selectable.len();
-                    state.cursor = nav::cycle(state.cursor, count, 1);
-                    PopupFlow::Continue
-                }
-                KeyCode::PageUp => {
-                    let count =
-                        layout_rows(sections, &state.query).selectable.len();
-                    let page = state.viewport.get().max(1) as isize;
-                    state.cursor =
-                        nav::step_clamped(state.cursor, count, -page);
-                    PopupFlow::Continue
-                }
-                KeyCode::PageDown => {
-                    let count =
-                        layout_rows(sections, &state.query).selectable.len();
-                    let page = state.viewport.get().max(1) as isize;
-                    state.cursor = nav::step_clamped(state.cursor, count, page);
-                    PopupFlow::Continue
-                }
-                KeyCode::Home => {
-                    state.cursor = 0;
-                    PopupFlow::Continue
-                }
-                KeyCode::End => {
-                    let count =
-                        layout_rows(sections, &state.query).selectable.len();
-                    state.cursor = count.saturating_sub(1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Tab => {
-                    jump_section(state, sections, 1);
-                    PopupFlow::Continue
-                }
-                KeyCode::BackTab => {
-                    jump_section(state, sections, -1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Backspace => {
-                    state.query.pop();
-                    state.cursor = 0;
-                    PopupFlow::Continue
-                }
-                KeyCode::Char(ch) => {
-                    state.query.push(ch);
-                    state.cursor = 0;
-                    PopupFlow::Continue
-                }
-                _ => PopupFlow::Continue,
-            }
-        },
+        |state, key| handle_key(state, key, sections),
         |state, text| {
             state
                 .query
@@ -178,6 +110,78 @@ pub fn show<B: AsRef<str>>(
             PopupFlow::Continue
         },
     )
+}
+
+/// Applies one key to the overlay `state`, or reports that the help is done.
+///
+/// A named function rather than a closure inside [`popup`], so the guard below
+/// is reachable from a test: everything in `popup` needs a live terminal.
+fn handle_key<B: AsRef<str>>(
+    state: &mut Help,
+    key: KeyEvent,
+    sections: &[HelpSection<'_, B>],
+) -> PopupFlow<()> {
+    // The overlay binds no chord of its own, so a Ctrl command is not ours to
+    // act on: without this `Ctrl+U` types a `u` into the search instead of
+    // clearing the line, and `Ctrl+?` would close the help. Alt alone and AltGr
+    // (Ctrl+Alt) still type, as they do in every text field - see
+    // `input::is_command`.
+    if input::is_command(key) {
+        return PopupFlow::Continue;
+    }
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('?') => PopupFlow::Done(()),
+        KeyCode::Up => {
+            let count = layout_rows(sections, &state.query).selectable.len();
+            state.cursor = nav::cycle(state.cursor, count, -1);
+            PopupFlow::Continue
+        }
+        KeyCode::Down => {
+            let count = layout_rows(sections, &state.query).selectable.len();
+            state.cursor = nav::cycle(state.cursor, count, 1);
+            PopupFlow::Continue
+        }
+        KeyCode::PageUp => {
+            let count = layout_rows(sections, &state.query).selectable.len();
+            let page = state.viewport.get().max(1) as isize;
+            state.cursor = nav::step_clamped(state.cursor, count, -page);
+            PopupFlow::Continue
+        }
+        KeyCode::PageDown => {
+            let count = layout_rows(sections, &state.query).selectable.len();
+            let page = state.viewport.get().max(1) as isize;
+            state.cursor = nav::step_clamped(state.cursor, count, page);
+            PopupFlow::Continue
+        }
+        KeyCode::Home => {
+            state.cursor = 0;
+            PopupFlow::Continue
+        }
+        KeyCode::End => {
+            let count = layout_rows(sections, &state.query).selectable.len();
+            state.cursor = count.saturating_sub(1);
+            PopupFlow::Continue
+        }
+        KeyCode::Tab => {
+            jump_section(state, sections, 1);
+            PopupFlow::Continue
+        }
+        KeyCode::BackTab => {
+            jump_section(state, sections, -1);
+            PopupFlow::Continue
+        }
+        KeyCode::Backspace => {
+            state.query.pop();
+            state.cursor = 0;
+            PopupFlow::Continue
+        }
+        KeyCode::Char(ch) => {
+            state.query.push(ch);
+            state.cursor = 0;
+            PopupFlow::Continue
+        }
+        _ => PopupFlow::Continue,
+    }
 }
 
 /// Moves the cursor to the first item of the next (`+1`) or previous (`-1`)
@@ -345,7 +349,18 @@ fn footer_hint(skin: &Skin, width: usize) -> Line<'static> {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyModifiers;
+
     use super::*;
+
+    fn state() -> Help {
+        Help {
+            query: String::new(),
+            cursor: 0,
+            offset: Cell::new(0),
+            viewport: Cell::new(1),
+        }
+    }
 
     fn sections() -> Vec<HelpSection<'static, &'static str>> {
         vec![
@@ -383,12 +398,7 @@ mod tests {
     #[test]
     fn section_jump_lands_on_the_first_item_of_the_target() {
         let secs = sections();
-        let mut state = Help {
-            query: String::new(),
-            cursor: 0,
-            offset: Cell::new(0),
-            viewport: Cell::new(1),
-        };
+        let mut state = state();
         // From the first section, Tab moves to the Tasks section start (index 2
         // in the selectable list).
         jump_section(&mut state, &secs, 1);
@@ -399,5 +409,70 @@ mod tests {
         // BackTab from the first section wraps to the last.
         jump_section(&mut state, &secs, -1);
         assert_eq!(state.cursor, 2);
+    }
+
+    /// A Ctrl chord belongs to the host: without the guard `Ctrl+U` would type
+    /// a `u` into the search, `Ctrl+J` walk the list and `Ctrl+?` close the
+    /// overlay.
+    #[test]
+    fn ctrl_chords_do_not_navigate_or_type() {
+        let secs = sections();
+        for code in [
+            KeyCode::Down,
+            KeyCode::Up,
+            KeyCode::End,
+            KeyCode::PageDown,
+            KeyCode::Tab,
+            KeyCode::Char('u'),
+            KeyCode::Char('?'),
+        ] {
+            let mut state = state();
+            let key = KeyEvent::new(code, KeyModifiers::CONTROL);
+            assert!(matches!(
+                handle_key(&mut state, key, &secs),
+                PopupFlow::Continue
+            ));
+            assert_eq!(state.cursor, 0, "Ctrl+{code:?} moved the cursor");
+            assert!(state.query.is_empty(), "Ctrl+{code:?} typed a character");
+        }
+    }
+
+    #[test]
+    fn bare_keys_still_navigate_and_type() {
+        let secs = sections();
+        let mut state = state();
+        let press = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        handle_key(&mut state, press(KeyCode::Down), &secs);
+        assert_eq!(state.cursor, 1);
+        handle_key(&mut state, press(KeyCode::End), &secs);
+        assert_eq!(state.cursor, 3);
+        handle_key(&mut state, press(KeyCode::Char('u')), &secs);
+        assert_eq!(state.query, "u");
+        assert_eq!(state.cursor, 0, "typing restarts the selection");
+        assert!(matches!(
+            handle_key(&mut state, press(KeyCode::Esc), &secs),
+            PopupFlow::Done(())
+        ));
+    }
+
+    /// The other half of the rule: `AltGr` is reported as `Ctrl+Alt` yet types
+    /// a real character, so the search must accept it. Guarding the `Char` arm
+    /// with `is_bare_character` instead of `!is_command` would make `@`, `\`
+    /// and `[` untypeable on a German keyboard.
+    #[test]
+    fn altgr_characters_still_reach_the_filter() {
+        let secs = sections();
+        let mut state = state();
+        for ch in ['@', '\\', '['] {
+            handle_key(
+                &mut state,
+                KeyEvent::new(
+                    KeyCode::Char(ch),
+                    KeyModifiers::CONTROL | KeyModifiers::ALT,
+                ),
+                &secs,
+            );
+        }
+        assert_eq!(state.query, "@\\[");
     }
 }

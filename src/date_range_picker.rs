@@ -7,7 +7,7 @@
 use std::io;
 
 use chrono::NaiveDate;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     style::{Color, Modifier, Style},
@@ -72,60 +72,67 @@ pub fn date_range_picker(
             let lines = body_lines(skin, state.cursor, state.start);
             frame.render_widget(Paragraph::new(lines), inner);
         },
-        |state, key| {
-            // The grid moves on bare keys only: in raw mode crossterm reports
-            // Ctrl+H as `Char('h') + CONTROL`, so without this guard a chord
-            // would silently walk the day cursor.
-            if input::is_command(key) {
-                return PopupFlow::Continue;
-            }
-            match key.code {
-                KeyCode::Left | KeyCode::Char('h') => {
-                    state.cursor = shift(state.cursor, -1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    state.cursor = shift(state.cursor, 1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    state.cursor = shift(state.cursor, -7);
-                    PopupFlow::Continue
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    state.cursor = shift(state.cursor, 7);
-                    PopupFlow::Continue
-                }
-                KeyCode::PageUp => {
-                    state.cursor = add_months(state.cursor, -1);
-                    PopupFlow::Continue
-                }
-                KeyCode::PageDown => {
-                    state.cursor = add_months(state.cursor, 1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Home => {
-                    state.cursor = first_of_month(state.cursor);
-                    PopupFlow::Continue
-                }
-                KeyCode::End => {
-                    state.cursor = last_of_month(state.cursor);
-                    PopupFlow::Continue
-                }
-                KeyCode::Enter => match state.start {
-                    None => {
-                        state.start = Some(state.cursor);
-                        PopupFlow::Continue
-                    }
-                    Some(begin) => {
-                        PopupFlow::Done(ordered(begin, state.cursor))
-                    }
-                },
-                KeyCode::Esc => PopupFlow::Cancelled,
-                _ => PopupFlow::Continue,
-            }
-        },
+        handle_key,
     )
+}
+
+/// Applies one key to the range `state`, or reports that the picker is done.
+///
+/// A named function rather than a closure inside [`popup`], so the guard below
+/// is reachable from a test: everything in `popup` needs a live terminal.
+fn handle_key(
+    state: &mut Range,
+    key: KeyEvent,
+) -> PopupFlow<(NaiveDate, NaiveDate)> {
+    // The grid moves on bare keys only: in raw mode crossterm reports Ctrl+H as
+    // `Char('h') + CONTROL`, so without this guard a chord would silently walk
+    // the day cursor.
+    if input::is_command(key) {
+        return PopupFlow::Continue;
+    }
+    match key.code {
+        KeyCode::Left | KeyCode::Char('h') => {
+            state.cursor = shift(state.cursor, -1);
+            PopupFlow::Continue
+        }
+        KeyCode::Right | KeyCode::Char('l') => {
+            state.cursor = shift(state.cursor, 1);
+            PopupFlow::Continue
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.cursor = shift(state.cursor, -7);
+            PopupFlow::Continue
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.cursor = shift(state.cursor, 7);
+            PopupFlow::Continue
+        }
+        KeyCode::PageUp => {
+            state.cursor = add_months(state.cursor, -1);
+            PopupFlow::Continue
+        }
+        KeyCode::PageDown => {
+            state.cursor = add_months(state.cursor, 1);
+            PopupFlow::Continue
+        }
+        KeyCode::Home => {
+            state.cursor = first_of_month(state.cursor);
+            PopupFlow::Continue
+        }
+        KeyCode::End => {
+            state.cursor = last_of_month(state.cursor);
+            PopupFlow::Continue
+        }
+        KeyCode::Enter => match state.start {
+            None => {
+                state.start = Some(state.cursor);
+                PopupFlow::Continue
+            }
+            Some(begin) => PopupFlow::Done(ordered(begin, state.cursor)),
+        },
+        KeyCode::Esc => PopupFlow::Cancelled,
+        _ => PopupFlow::Continue,
+    }
 }
 
 /// Orders two dates into `(earlier, later)`.
@@ -201,7 +208,69 @@ fn day_style(
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyModifiers;
+
     use super::*;
+
+    fn day(day: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 6, day).expect("a real date")
+    }
+
+    /// `Ctrl+H`/`Ctrl+J` arrive as plain characters in raw mode, so without the
+    /// guard a chord would walk the day cursor.
+    #[test]
+    fn ctrl_chords_do_not_move_the_day_cursor() {
+        let start = day(15);
+        for code in [
+            KeyCode::Char('h'),
+            KeyCode::Char('j'),
+            KeyCode::Char('k'),
+            KeyCode::Char('l'),
+            KeyCode::Left,
+            KeyCode::Down,
+            KeyCode::PageUp,
+            KeyCode::Home,
+        ] {
+            let mut state = Range {
+                cursor: start,
+                start: None,
+            };
+            let key = KeyEvent::new(code, KeyModifiers::CONTROL);
+            assert!(matches!(handle_key(&mut state, key), PopupFlow::Continue));
+            assert_eq!(state.cursor, start, "Ctrl+{code:?} moved the cursor");
+            assert!(state.start.is_none(), "Ctrl+{code:?} fixed the start");
+        }
+    }
+
+    #[test]
+    fn bare_keys_still_move_and_pick_both_ends() {
+        let press = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        let mut state = Range {
+            cursor: day(15),
+            start: None,
+        };
+
+        handle_key(&mut state, press(KeyCode::Char('l')));
+        assert_eq!(state.cursor, day(16));
+        handle_key(&mut state, press(KeyCode::Char('j')));
+        assert_eq!(state.cursor, day(23));
+
+        // The first Enter fixes the start, the second returns the pair.
+        assert!(matches!(
+            handle_key(&mut state, press(KeyCode::Enter)),
+            PopupFlow::Continue
+        ));
+        assert_eq!(state.start, Some(day(23)));
+        handle_key(&mut state, press(KeyCode::Char('h')));
+        assert!(matches!(
+            handle_key(&mut state, press(KeyCode::Enter)),
+            PopupFlow::Done(pair) if pair == (day(22), day(23)),
+        ));
+        assert!(matches!(
+            handle_key(&mut state, press(KeyCode::Esc)),
+            PopupFlow::Cancelled
+        ));
+    }
 
     #[test]
     fn ordered_sorts_the_pair() {

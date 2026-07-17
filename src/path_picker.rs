@@ -17,7 +17,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -166,6 +166,78 @@ impl State {
     }
 }
 
+/// Applies one key to the picker, or reports the chosen path.
+///
+/// A named function rather than a closure inside [`popup_with_paste`], so the
+/// `Ctrl+H` guard is reachable from a test: everything in the popup needs a
+/// live terminal. `allow_files` decides whether `Enter` may return a file.
+fn handle_key(
+    state: &mut State,
+    key: KeyEvent,
+    allow_files: bool,
+) -> PopupFlow<PathBuf> {
+    match key.code {
+        KeyCode::Esc => PopupFlow::Cancelled,
+        KeyCode::Up => {
+            state.cursor = nav::cycle(state.cursor, state.visible.len(), -1);
+            PopupFlow::Continue
+        }
+        KeyCode::Down => {
+            state.cursor = nav::cycle(state.cursor, state.visible.len(), 1);
+            PopupFlow::Continue
+        }
+        KeyCode::PageUp => {
+            let page = state.viewport.get().max(1) as isize;
+            state.cursor =
+                nav::step_clamped(state.cursor, state.visible.len(), -page);
+            PopupFlow::Continue
+        }
+        KeyCode::PageDown => {
+            let page = state.viewport.get().max(1) as isize;
+            state.cursor =
+                nav::step_clamped(state.cursor, state.visible.len(), page);
+            PopupFlow::Continue
+        }
+        KeyCode::Home => {
+            state.cursor = 0;
+            PopupFlow::Continue
+        }
+        KeyCode::End => {
+            state.cursor = state.visible.len().saturating_sub(1);
+            PopupFlow::Continue
+        }
+        KeyCode::Right => {
+            state.descend();
+            PopupFlow::Continue
+        }
+        KeyCode::Left => {
+            state.ascend();
+            PopupFlow::Continue
+        }
+        KeyCode::Backspace if state.filter.value().is_empty() => {
+            state.ascend();
+            PopupFlow::Continue
+        }
+        // `is_command`, so AltGr (Control+Alt) types instead of toggling.
+        KeyCode::Char('h') if input::is_command(key) => {
+            state.toggle_hidden();
+            PopupFlow::Continue
+        }
+        KeyCode::Enter => match state.selected() {
+            Some(entry) if entry.is_dir || allow_files => {
+                PopupFlow::Done(entry.path.clone())
+            }
+            _ => PopupFlow::Continue,
+        },
+        _ => {
+            if state.filter.handle_key(key) {
+                state.refilter();
+            }
+            PopupFlow::Continue
+        }
+    }
+}
+
 /// Whether `path` is allowed given an optional confinement `root`: always so
 /// without a root, otherwise only when `path` lies at or below it.
 fn within_root(path: &Path, root: Option<&Path>) -> bool {
@@ -238,67 +310,7 @@ pub fn path_picker(
                 chrome::position_badge(state.cursor, state.visible.len());
             chrome::render_badge(frame, rect, skin, &badge);
         },
-        |state, key| match key.code {
-            KeyCode::Esc => PopupFlow::Cancelled,
-            KeyCode::Up => {
-                state.cursor =
-                    nav::cycle(state.cursor, state.visible.len(), -1);
-                PopupFlow::Continue
-            }
-            KeyCode::Down => {
-                state.cursor = nav::cycle(state.cursor, state.visible.len(), 1);
-                PopupFlow::Continue
-            }
-            KeyCode::PageUp => {
-                let page = state.viewport.get().max(1) as isize;
-                state.cursor =
-                    nav::step_clamped(state.cursor, state.visible.len(), -page);
-                PopupFlow::Continue
-            }
-            KeyCode::PageDown => {
-                let page = state.viewport.get().max(1) as isize;
-                state.cursor =
-                    nav::step_clamped(state.cursor, state.visible.len(), page);
-                PopupFlow::Continue
-            }
-            KeyCode::Home => {
-                state.cursor = 0;
-                PopupFlow::Continue
-            }
-            KeyCode::End => {
-                state.cursor = state.visible.len().saturating_sub(1);
-                PopupFlow::Continue
-            }
-            KeyCode::Right => {
-                state.descend();
-                PopupFlow::Continue
-            }
-            KeyCode::Left => {
-                state.ascend();
-                PopupFlow::Continue
-            }
-            KeyCode::Backspace if state.filter.value().is_empty() => {
-                state.ascend();
-                PopupFlow::Continue
-            }
-            // `is_command`, so AltGr (Control+Alt) types instead of toggling.
-            KeyCode::Char('h') if input::is_command(key) => {
-                state.toggle_hidden();
-                PopupFlow::Continue
-            }
-            KeyCode::Enter => match state.selected() {
-                Some(entry) if entry.is_dir || allow_files => {
-                    PopupFlow::Done(entry.path.clone())
-                }
-                _ => PopupFlow::Continue,
-            },
-            _ => {
-                if state.filter.handle_key(key) {
-                    state.refilter();
-                }
-                PopupFlow::Continue
-            }
-        },
+        |state, key| handle_key(state, key, allow_files),
         |state, text| {
             state.filter.paste(&text);
             state.refilter();
@@ -448,9 +460,64 @@ fn is_hidden(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::{fs, path::Path};
 
-    use super::{is_hidden, within_root};
+    use crossterm::event::KeyModifiers;
+
+    use super::*;
+
+    /// A picker over a fresh temp dir holding one visible and one hidden entry.
+    /// The directory name carries the pid, so parallel test binaries cannot
+    /// collide.
+    fn picker_over_a_temp_dir() -> (State, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "ratada-path-picker-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id(),
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("visible")).expect("temp dir is writable");
+        fs::create_dir_all(dir.join(".hidden")).expect("temp dir is writable");
+        (State::new(&dir, false, None), dir)
+    }
+
+    /// `Ctrl+H` toggles hidden entries, but the picker also has a filter field
+    /// right there - so `AltGr+H` (Control+Alt) must type into the filter
+    /// instead of toggling. That distinction is the whole reason this arm went
+    /// through `is_command` rather than a bare CONTROL check.
+    #[test]
+    fn altgr_h_types_into_the_filter_instead_of_toggling_hidden() {
+        let (mut state, dir) = picker_over_a_temp_dir();
+        assert!(!state.show_hidden);
+
+        let altgr_h = KeyEvent::new(
+            KeyCode::Char('h'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        );
+        handle_key(&mut state, altgr_h, false);
+        assert!(!state.show_hidden, "AltGr+H toggled the hidden entries");
+        assert_eq!(state.filter.value(), "h", "AltGr+H did not type");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn ctrl_h_toggles_the_hidden_entries() {
+        let (mut state, dir) = picker_over_a_temp_dir();
+        let ctrl_h = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::CONTROL);
+
+        handle_key(&mut state, ctrl_h, false);
+        assert!(state.show_hidden);
+        assert!(
+            state.entries.iter().any(|entry| entry.name == ".hidden"),
+            "the hidden entry should be listed now"
+        );
+
+        handle_key(&mut state, ctrl_h, false);
+        assert!(!state.show_hidden);
+
+        let _ = fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn dot_prefixed_names_are_hidden() {

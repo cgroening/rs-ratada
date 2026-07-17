@@ -335,6 +335,23 @@ mod tests {
         assert_eq!(state.query, "u");
     }
 
+    /// The other half of the rule: `AltGr` is reported as `Ctrl+Alt` yet types
+    /// a real character, so the query must accept it. Guarding that arm with
+    /// `is_bare_character` instead of `!is_command` would make `@`, `\` and `[`
+    /// untypeable on a German keyboard.
+    #[test]
+    fn altgr_characters_still_reach_the_search_query() {
+        let mut state = pager_state();
+        state.searching = true;
+        for ch in ['@', '\\', '['] {
+            state.handle_key(KeyEvent::new(
+                KeyCode::Char(ch),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            ));
+        }
+        assert_eq!(state.query, "@\\[");
+    }
+
     #[test]
     fn bare_keys_still_scroll_and_open_the_search() {
         let mut state = pager_state();

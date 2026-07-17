@@ -1011,4 +1011,24 @@ mod tests {
         handle(&mut state, key(KeyCode::Char('u')));
         assert_eq!(state.filter, "u");
     }
+
+    /// The other half of the rule: `AltGr` is reported as `Ctrl+Alt` yet types
+    /// a real character, so the filter must accept it. Guarding that arm with
+    /// `is_bare_character` instead of `!is_command` would make `@`, `\` and `[`
+    /// untypeable on a German keyboard.
+    #[test]
+    fn altgr_characters_still_reach_the_filter() {
+        let mut state = state();
+        handle(&mut state, key(KeyCode::Char('/')));
+        for ch in ['@', '\\', '['] {
+            handle(
+                &mut state,
+                KeyEvent::new(
+                    KeyCode::Char(ch),
+                    KeyModifiers::CONTROL | KeyModifiers::ALT,
+                ),
+            );
+        }
+        assert_eq!(state.filter, "@\\[");
+    }
 }

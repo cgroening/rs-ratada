@@ -347,6 +347,11 @@ pub fn is_command(key: KeyEvent) -> bool {
 /// );
 /// assert!(!is_bare_character(alt_gr));
 ///
+/// // Alt alone is a chord too, and it is the only case the `Control` half of
+/// // the check does not already cover.
+/// let alt_y = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::ALT);
+/// assert!(!is_bare_character(alt_y));
+///
 /// // Not a character at all.
 /// let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
 /// assert!(!is_bare_character(enter));
@@ -1561,6 +1566,28 @@ mod tests {
         assert!(is_command(ctrl(KeyCode::Char('s'))));
         assert!(!is_command(altgr(KeyCode::Char('\\'))));
         assert!(!is_command(press(KeyCode::Char('a'))));
+    }
+
+    /// A plain letter, whatever its case, but nothing carrying `Control` or
+    /// `Alt`. The `Alt`-only case is the one that matters: every other
+    /// rejection here is also caught by the `Control` half, so dropping the
+    /// `Alt` half of the check would go unnoticed without it.
+    #[test]
+    fn is_bare_character_accepts_only_an_unmodified_letter() {
+        assert!(is_bare_character(press(KeyCode::Char('y'))));
+        assert!(is_bare_character(KeyEvent::new(
+            KeyCode::Char('Y'),
+            KeyModifiers::SHIFT,
+        )));
+
+        assert!(!is_bare_character(ctrl(KeyCode::Char('y'))));
+        assert!(!is_bare_character(altgr(KeyCode::Char('@'))));
+        assert!(!is_bare_character(KeyEvent::new(
+            KeyCode::Char('y'),
+            KeyModifiers::ALT,
+        )));
+        // Not a character at all.
+        assert!(!is_bare_character(press(KeyCode::Enter)));
     }
 
     #[test]

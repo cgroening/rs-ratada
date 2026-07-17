@@ -4,6 +4,14 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking: `keymap::KeyChord::code`.** It was added in 0.4.0 on spec and has no caller in any consuming app; `KeyChord::to_key` covers the one real need (synthesizing the press a chord matches). Since 0.4.0 is the release that introduced it, nothing that ever shipped can depend on it.
+
+### Fixed
+
+- Nothing user-visible: this release pins the 0.4.0 key-handling rules with tests. Every Ctrl guard, the `AltGr`-must-type rule of each filter buffer, `is_bare_character`'s `Alt` clause, `is_global_quit`, and `keymap::Action::overlaps` now have a test that fails if the behaviour is reverted. Several were previously provable only by reading the code - and one, `is_bare_character`'s `Alt` clause, could be deleted with every doctest still green.
+
 ## [0.4.0] - 2026-07-17
 
 ### Added

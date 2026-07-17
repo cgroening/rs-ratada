@@ -212,6 +212,8 @@ fn restore() -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyModifiers;
+
     use super::*;
 
     #[test]
@@ -226,5 +228,33 @@ mod tests {
             Some(TuiEvent::Paste(text)) => assert_eq!(text, "a\nb"),
             _ => panic!("expected a normalized paste event"),
         }
+    }
+
+    /// The quit is `Ctrl+Q` and nothing else. `Ctrl+Alt+Q` is `AltGr+Q`, which
+    /// types a character on some layouts and must never quit - that no German
+    /// `AltGr` glyph happens to be a `q` is luck, not a rule to lean on.
+    #[test]
+    fn only_a_bare_ctrl_q_is_the_global_quit() {
+        let quit = |modifiers| KeyEvent::new(KeyCode::Char('q'), modifiers);
+        assert!(is_global_quit(&quit(KeyModifiers::CONTROL)));
+        assert!(!is_global_quit(&quit(
+            KeyModifiers::CONTROL | KeyModifiers::ALT
+        )));
+        assert!(!is_global_quit(&quit(KeyModifiers::NONE)));
+        assert!(!is_global_quit(&KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+    }
+
+    /// The quit is routed before any host or widget sees the key, which is why
+    /// no key handler needs to guard against it.
+    #[test]
+    fn classify_turns_ctrl_q_into_a_quit_event() {
+        let event = Event::Key(KeyEvent::new(
+            KeyCode::Char('q'),
+            KeyModifiers::CONTROL,
+        ));
+        assert!(matches!(classify(&event), Some(TuiEvent::Quit)));
     }
 }

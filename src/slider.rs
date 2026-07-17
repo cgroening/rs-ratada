@@ -2,7 +2,7 @@
 
 use std::io;
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     style::{Modifier, Style},
@@ -61,36 +61,46 @@ pub fn slider(
                 inner,
             );
         },
-        |value, key| {
-            // The value steps on bare keys only: in raw mode crossterm reports
-            // Ctrl+H as `Char('h') + CONTROL`, so without this guard a chord
-            // would silently adjust the value.
-            if input::is_command(key) {
-                return PopupFlow::Continue;
-            }
-            match key.code {
-                KeyCode::Left | KeyCode::Char('h') => {
-                    *value = step_value(*value, -cfg.step, cfg.min, cfg.max);
-                    PopupFlow::Continue
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    *value = step_value(*value, cfg.step, cfg.min, cfg.max);
-                    PopupFlow::Continue
-                }
-                KeyCode::Home => {
-                    *value = cfg.min;
-                    PopupFlow::Continue
-                }
-                KeyCode::End => {
-                    *value = cfg.max;
-                    PopupFlow::Continue
-                }
-                KeyCode::Enter => PopupFlow::Done(*value),
-                KeyCode::Esc => PopupFlow::Cancelled,
-                _ => PopupFlow::Continue,
-            }
-        },
+        |value, key| handle_key(value, key, &cfg),
     )
+}
+
+/// Applies one key to `value`, or reports that the slider is done.
+///
+/// A named function rather than a closure inside [`popup`], so the guard below
+/// is reachable from a test: everything in `popup` needs a live terminal.
+fn handle_key(
+    value: &mut i64,
+    key: KeyEvent,
+    cfg: &SliderConfig,
+) -> PopupFlow<i64> {
+    // The value steps on bare keys only: in raw mode crossterm reports Ctrl+H
+    // as `Char('h') + CONTROL`, so without this guard a chord would silently
+    // adjust the value.
+    if input::is_command(key) {
+        return PopupFlow::Continue;
+    }
+    match key.code {
+        KeyCode::Left | KeyCode::Char('h') => {
+            *value = step_value(*value, -cfg.step, cfg.min, cfg.max);
+            PopupFlow::Continue
+        }
+        KeyCode::Right | KeyCode::Char('l') => {
+            *value = step_value(*value, cfg.step, cfg.min, cfg.max);
+            PopupFlow::Continue
+        }
+        KeyCode::Home => {
+            *value = cfg.min;
+            PopupFlow::Continue
+        }
+        KeyCode::End => {
+            *value = cfg.max;
+            PopupFlow::Continue
+        }
+        KeyCode::Enter => PopupFlow::Done(*value),
+        KeyCode::Esc => PopupFlow::Cancelled,
+        _ => PopupFlow::Continue,
+    }
 }
 
 /// Moves `value` by `delta`, clamped to `min..=max`.
@@ -143,6 +153,8 @@ fn body_lines(
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyModifiers;
+
     use super::*;
 
     #[test]
@@ -150,5 +162,56 @@ mod tests {
         assert_eq!(step_value(50, 5, 0, 100), 55);
         assert_eq!(step_value(98, 5, 0, 100), 100);
         assert_eq!(step_value(2, -5, 0, 100), 0);
+    }
+
+    fn cfg() -> SliderConfig {
+        SliderConfig {
+            min: 0,
+            max: 100,
+            step: 5,
+            initial: 50,
+        }
+    }
+
+    /// `Ctrl+H`/`Ctrl+L` arrive as plain characters in raw mode, so without the
+    /// guard a chord would step the value.
+    #[test]
+    fn ctrl_chords_do_not_step_the_value() {
+        for code in [
+            KeyCode::Char('h'),
+            KeyCode::Char('l'),
+            KeyCode::Left,
+            KeyCode::Right,
+            KeyCode::Home,
+            KeyCode::End,
+        ] {
+            let mut value = 50;
+            let key = KeyEvent::new(code, KeyModifiers::CONTROL);
+            assert!(matches!(
+                handle_key(&mut value, key, &cfg()),
+                PopupFlow::Continue
+            ));
+            assert_eq!(value, 50, "Ctrl+{code:?} moved the value");
+        }
+    }
+
+    #[test]
+    fn bare_keys_still_step_and_confirm() {
+        let mut value = 50;
+        let press = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        handle_key(&mut value, press(KeyCode::Right), &cfg());
+        assert_eq!(value, 55);
+        handle_key(&mut value, press(KeyCode::Char('h')), &cfg());
+        assert_eq!(value, 50);
+        handle_key(&mut value, press(KeyCode::End), &cfg());
+        assert_eq!(value, 100);
+        assert!(matches!(
+            handle_key(&mut value, press(KeyCode::Enter), &cfg()),
+            PopupFlow::Done(100)
+        ));
+        assert!(matches!(
+            handle_key(&mut value, press(KeyCode::Esc), &cfg()),
+            PopupFlow::Cancelled
+        ));
     }
 }

@@ -9,7 +9,7 @@
 use std::io;
 
 use chrono::{Datelike, Duration, Local, NaiveDate};
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     style::{Color, Modifier, Style},
@@ -60,55 +60,65 @@ pub fn date_picker(
             let lines = body_lines(&skin.palette, cursor, allow_clear);
             frame.render_widget(Paragraph::new(lines), inner);
         },
-        |cursor, key| {
-            // The grid moves on bare keys only: in raw mode crossterm reports
-            // Ctrl+H as `Char('h') + CONTROL`, so without this guard a chord
-            // would silently walk the day cursor.
-            if input::is_command(key) {
-                return PopupFlow::Continue;
-            }
-            match key.code {
-                KeyCode::Left | KeyCode::Char('h') => {
-                    *cursor = shift(*cursor, -1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    *cursor = shift(*cursor, 1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    *cursor = shift(*cursor, -7);
-                    PopupFlow::Continue
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    *cursor = shift(*cursor, 7);
-                    PopupFlow::Continue
-                }
-                KeyCode::PageUp => {
-                    *cursor = add_months(*cursor, -1);
-                    PopupFlow::Continue
-                }
-                KeyCode::PageDown => {
-                    *cursor = add_months(*cursor, 1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Home => {
-                    *cursor = first_of_month(*cursor);
-                    PopupFlow::Continue
-                }
-                KeyCode::End => {
-                    *cursor = last_of_month(*cursor);
-                    PopupFlow::Continue
-                }
-                KeyCode::Enter => PopupFlow::Done(Some(*cursor)),
-                KeyCode::Delete | KeyCode::Backspace if allow_clear => {
-                    PopupFlow::Done(None)
-                }
-                KeyCode::Esc => PopupFlow::Cancelled,
-                _ => PopupFlow::Continue,
-            }
-        },
+        |cursor, key| handle_key(cursor, key, allow_clear),
     )
+}
+
+/// Applies one key to the day `cursor`, or reports that the picker is done.
+///
+/// A named function rather than a closure inside [`popup`], so the guard below
+/// is reachable from a test: everything in `popup` needs a live terminal.
+fn handle_key(
+    cursor: &mut NaiveDate,
+    key: KeyEvent,
+    allow_clear: bool,
+) -> PopupFlow<Option<NaiveDate>> {
+    // The grid moves on bare keys only: in raw mode crossterm reports Ctrl+H as
+    // `Char('h') + CONTROL`, so without this guard a chord would silently walk
+    // the day cursor.
+    if input::is_command(key) {
+        return PopupFlow::Continue;
+    }
+    match key.code {
+        KeyCode::Left | KeyCode::Char('h') => {
+            *cursor = shift(*cursor, -1);
+            PopupFlow::Continue
+        }
+        KeyCode::Right | KeyCode::Char('l') => {
+            *cursor = shift(*cursor, 1);
+            PopupFlow::Continue
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            *cursor = shift(*cursor, -7);
+            PopupFlow::Continue
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            *cursor = shift(*cursor, 7);
+            PopupFlow::Continue
+        }
+        KeyCode::PageUp => {
+            *cursor = add_months(*cursor, -1);
+            PopupFlow::Continue
+        }
+        KeyCode::PageDown => {
+            *cursor = add_months(*cursor, 1);
+            PopupFlow::Continue
+        }
+        KeyCode::Home => {
+            *cursor = first_of_month(*cursor);
+            PopupFlow::Continue
+        }
+        KeyCode::End => {
+            *cursor = last_of_month(*cursor);
+            PopupFlow::Continue
+        }
+        KeyCode::Enter => PopupFlow::Done(Some(*cursor)),
+        KeyCode::Delete | KeyCode::Backspace if allow_clear => {
+            PopupFlow::Done(None)
+        }
+        KeyCode::Esc => PopupFlow::Cancelled,
+        _ => PopupFlow::Continue,
+    }
 }
 
 /// The local date today.
@@ -263,7 +273,60 @@ fn day_style(
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyModifiers;
+
     use super::*;
+
+    /// `Ctrl+H`/`Ctrl+J` arrive as plain characters in raw mode, so without the
+    /// guard a chord would walk the day cursor.
+    #[test]
+    fn ctrl_chords_do_not_move_the_day_cursor() {
+        let start = NaiveDate::from_ymd_opt(2026, 6, 15).expect("a real date");
+        for code in [
+            KeyCode::Char('h'),
+            KeyCode::Char('j'),
+            KeyCode::Char('k'),
+            KeyCode::Char('l'),
+            KeyCode::Left,
+            KeyCode::Down,
+            KeyCode::PageUp,
+            KeyCode::Home,
+        ] {
+            let mut cursor = start;
+            let key = KeyEvent::new(code, KeyModifiers::CONTROL);
+            assert!(matches!(
+                handle_key(&mut cursor, key, true),
+                PopupFlow::Continue
+            ));
+            assert_eq!(cursor, start, "Ctrl+{code:?} moved the cursor");
+        }
+    }
+
+    #[test]
+    fn bare_keys_still_move_pick_and_clear() {
+        let start = NaiveDate::from_ymd_opt(2026, 6, 15).expect("a real date");
+        let press = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        let mut cursor = start;
+
+        handle_key(&mut cursor, press(KeyCode::Char('l')), true);
+        assert_eq!(cursor, shift(start, 1));
+        handle_key(&mut cursor, press(KeyCode::Char('j')), true);
+        assert_eq!(cursor, shift(start, 8));
+
+        assert!(matches!(
+            handle_key(&mut cursor, press(KeyCode::Enter), true),
+            PopupFlow::Done(Some(_))
+        ));
+        assert!(matches!(
+            handle_key(&mut cursor, press(KeyCode::Delete), true),
+            PopupFlow::Done(None)
+        ));
+        // Without `allow_clear` the same key does nothing.
+        assert!(matches!(
+            handle_key(&mut cursor, press(KeyCode::Delete), false),
+            PopupFlow::Continue
+        ));
+    }
 
     #[test]
     fn month_cells_cover_the_month_padded_to_full_weeks() {

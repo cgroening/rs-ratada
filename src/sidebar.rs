@@ -666,6 +666,23 @@ mod tests {
         assert_eq!(sidebar.filter, "u");
     }
 
+    /// The other half of the rule: `AltGr` is reported as `Ctrl+Alt` yet types
+    /// a real character, so the filter must accept it. Guarding that arm with
+    /// `is_bare_character` instead of `!is_command` would make `@`, `\` and `[`
+    /// untypeable on a German keyboard.
+    #[test]
+    fn altgr_characters_still_reach_the_filter() {
+        let mut sidebar = sample().filterable();
+        sidebar.handle_key(key(KeyCode::Char('/')));
+        for ch in ['@', '\\', '['] {
+            sidebar.handle_key(KeyEvent::new(
+                KeyCode::Char(ch),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            ));
+        }
+        assert_eq!(sidebar.filter, "@\\[");
+    }
+
     #[test]
     fn panning_only_applies_in_scroll_mode() {
         let mut truncate = sample();

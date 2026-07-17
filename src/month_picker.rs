@@ -7,7 +7,7 @@
 use std::io;
 
 use chrono::{Datelike, Local};
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     style::{Modifier, Style},
@@ -82,57 +82,65 @@ pub fn month_picker(
             );
             frame.render_widget(Paragraph::new(lines), inner);
         },
-        |state, key| {
-            // The grid moves on bare keys only: in raw mode crossterm reports
-            // Ctrl+H as `Char('h') + CONTROL`, so without this guard a chord
-            // would silently walk the month cursor.
-            if input::is_command(key) {
-                return PopupFlow::Continue;
-            }
-            match key.code {
-                KeyCode::Left | KeyCode::Char('h') => {
-                    state.month = step(state.month, -1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    state.month = step(state.month, 1);
-                    PopupFlow::Continue
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    state.month = step(state.month, -3);
-                    PopupFlow::Continue
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    state.month = step(state.month, 3);
-                    PopupFlow::Continue
-                }
-                KeyCode::PageUp => {
-                    state.year -= 1;
-                    PopupFlow::Continue
-                }
-                KeyCode::PageDown => {
-                    state.year += 1;
-                    PopupFlow::Continue
-                }
-                KeyCode::Home => {
-                    state.month = 1;
-                    PopupFlow::Continue
-                }
-                KeyCode::End => {
-                    state.month = 12;
-                    PopupFlow::Continue
-                }
-                KeyCode::Enter => {
-                    PopupFlow::Done(Some((state.year, state.month)))
-                }
-                KeyCode::Delete | KeyCode::Backspace if allow_clear => {
-                    PopupFlow::Done(None)
-                }
-                KeyCode::Esc => PopupFlow::Cancelled,
-                _ => PopupFlow::Continue,
-            }
-        },
+        |state, key| handle_key(state, key, allow_clear),
     )
+}
+
+/// Applies one key to the month `state`, or reports that the picker is done.
+///
+/// A named function rather than a closure inside [`popup`], so the guard below
+/// is reachable from a test: everything in `popup` needs a live terminal.
+fn handle_key(
+    state: &mut Month,
+    key: KeyEvent,
+    allow_clear: bool,
+) -> PopupFlow<Option<(i32, u32)>> {
+    // The grid moves on bare keys only: in raw mode crossterm reports Ctrl+H as
+    // `Char('h') + CONTROL`, so without this guard a chord would silently walk
+    // the month cursor.
+    if input::is_command(key) {
+        return PopupFlow::Continue;
+    }
+    match key.code {
+        KeyCode::Left | KeyCode::Char('h') => {
+            state.month = step(state.month, -1);
+            PopupFlow::Continue
+        }
+        KeyCode::Right | KeyCode::Char('l') => {
+            state.month = step(state.month, 1);
+            PopupFlow::Continue
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.month = step(state.month, -3);
+            PopupFlow::Continue
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.month = step(state.month, 3);
+            PopupFlow::Continue
+        }
+        KeyCode::PageUp => {
+            state.year -= 1;
+            PopupFlow::Continue
+        }
+        KeyCode::PageDown => {
+            state.year += 1;
+            PopupFlow::Continue
+        }
+        KeyCode::Home => {
+            state.month = 1;
+            PopupFlow::Continue
+        }
+        KeyCode::End => {
+            state.month = 12;
+            PopupFlow::Continue
+        }
+        KeyCode::Enter => PopupFlow::Done(Some((state.year, state.month))),
+        KeyCode::Delete | KeyCode::Backspace if allow_clear => {
+            PopupFlow::Done(None)
+        }
+        KeyCode::Esc => PopupFlow::Cancelled,
+        _ => PopupFlow::Continue,
+    }
 }
 
 fn step(month: u32, delta: i32) -> u32 {
@@ -204,7 +212,75 @@ fn month_style(
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyModifiers;
+
     use super::*;
+
+    /// `Ctrl+H`/`Ctrl+J` arrive as plain characters in raw mode, so without the
+    /// guard a chord would walk the month cursor.
+    #[test]
+    fn ctrl_chords_do_not_move_the_month_cursor() {
+        for code in [
+            KeyCode::Char('h'),
+            KeyCode::Char('j'),
+            KeyCode::Char('k'),
+            KeyCode::Char('l'),
+            KeyCode::Left,
+            KeyCode::Down,
+            KeyCode::PageUp,
+            KeyCode::PageDown,
+            KeyCode::Home,
+            KeyCode::End,
+        ] {
+            let mut state = Month {
+                year: 2026,
+                month: 6,
+            };
+            let key = KeyEvent::new(code, KeyModifiers::CONTROL);
+            assert!(matches!(
+                handle_key(&mut state, key, true),
+                PopupFlow::Continue
+            ));
+            assert_eq!(state.month, 6, "Ctrl+{code:?} moved the month");
+            assert_eq!(state.year, 2026, "Ctrl+{code:?} moved the year");
+        }
+    }
+
+    #[test]
+    fn bare_keys_still_move_pick_and_clear() {
+        let press = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        let mut state = Month {
+            year: 2026,
+            month: 6,
+        };
+
+        handle_key(&mut state, press(KeyCode::Char('l')), true);
+        assert_eq!(state.month, 7);
+        handle_key(&mut state, press(KeyCode::Char('k')), true);
+        assert_eq!(state.month, 4);
+        handle_key(&mut state, press(KeyCode::PageUp), true);
+        assert_eq!(state.year, 2025);
+        handle_key(&mut state, press(KeyCode::End), true);
+        assert_eq!(state.month, 12);
+
+        assert!(matches!(
+            handle_key(&mut state, press(KeyCode::Enter), true),
+            PopupFlow::Done(Some((2025, 12)))
+        ));
+        assert!(matches!(
+            handle_key(&mut state, press(KeyCode::Delete), true),
+            PopupFlow::Done(None)
+        ));
+        // Without `allow_clear` the same key does nothing.
+        assert!(matches!(
+            handle_key(&mut state, press(KeyCode::Delete), false),
+            PopupFlow::Continue
+        ));
+        assert!(matches!(
+            handle_key(&mut state, press(KeyCode::Esc), true),
+            PopupFlow::Cancelled
+        ));
+    }
 
     #[test]
     fn step_clamps_within_the_year() {
