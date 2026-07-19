@@ -14,12 +14,14 @@ Guide for working on this repository. `ratada` is a reusable **ratatui widget to
   ```rust
   pub use driver::{Flow, Screen, run};
   pub use modal::ModalSignal;
-  pub use overlay::{PopupFlow, popup};
+  pub use overlay::{PopupFlow, popup, popup_with_paste};
   pub use terminal::{Tui, TuiEvent};
   ```
   Most widgets are reached via their module path (`ratada::table`, `ratada::modal`, …), not via the prelude.
-- **Widget modules (flat in the root):** `terminal`, `driver`, `overlay`, `modal`, `chrome`, `layout`, `nav`, `scroll`, `style`, input/editing (`input`, `textarea`, `autocomplete`, `editor`, `clipboard`), `keymap` (the chord grammar + user-remappable bindings; an app supplies its action table via the `Action` trait, the chords live here once), pickers (`color_picker`, `date_picker`, `date_range_picker`, `month_picker`, `path_picker`, `slider`), display (`table`, `tree`, `list`, `tabs`, `pager`, `gauge`, `spinner`, `toast`, `text`), as well as `form`, `finder`, `fuzzy`, `help`, `header`, `footer`, `statusbar`, `double_press`. Cross-references between modules go via `super::` (the crate root).
-- **`theme/` (submodule):** framework-agnostic theming that a UI layer (even a pure CLI) can share: `Color` (+ `parse_color`/`dim_color`/`lighten`), `Palette` (+ `resolve`, `ColorOverrides`), `Skin` (bundle of palette/glyphs/mode), `Glyphs`/`GlyphVariant`, `Mode`, as well as `ThemeRegistry`/`ThemeColors`/`Surfaces` with the built-in themes. `style.rs` is the **only** seam that maps `theme::Color` onto `ratatui::style::Color`.
+- **Widget modules (flat in the root):** `terminal`, `driver`, `overlay`, `modal`, `chrome`, `layout`, `nav`, `scroll`, `style`, input/editing (`input`, `textarea`, `autocomplete`, `editor`, `clipboard`), `keymap` (the chord grammar + user-remappable bindings; an app supplies its action table via the `Action` trait, the chords live here once), pickers (`color_picker`, `swatches`, `date_picker`, `date_range_picker`, `month_picker`, `path_picker`, `slider`), display (`table`, `tree`, `list`, `tabs`, `pager`, `gauge`, `spinner`, `toast`, `text`, `markdown`, `sidebar`), as well as `form`, `finder`, `fuzzy`, `help`, `command_palette`, `header`, `shortcut_hints`, `statusbar`, `quit`, `opener`, `theme_preview`, `double_press`. Cross-references between modules go via `super::` (the crate root). There is no `footer` module - the hint footers live in `shortcut_hints`.
+- **Split modules:** where a module outgrew one file it became a directory whose `mod.rs` holds the type and whose children hold its `impl` blocks by responsibility (`input/`, `modal/`, `swatches/`, `sidebar/`, `form/`, `path_picker/`, `color_picker/`, `command_palette/`, `keymap/`, `shortcut_hints/`, `textarea/`, `markdown/render/`, `theme/color/`, plus the pre-existing `table/`). A child reaches the crate root with `crate::`, not `super::` - inside a child, `super` is the parent *module*. The public API is unchanged by these splits.
+- **`filter_list` (crate-internal):** the query/cursor/scroll state and key dispatch shared by `finder`, `help` and `command_palette`.
+- **`theme/` (submodule):** framework-agnostic theming that a UI layer (even a pure CLI) can share: `Color` (+ `parse_color`, and the OKLCH variants `darken`/`lighten`/`vivid`/`dim`/`shade`/`mix`), `Palette` (+ `resolve`, `ColorOverrides`), `Skin` (bundle of palette and glyphs), `Glyphs`/`GlyphVariant`, as well as `ThemeRegistry`/`ThemeColors`/`DEFAULT_THEME` with the built-in themes. `style.rs` is the **only** seam that maps `theme::Color` onto `ratatui::style::Color`.
 - **Dependencies:** only `ratatui`, `crossterm`, `unicode-width`, `nucleo-matcher`, `pulldown-cmark` (CommonMark parser for the `markdown` module, `default-features = false`), `chrono`, `log`, `serde` (the latter for the persistable enums `GlyphVariant` etc.), plus `clipboard-win` (Windows-only, the native Win32 clipboard for `clipboard`). Nothing else.
 
 ### Commands
@@ -36,6 +38,8 @@ This crate is the **SSOT** of the TUI conventions described below in §7.10. New
 ---
 
 The following style guide is binding. In case of conflicts, more specific (language-related) rules take precedence over the general ones. These documented rules take precedence over automatic formatters/linters.
+
+Note on provenance: the sections below restate the global style guide (`KI-Anweisungen/01 Softwareentwicklungsstandards.md`) with this crate's own numbering, plus refinements specific to `ratada`. The global guide is the SSOT - where the two disagree, it wins, and this file is the one to correct. Its CLI sections do not apply here: `ratada` is a library with no binary, no argument parsing and no stdout output.
 
 ## 1 Clean Code / Design Principles & Patterns
 
@@ -180,7 +184,7 @@ For individual functions, small scripts, or code only for personal use, the scop
 
 - **Module declaration:** Submodules via `mod` declarations in `lib.rs` or the parent file; file names `snake_case`. Cross-references between the widget modules lying flat in the root via `super::`.
 - **Dependency injection:** Abstract variable behavior via traits; inject the implementation via generic (`fn f<T: Screen>(…)`) or `dyn Trait`/`Box<dyn Trait>`. The host brings in its behavior via the `Screen` trait and lifecycle hooks.
-- **Target folder:** `target.nosync` (so that iCloud does not sync the build artifacts), include in `.gitignore`.
+- **Target folder:** `.cargo/config.toml` redirects `build.target-dir` to `~/Temp/cargo-target/ratada`, so no build artifacts land in the iCloud-synced project tree. Always invoke cargo from the crate root, or that setting is missed (see the parent `Rust/CLAUDE.md`).
 
 ### 7.3 Error Handling
 
@@ -234,7 +238,7 @@ For individual functions, small scripts, or code only for personal use, the scop
 - **Path traversal:** Check paths from outside with `canonicalize()` + `starts_with()` (relevant for `path_picker`).
 - **Secrets:** no secrets in code/log; if needed `zeroize`.
 - **Limit inputs:** size/length limits when parsing foreign data.
-- **Dependencies:** `cargo audit` in CI; minimize dependencies (§7.7).
+- **Dependencies:** minimize dependencies (§7.7). There is no CI in this repository; the gates in `CONTRIBUTING.md` are run by hand before a change is proposed.
 
 ### 7.10 TUI Conventions (Rust terminal apps)
 

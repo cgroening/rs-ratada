@@ -138,3 +138,141 @@ fn render_core(
     );
     viewport
 }
+
+#[cfg(test)]
+mod tests {
+    use ratatui::{Terminal, backend::TestBackend};
+
+    use super::*;
+    use crate::theme::{
+        ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+    };
+
+    fn skin() -> Skin {
+        let base = ThemeRegistry::builtin().resolve("default");
+        Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        )
+    }
+
+    fn rows(count: usize) -> Vec<Line<'static>> {
+        (0..count).map(|i| Line::from(format!("row {i}"))).collect()
+    }
+
+    /// Runs `body` against a real frame of the given size and returns whatever
+    /// it reports, so the viewport arithmetic is checked on the running widget
+    /// rather than re-derived in the test.
+    fn viewport_of(
+        width: u16,
+        height: u16,
+        body: impl FnOnce(&mut Frame, Rect, &Skin) -> usize,
+    ) -> usize {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).expect("a test terminal");
+        let mut reported = 0;
+        terminal
+            .draw(|frame| {
+                reported = body(frame, frame.area(), &skin());
+            })
+            .expect("the frame draws");
+        reported
+    }
+
+    #[test]
+    fn a_plain_list_uses_every_row_of_its_area() {
+        let offset = Cell::new(0);
+        let viewport = viewport_of(20, 6, |frame, area, skin| {
+            render(
+                frame,
+                area,
+                skin,
+                ListView {
+                    rows: rows(10),
+                    selected: 0,
+                    offset: &offset,
+                },
+            )
+        });
+        assert_eq!(viewport, 6);
+    }
+
+    /// The counted variant reserves the bottom row for the badge, so its
+    /// viewport is one shorter than the area.
+    #[test]
+    fn a_counted_list_gives_up_one_row_to_the_badge() {
+        let offset = Cell::new(0);
+        let viewport = viewport_of(20, 6, |frame, area, skin| {
+            render_counted(
+                frame,
+                area,
+                skin,
+                ListView {
+                    rows: rows(10),
+                    selected: 0,
+                    offset: &offset,
+                },
+            )
+        });
+        assert_eq!(viewport, 5);
+    }
+
+    /// Content wins over the badge: with a single row there is nothing to
+    /// spare, so the badge is dropped rather than the only visible entry.
+    #[test]
+    fn a_one_row_area_keeps_its_content_and_drops_the_badge() {
+        let offset = Cell::new(0);
+        let viewport = viewport_of(20, 1, |frame, area, skin| {
+            render_counted(
+                frame,
+                area,
+                skin,
+                ListView {
+                    rows: rows(10),
+                    selected: 0,
+                    offset: &offset,
+                },
+            )
+        });
+        assert_eq!(viewport, 1);
+    }
+
+    /// The offset is kept across frames, and must follow a selection that
+    /// sits below the visible window.
+    #[test]
+    fn the_offset_follows_a_selection_past_the_viewport() {
+        let offset = Cell::new(0);
+        viewport_of(20, 4, |frame, area, skin| {
+            render(
+                frame,
+                area,
+                skin,
+                ListView {
+                    rows: rows(20),
+                    selected: 12,
+                    offset: &offset,
+                },
+            )
+        });
+        assert!(offset.get() > 0, "the list did not scroll to the selection");
+        assert!(offset.get() <= 12, "scrolled past the selection");
+    }
+
+    #[test]
+    fn an_empty_list_renders_without_panicking() {
+        let offset = Cell::new(0);
+        let viewport = viewport_of(20, 4, |frame, area, skin| {
+            render_counted(
+                frame,
+                area,
+                skin,
+                ListView {
+                    rows: Vec::new(),
+                    selected: 0,
+                    offset: &offset,
+                },
+            )
+        });
+        assert_eq!(viewport, 3);
+    }
+}

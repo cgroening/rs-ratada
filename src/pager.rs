@@ -83,12 +83,13 @@ impl Pager {
                 self.matches.clear();
             }
             KeyCode::Char('n') if !self.matches.is_empty() => {
-                self.match_pos = (self.match_pos + 1) % self.matches.len();
+                self.match_pos =
+                    nav::cycle(self.match_pos, self.matches.len(), 1);
                 self.jump_to_match(max_offset);
             }
             KeyCode::Char('N') if !self.matches.is_empty() => {
-                let len = self.matches.len();
-                self.match_pos = (self.match_pos + len - 1) % len;
+                self.match_pos =
+                    nav::cycle(self.match_pos, self.matches.len(), -1);
                 self.jump_to_match(max_offset);
             }
             _ => {}

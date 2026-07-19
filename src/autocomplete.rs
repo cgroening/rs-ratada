@@ -11,7 +11,7 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use super::style;
+use super::{nav, style};
 use crate::theme::Palette;
 
 /// Most suggestions shown at once.
@@ -258,8 +258,7 @@ impl Autocomplete {
         self.selected = Some(match (self.selected, delta) {
             (None, step) if step > 0 => 0,
             (None, _) => len - 1,
-            (Some(index), step) if step > 0 => (index + 1) % len,
-            (Some(index), _) => (index + len - 1) % len,
+            (Some(index), step) => nav::cycle(index, len, step.signum()),
         });
     }
 

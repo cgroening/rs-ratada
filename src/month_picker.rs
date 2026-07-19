@@ -16,6 +16,7 @@ use ratatui::{
 };
 
 use super::{
+    date_picker::{cursor_cell_style, today_cell_style},
     input,
     layout::centered_rect,
     modal::ModalSignal,
@@ -200,11 +201,9 @@ fn month_style(
     today: chrono::NaiveDate,
 ) -> Style {
     if month == cursor {
-        style::bg(palette.selection)
-            .fg(style::to_ratatui(palette.accent))
-            .add_modifier(Modifier::BOLD)
+        cursor_cell_style(palette)
     } else if year == today.year() && month == today.month() {
-        style::fg(palette.accent_dim).add_modifier(Modifier::BOLD)
+        today_cell_style(palette)
     } else {
         Style::default()
     }

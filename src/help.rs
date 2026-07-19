@@ -7,7 +7,7 @@
 //! the flat list, and typing filters fuzzily while keeping the section headers
 //! of any section that still has a match.
 
-use std::{cell::Cell, io};
+use std::io;
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -19,11 +19,12 @@ use ratatui::{
 };
 
 use super::{
-    chrome, fuzzy, input,
+    chrome,
+    filter_list::FilterList,
+    fuzzy, input,
     layout::centered_fraction,
     list,
     modal::ModalSignal,
-    nav,
     overlay::{self, PopupFlow, popup_with_paste},
     shortcut_hints, style,
     terminal::Tui,
@@ -39,18 +40,6 @@ pub struct HelpSection<'a, B: AsRef<str>> {
     pub title: &'a str,
     /// The `(key, description)` bindings listed under the header.
     pub bindings: &'a [(B, B)],
-}
-
-/// The search state of the help overlay.
-struct Help {
-    query: String,
-    /// Index into the currently selectable (item) rows.
-    cursor: usize,
-    /// Persistent list scroll offset so the view and scrollbar follow the
-    /// cursor across frames.
-    offset: Cell<usize>,
-    /// The list viewport height captured at render, driving page jumps.
-    viewport: Cell<usize>,
 }
 
 /// One rendered row: a section header or a selectable binding.
@@ -80,18 +69,13 @@ pub fn show<B: AsRef<str>>(
     sections: &[HelpSection<'_, B>],
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<()>> {
-    let mut state = Help {
-        query: String::new(),
-        cursor: 0,
-        offset: Cell::new(0),
-        viewport: Cell::new(1),
-    };
+    let mut state = FilterList::new();
     popup_with_paste(
         tui,
         &mut state,
         |area, _| centered_fraction(area, 2, 3, 40, 8),
         |frame, _| render_bg(frame),
-        |frame, rect, state: &Help| {
+        |frame, rect, state: &FilterList| {
             let inner = overlay::framed(frame, rect, skin, "Help");
             render_body(frame, inner, skin, sections, state);
             // Section headers are rows but not positions: the badge counts the
@@ -116,92 +100,24 @@ pub fn show<B: AsRef<str>>(
 ///
 /// A named function rather than a closure inside [`popup`], so the guard below
 /// is reachable from a test: everything in `popup` needs a live terminal.
+/// Applies one key to the help overlay.
+///
+/// `Esc` and `?` close it; everything else is list navigation or filter text,
+/// handled by the shared [`FilterList`] core the filtered overlays share.
 fn handle_key<B: AsRef<str>>(
-    state: &mut Help,
+    state: &mut FilterList,
     key: KeyEvent,
     sections: &[HelpSection<'_, B>],
 ) -> PopupFlow<()> {
-    // The overlay binds no chord of its own, so a Ctrl command is not ours to
-    // act on: without this `Ctrl+U` types a `u` into the search instead of
-    // clearing the line, and `Ctrl+?` would close the help. Alt alone and AltGr
-    // (Ctrl+Alt) still type, as they do in every text field - see
-    // `input::is_command`.
     if input::is_command(key) {
         return PopupFlow::Continue;
     }
-    match key.code {
-        KeyCode::Esc | KeyCode::Char('?') => PopupFlow::Done(()),
-        KeyCode::Up => {
-            let count = layout_rows(sections, &state.query).selectable.len();
-            state.cursor = nav::cycle(state.cursor, count, -1);
-            PopupFlow::Continue
-        }
-        KeyCode::Down => {
-            let count = layout_rows(sections, &state.query).selectable.len();
-            state.cursor = nav::cycle(state.cursor, count, 1);
-            PopupFlow::Continue
-        }
-        KeyCode::PageUp => {
-            let count = layout_rows(sections, &state.query).selectable.len();
-            let page = state.viewport.get().max(1) as isize;
-            state.cursor = nav::step_clamped(state.cursor, count, -page);
-            PopupFlow::Continue
-        }
-        KeyCode::PageDown => {
-            let count = layout_rows(sections, &state.query).selectable.len();
-            let page = state.viewport.get().max(1) as isize;
-            state.cursor = nav::step_clamped(state.cursor, count, page);
-            PopupFlow::Continue
-        }
-        KeyCode::Home => {
-            state.cursor = 0;
-            PopupFlow::Continue
-        }
-        KeyCode::End => {
-            let count = layout_rows(sections, &state.query).selectable.len();
-            state.cursor = count.saturating_sub(1);
-            PopupFlow::Continue
-        }
-        KeyCode::Tab => {
-            jump_section(state, sections, 1);
-            PopupFlow::Continue
-        }
-        KeyCode::BackTab => {
-            jump_section(state, sections, -1);
-            PopupFlow::Continue
-        }
-        KeyCode::Backspace => {
-            state.query.pop();
-            state.cursor = 0;
-            PopupFlow::Continue
-        }
-        KeyCode::Char(ch) => {
-            state.query.push(ch);
-            state.cursor = 0;
-            PopupFlow::Continue
-        }
-        _ => PopupFlow::Continue,
+    if matches!(key.code, KeyCode::Esc | KeyCode::Char('?')) {
+        return PopupFlow::Done(());
     }
-}
-
-/// Moves the cursor to the first item of the next (`+1`) or previous (`-1`)
-/// visible section, wrapping around.
-fn jump_section<B: AsRef<str>>(
-    state: &mut Help,
-    sections: &[HelpSection<'_, B>],
-    direction: isize,
-) {
-    let starts = layout_rows(sections, &state.query).section_starts;
-    if starts.is_empty() {
-        return;
-    }
-    // The section the cursor is currently in: the last start at or before it.
-    let current = starts
-        .iter()
-        .rposition(|&start| start <= state.cursor)
-        .unwrap_or(0);
-    let next = nav::cycle(current, starts.len(), direction);
-    state.cursor = starts[next];
+    let layout = layout_rows(sections, &state.query);
+    state.handle_key(key, layout.selectable.len(), &layout.section_starts);
+    PopupFlow::Continue
 }
 
 /// Builds the rows and navigation index maps for `sections` filtered by `query`.
@@ -257,7 +173,7 @@ fn render_body<B: AsRef<str>>(
     inner: Rect,
     skin: &Skin,
     sections: &[HelpSection<'_, B>],
-    state: &Help,
+    state: &FilterList,
 ) {
     let palette = &skin.palette;
     let layout = layout_rows(sections, &state.query);
@@ -353,13 +269,23 @@ mod tests {
 
     use super::*;
 
-    fn state() -> Help {
-        Help {
-            query: String::new(),
-            cursor: 0,
-            offset: Cell::new(0),
-            viewport: Cell::new(1),
-        }
+    fn state() -> FilterList {
+        FilterList::new()
+    }
+
+    /// Drives a section jump the way `handle_key` does, through the shared
+    /// core, so the test exercises the real path rather than a helper.
+    fn jump_section<B: AsRef<str>>(
+        state: &mut FilterList,
+        sections: &[HelpSection<'_, B>],
+        direction: isize,
+    ) {
+        let code = if direction > 0 {
+            KeyCode::Tab
+        } else {
+            KeyCode::BackTab
+        };
+        handle_key(state, KeyEvent::new(code, KeyModifiers::NONE), sections);
     }
 
     fn sections() -> Vec<HelpSection<'static, &'static str>> {

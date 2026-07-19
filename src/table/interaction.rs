@@ -228,3 +228,180 @@ fn toggle<T: Eq + std::hash::Hash>(set: &mut HashSet<T>, value: T) {
 fn minmax(a: usize, b: usize) -> (usize, usize) {
     if a <= b { (a, b) } else { (b, a) }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::table::{Column, Row};
+
+    fn table() -> Table {
+        Table::new(
+            vec![Column::text("name"), Column::number("size")],
+            vec![
+                Row::new(vec!["alpha".into(), "3".into()]),
+                Row::new(vec!["beta".into(), "1".into()]),
+                Row::new(vec!["gamma".into(), "2".into()]),
+            ],
+        )
+    }
+
+    fn press(table: &mut Table, code: KeyCode) -> TableAction {
+        table.handle_key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    fn press_with(
+        table: &mut Table,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+    ) -> TableAction {
+        table.handle_key(KeyEvent::new(code, modifiers))
+    }
+
+    #[test]
+    fn arrows_and_vim_keys_move_the_row_cursor() {
+        let mut table = table();
+        press(&mut table, KeyCode::Down);
+        assert_eq!(table.cursor_row(), Some(1));
+        press(&mut table, KeyCode::Char('j'));
+        assert_eq!(table.cursor_row(), Some(2));
+        press(&mut table, KeyCode::Char('k'));
+        assert_eq!(table.cursor_row(), Some(1));
+    }
+
+    #[test]
+    fn home_and_end_jump_to_the_first_and_last_row() {
+        let mut table = table();
+        press(&mut table, KeyCode::End);
+        assert_eq!(table.cursor_row(), Some(2));
+        press(&mut table, KeyCode::Home);
+        assert_eq!(table.cursor_row(), Some(0));
+    }
+
+    #[test]
+    fn enter_reports_an_activation_to_the_host() {
+        let mut table = table();
+        assert_eq!(press(&mut table, KeyCode::Enter), TableAction::Activate);
+        assert_eq!(press(&mut table, KeyCode::Down), TableAction::None);
+    }
+
+    #[test]
+    fn space_toggles_the_current_row_selection() {
+        let mut table = table();
+        press(&mut table, KeyCode::Char(' '));
+        assert_eq!(table.selected_rows(), vec![0]);
+        press(&mut table, KeyCode::Char(' '));
+        assert!(table.selected_rows().is_empty());
+    }
+
+    #[test]
+    fn esc_clears_the_selection() {
+        let mut table = table();
+        press(&mut table, KeyCode::Char(' '));
+        press(&mut table, KeyCode::Esc);
+        assert!(table.selected_rows().is_empty());
+    }
+
+    #[test]
+    fn slash_enters_the_filter_and_esc_leaves_it() {
+        let mut table = table();
+        assert!(!table.is_filtering());
+        press(&mut table, KeyCode::Char('/'));
+        assert!(table.is_filtering());
+        press(&mut table, KeyCode::Esc);
+        assert!(!table.is_filtering());
+    }
+
+    /// This is the guard the 0.4.0 release note is about. In raw mode crossterm
+    /// reports `Ctrl+J` as `Char('j')` plus CONTROL, so without the
+    /// `is_command` check every one of these chords would drive the table:
+    /// `Ctrl+S` would re-sort, `Ctrl+J`/`Ctrl+K` would walk the cursor,
+    /// `Ctrl+Space` would toggle a selection.
+    #[test]
+    fn no_ctrl_chord_but_ctrl_a_drives_the_table() {
+        for code in [
+            KeyCode::Char('j'),
+            KeyCode::Char('k'),
+            KeyCode::Char('h'),
+            KeyCode::Char('l'),
+            KeyCode::Char('s'),
+            KeyCode::Char('f'),
+            KeyCode::Char('m'),
+            KeyCode::Char('g'),
+            KeyCode::Char('G'),
+            KeyCode::Char(' '),
+            KeyCode::Char('/'),
+            KeyCode::Down,
+            KeyCode::PageDown,
+            KeyCode::End,
+            KeyCode::Enter,
+        ] {
+            let mut table = table();
+            let before = (table.cursor_row(), table.cursor_cell());
+            let action = press_with(&mut table, code, KeyModifiers::CONTROL);
+
+            assert_eq!(action, TableAction::None, "Ctrl+{code:?} acted");
+            assert_eq!(
+                (table.cursor_row(), table.cursor_cell()),
+                before,
+                "Ctrl+{code:?} moved the cursor"
+            );
+            assert!(
+                table.selected_rows().is_empty(),
+                "Ctrl+{code:?} selected a row"
+            );
+            assert!(!table.is_filtering(), "Ctrl+{code:?} opened the filter");
+        }
+    }
+
+    #[test]
+    fn ctrl_a_selects_every_visible_row() {
+        let mut table = table();
+        press_with(&mut table, KeyCode::Char('a'), KeyModifiers::CONTROL);
+        assert_eq!(table.selected_rows(), vec![0, 1, 2]);
+    }
+
+    /// `AltGr` arrives as Control+Alt. It must not be read as a command chord,
+    /// or a filter buffer would swallow the characters it types.
+    #[test]
+    fn altgr_is_not_treated_as_a_ctrl_chord() {
+        let mut table = table();
+        press_with(
+            &mut table,
+            KeyCode::Char('j'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        );
+        assert_eq!(
+            table.cursor_row(),
+            Some(1),
+            "AltGr+j was swallowed as a chord"
+        );
+    }
+
+    #[test]
+    fn s_sorts_by_the_active_column_and_toggles_direction() {
+        let mut table = table();
+        press(&mut table, KeyCode::Char('s'));
+        // Sorted ascending by "name": alpha, beta, gamma - already in order.
+        assert_eq!(table.cursor_row(), Some(0));
+        press(&mut table, KeyCode::Char('s'));
+        // Toggled to descending, so the view order is reversed.
+        assert_eq!(table.selected_rows().len(), 0);
+    }
+
+    #[test]
+    fn typing_into_the_filter_narrows_the_view() {
+        let mut table = table();
+        press(&mut table, KeyCode::Char('/'));
+        for ch in "beta".chars() {
+            press(&mut table, KeyCode::Char(ch));
+        }
+        assert_eq!(table.cursor_row(), Some(1), "the cursor follows the match");
+    }
+
+    #[test]
+    fn minmax_orders_its_two_arguments() {
+        assert_eq!(minmax(2, 5), (2, 5));
+        assert_eq!(minmax(5, 2), (2, 5));
+        assert_eq!(minmax(4, 4), (4, 4));
+    }
+}

@@ -5,7 +5,7 @@
 
 ## Context
 
-The repo is stable and clean after several feature rounds (`cargo fmt --check` green, `cargo clippy --all-targets -- -D warnings` green, 142 unit/integration tests + 7 doctests, `clippy::pedantic` crate-wide, only a few justified `#[allow]`, no open TODOs, every module has a `//!` doc). `ratada` is the **library itself** – the reusable ratatui widget toolkit plus the framework-agnostic `theme` layer; there is no binary, no domain/persistence layer. Consuming apps (e.g. `clibase`) depend on it as a path dependency. This checklist therefore concerns the **entire crate**; since it is a public API, visibility and signature stability are especially important here (`pub` changes are breaking changes).
+The repo is stable and clean after several feature rounds (`cargo fmt --check` green, `cargo clippy --all-targets -- -D warnings` green, the full test suite green, `clippy::pedantic` crate-wide, only a few justified `#[allow]`, no open TODOs, every module has a `//!` doc). `ratada` is the **library itself** – the reusable ratatui widget toolkit plus the framework-agnostic `theme` layer; there is no binary, no domain/persistence layer. Consuming apps (e.g. `clibase`) depend on it as a path dependency. This checklist therefore concerns the **entire crate**; since it is a public API, visibility and signature stability are especially important here (`pub` changes are breaking changes).
 
 Ordering principle: first establish a baseline, then layer by layer from the dependency-free foundations (`theme`) outward to the composed widgets (this way understanding builds up bottom-up and each layer is checked after its dependencies), and finally a cross-cutting pass.
 

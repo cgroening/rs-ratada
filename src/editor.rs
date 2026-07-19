@@ -72,7 +72,9 @@ pub fn edit_in_editor_as(
         .open(&path)?
         .write_all(initial.as_bytes())?;
 
-    let status = tui.suspend(|| Command::new(editor).arg(&path).status())?;
+    let (program, args) = split_editor(editor);
+    let status =
+        tui.suspend(|| Command::new(program).args(args).arg(&path).status())?;
 
     let result = match status {
         Ok(code) if code.success() => {
@@ -92,6 +94,20 @@ pub fn edit_in_editor_as(
         log::debug!("could not remove temp file {}: {error}", path.display());
     }
     Ok(result)
+}
+
+/// Splits an `$EDITOR` value into the program and its leading arguments.
+///
+/// `$EDITOR` is conventionally a command line, not a bare program name -
+/// `code --wait`, `subl -w`, `emacs -nw` are all common. Splitting on
+/// whitespace here rather than handing the string to a shell keeps the file
+/// name out of any shell's reach, so no injection is possible (§2.4.9). A
+/// program path containing a space is not supported; that is the accepted
+/// trade for not spawning `sh -c`.
+fn split_editor(editor: &str) -> (&str, Vec<&str>) {
+    let mut words = editor.split_whitespace();
+    let program = words.next().unwrap_or("vi");
+    (program, words.collect())
 }
 
 /// Rejects an extension that is not a bare ASCII-alphanumeric suffix.
@@ -115,6 +131,36 @@ fn check_extension(extension: &str) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `$EDITOR` commonly carries arguments (`code --wait`, `subl -w`). Passing
+    /// the whole string to `Command::new` looks for a program whose file name
+    /// contains a space, fails with `ENOENT`, and silently discards the edit.
+    #[test]
+    fn a_multi_word_editor_splits_into_program_and_arguments() {
+        let (program, args) = split_editor("code --wait");
+        assert_eq!(program, "code");
+        assert_eq!(args, vec!["--wait"]);
+
+        let (program, args) = split_editor("emacs -nw -Q");
+        assert_eq!(program, "emacs");
+        assert_eq!(args, vec!["-nw", "-Q"]);
+    }
+
+    #[test]
+    fn a_single_word_editor_has_no_arguments() {
+        let (program, args) = split_editor("vim");
+        assert_eq!(program, "vim");
+        assert!(args.is_empty());
+    }
+
+    /// Surrounding and repeated whitespace must not produce an empty program
+    /// name or empty argument entries.
+    #[test]
+    fn surrounding_whitespace_is_ignored() {
+        let (program, args) = split_editor("  code   --wait  ");
+        assert_eq!(program, "code");
+        assert_eq!(args, vec!["--wait"]);
+    }
 
     #[test]
     fn check_extension_accepts_a_bare_alphanumeric_suffix() {

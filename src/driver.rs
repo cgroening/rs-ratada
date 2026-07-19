@@ -68,6 +68,10 @@ pub trait Screen {
 
 /// Runs the draw/read/handle loop until the screen or the user quits.
 ///
+/// Not unit-tested: every path needs a live terminal. It is exercised by the
+/// bundled examples and by the consuming apps instead - a stub `Screen` here
+/// would only assert that the stub was called.
+///
 /// Redraws every iteration; when no event arrives within `TICK`, calls
 /// [`Screen::tick`] so animated widgets keep moving. The global hints toggle
 /// (see `shortcut_hints::set_toggle_key`) is consumed here, so every screen

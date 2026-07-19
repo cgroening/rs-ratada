@@ -37,20 +37,12 @@ fn copy_impl(text: &str) -> bool {
 #[cfg(windows)]
 fn paste_impl() -> Option<String> {
     match clipboard_win::get_clipboard_string() {
-        Ok(text) => Some(normalize_newlines(&text)),
+        Ok(text) => Some(crate::terminal::normalize_newlines(&text)),
         Err(error) => {
             log::warn!("clipboard paste failed: {error}");
             None
         }
     }
-}
-
-/// Collapses the `\r\n` (and lone `\r`) line endings the Windows clipboard uses
-/// to `\n`, so a native paste matches the `\n`-only shape the rest of the
-/// toolkit expects (mirrors `terminal::normalize_newlines`).
-#[cfg(windows)]
-fn normalize_newlines(text: &str) -> String {
-    text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +109,11 @@ fn read_from(program: &str, args: &[&str]) -> Option<String> {
         return None;
     }
     match String::from_utf8(output.stdout) {
-        Ok(text) => Some(text),
+        // Normalized like every other paste seam: an X11/Wayland selection can
+        // carry CRLF just as the Windows clipboard does (anything copied out of
+        // a Windows VM, an editor set to CRLF, or a browser text area), and a
+        // stray `\r` would reach a text field as a control character.
+        Ok(text) => Some(crate::terminal::normalize_newlines(&text)),
         Err(error) => {
             log::debug!(
                 "clipboard tool '{program}' returned invalid UTF-8: {error}"
@@ -159,9 +155,9 @@ fn paste_candidates() -> &'static [(&'static str, &'static [&'static str])] {
     }
 }
 
-#[cfg(all(test, windows))]
+#[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::terminal::normalize_newlines;
 
     #[test]
     fn normalize_newlines_collapses_crlf_and_lone_cr() {

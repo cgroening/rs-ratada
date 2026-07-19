@@ -106,22 +106,10 @@ pub(super) fn filter_indices(
     scope: FilterScope,
     active_col: usize,
 ) -> Vec<usize> {
-    if query.trim().is_empty() {
-        return (0..rows.len()).collect();
-    }
-    let mut scored: Vec<(u32, usize)> = rows
-        .iter()
-        .enumerate()
-        .filter_map(|(index, row)| {
-            let haystack = match scope {
-                FilterScope::AllColumns => row.cells.join(" "),
-                FilterScope::ActiveColumn => row.cell(active_col).to_string(),
-            };
-            fuzzy::score(&haystack, query).map(|score| (score, index))
-        })
-        .collect();
-    scored.sort_by_key(|entry| std::cmp::Reverse(entry.0));
-    scored.into_iter().map(|(_, index)| index).collect()
+    fuzzy::rank_by(rows, query, |row| match scope {
+        FilterScope::AllColumns => row.cells.join(" ").into(),
+        FilterScope::ActiveColumn => row.cell(active_col).into(),
+    })
 }
 
 /// The top row offset that keeps `cursor` visible given per-row `heights` and
@@ -152,5 +140,187 @@ pub(super) fn pad_align(text: &str, width: usize, align: Align) -> String {
     match align {
         Align::Left => format!("{text}{}", " ".repeat(pad)),
         Align::Right => format!("{}{text}", " ".repeat(pad)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(cells: &[&str]) -> Row {
+        Row::new(cells.iter().map(|c| (*c).to_string()).collect())
+    }
+
+    fn rows(table: &[&[&str]]) -> Vec<Row> {
+        table.iter().map(|cells| row(cells)).collect()
+    }
+
+    #[test]
+    fn every_column_gets_at_least_its_minimum() {
+        // Far less room than the minimums plus separators need.
+        let widths = allocate_columns(&[(5, 20), (5, 20), (5, 20)], 4);
+        assert_eq!(widths, vec![5, 5, 5]);
+    }
+
+    #[test]
+    fn leftover_room_is_shared_round_robin_up_to_the_target() {
+        // 3 columns, minimum 2 each, 2 separators of 2 columns => 10 used.
+        // 15 available leaves 5 to hand out, one column at a time.
+        let widths = allocate_columns(&[(2, 10), (2, 10), (2, 10)], 15);
+        assert_eq!(widths.iter().sum::<usize>(), 2 * 3 + 5);
+        let spread =
+            widths.iter().max().unwrap() - widths.iter().min().unwrap();
+        assert!(spread <= 1, "not shared evenly: {widths:?}");
+    }
+
+    /// A column already at its target must not absorb further leftover, and the
+    /// loop must still terminate once nothing can grow.
+    #[test]
+    fn a_column_never_grows_past_its_target() {
+        let widths = allocate_columns(&[(1, 2), (1, 100)], 60);
+        assert_eq!(widths[0], 2);
+        assert!(widths[1] > 2);
+    }
+
+    #[test]
+    fn wrap_cell_breaks_on_the_display_width() {
+        assert_eq!(wrap_cell("abcdef", 3), vec!["abc", "def"]);
+    }
+
+    /// Wide glyphs count as two columns, so only one fits in a width of 3.
+    #[test]
+    fn wrap_cell_measures_wide_glyphs_as_two_columns() {
+        assert_eq!(
+            wrap_cell("\u{4f60}\u{597d}", 3),
+            vec!["\u{4f60}", "\u{597d}"]
+        );
+    }
+
+    /// A zero width would otherwise loop forever looking for room.
+    #[test]
+    fn wrap_cell_yields_one_empty_line_for_a_zero_width() {
+        assert_eq!(wrap_cell("abc", 0), vec![String::new()]);
+    }
+
+    #[test]
+    fn wrap_cell_keeps_an_empty_text_as_one_empty_line() {
+        assert_eq!(wrap_cell("", 5), vec![String::new()]);
+    }
+
+    #[test]
+    fn numbers_sort_numerically_not_lexically() {
+        let data = rows(&[&["9"], &["10"], &["2"]]);
+        let columns = vec![Column::number("n")];
+        let sorted =
+            sort_indices(&data, &columns, vec![0, 1, 2], 0, SortDir::Asc);
+        assert_eq!(sorted, vec![2, 0, 1], "lexical order would be 10, 2, 9");
+    }
+
+    /// An unparseable number sorts as negative infinity, so it lands first
+    /// ascending rather than panicking or comparing as text.
+    #[test]
+    fn an_unparseable_number_sorts_to_the_bottom_edge() {
+        let data = rows(&[&["3"], &["n/a"], &["1"]]);
+        let columns = vec![Column::number("n")];
+        let sorted =
+            sort_indices(&data, &columns, vec![0, 1, 2], 0, SortDir::Asc);
+        assert_eq!(sorted, vec![1, 2, 0]);
+    }
+
+    #[test]
+    fn dates_sort_chronologically() {
+        let data = rows(&[&["2026-01-09"], &["2026-01-10"], &["2025-12-31"]]);
+        let columns = vec![Column::date("d")];
+        let sorted =
+            sort_indices(&data, &columns, vec![0, 1, 2], 0, SortDir::Asc);
+        assert_eq!(sorted, vec![2, 0, 1]);
+    }
+
+    #[test]
+    fn descending_reverses_the_ascending_order() {
+        let data = rows(&[&["b"], &["a"], &["c"]]);
+        let columns = vec![Column::text("t")];
+        let asc = sort_indices(&data, &columns, vec![0, 1, 2], 0, SortDir::Asc);
+        let desc =
+            sort_indices(&data, &columns, vec![0, 1, 2], 0, SortDir::Desc);
+        let mut reversed = asc.clone();
+        reversed.reverse();
+        assert_eq!(desc, reversed);
+    }
+
+    /// An out-of-range column must neither panic nor reorder: every row reads
+    /// an empty cell there, so they compare equal and the stable sort keeps
+    /// the incoming order.
+    #[test]
+    fn sorting_an_unknown_column_is_a_no_op() {
+        let data = rows(&[&["b"], &["a"]]);
+        let sorted = sort_indices(&data, &[], vec![0, 1], 7, SortDir::Asc);
+        assert_eq!(sorted, vec![0, 1]);
+    }
+
+    /// The sort is stable, so rows that compare equal keep their prior order -
+    /// what makes sorting by one column and then another behave predictably.
+    #[test]
+    fn equal_cells_keep_their_previous_order() {
+        let data = rows(&[&["same", "first"], &["same", "second"]]);
+        let columns = vec![Column::text("t"), Column::text("u")];
+        let sorted = sort_indices(&data, &columns, vec![1, 0], 0, SortDir::Asc);
+        assert_eq!(sorted, vec![1, 0]);
+    }
+
+    #[test]
+    fn an_empty_filter_keeps_every_row_in_order() {
+        let data = rows(&[&["alpha"], &["beta"]]);
+        let kept = filter_indices(&data, "   ", FilterScope::AllColumns, 0);
+        assert_eq!(kept, vec![0, 1]);
+    }
+
+    /// Scoped to the active column, a match in another column must not count.
+    #[test]
+    fn the_active_column_scope_ignores_the_other_columns() {
+        let data = rows(&[&["alpha", "zzz"], &["beta", "match"]]);
+        let all = filter_indices(&data, "match", FilterScope::AllColumns, 0);
+        assert_eq!(all, vec![1]);
+        let scoped =
+            filter_indices(&data, "match", FilterScope::ActiveColumn, 0);
+        assert!(scoped.is_empty(), "column 0 holds no match");
+    }
+
+    #[test]
+    fn the_offset_stays_put_while_the_cursor_is_visible() {
+        let heights = [1, 1, 1, 1, 1];
+        assert_eq!(visible_offset(&heights, 2, 5, 0), 0);
+    }
+
+    #[test]
+    fn the_offset_advances_just_far_enough_to_reveal_the_cursor() {
+        let heights = [1, 1, 1, 1, 1];
+        // Rows 0..=4 need 5 lines but only 3 fit, so the window starts at 2.
+        assert_eq!(visible_offset(&heights, 4, 3, 0), 2);
+    }
+
+    /// A tall row consumes several lines, so fewer rows fit above the cursor.
+    #[test]
+    fn a_taller_row_pushes_the_offset_further_down() {
+        let heights = [3, 3, 1];
+        assert_eq!(visible_offset(&heights, 2, 4, 0), 1);
+    }
+
+    #[test]
+    fn an_empty_table_or_zero_height_yields_offset_zero() {
+        assert_eq!(visible_offset(&[], 3, 10, 5), 0);
+        assert_eq!(visible_offset(&[1, 1], 1, 0, 1), 0);
+    }
+
+    #[test]
+    fn pad_align_pads_on_the_side_opposite_the_alignment() {
+        assert_eq!(pad_align("ab", 5, Align::Left), "ab   ");
+        assert_eq!(pad_align("ab", 5, Align::Right), "   ab");
+    }
+
+    /// Text wider than the field must not underflow the padding arithmetic.
+    #[test]
+    fn pad_align_leaves_overlong_text_untouched() {
+        assert_eq!(pad_align("abcdef", 3, Align::Left), "abcdef");
     }
 }

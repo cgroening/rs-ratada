@@ -337,3 +337,17 @@ fn sort_arrow(dir: SortDir) -> char {
 fn cursor_highlight(skin: &Skin) -> Style {
     style::bg(skin.palette.selection)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The two directions must not share a glyph, or a sorted column would not
+    /// show which way it is sorted.
+    #[test]
+    fn the_sort_arrow_distinguishes_the_two_directions() {
+        assert_eq!(sort_arrow(SortDir::Asc), '\u{25b2}');
+        assert_eq!(sort_arrow(SortDir::Desc), '\u{25bc}');
+        assert_ne!(sort_arrow(SortDir::Asc), sort_arrow(SortDir::Desc));
+    }
+}

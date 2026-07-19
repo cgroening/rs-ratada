@@ -17,8 +17,8 @@ use ratatui::{
 
 use super::{
     date_picker::{
-        add_months, day_grid, first_of_month, is_weekend, last_of_month, shift,
-        today, weekday_header,
+        add_months, cursor_cell_style, day_grid, first_of_month, is_weekend,
+        last_of_month, shift, today, today_cell_style, weekday_header,
     },
     input,
     layout::centered_rect,
@@ -192,13 +192,11 @@ fn day_style(
         day >= lo && day <= hi
     });
     if day == cursor || start == Some(day) {
-        style::bg(palette.selection)
-            .fg(style::to_ratatui(palette.accent))
-            .add_modifier(Modifier::BOLD)
+        cursor_cell_style(palette)
     } else if in_range {
         style::bg(palette.selection)
     } else if day == today {
-        style::fg(palette.accent_dim).add_modifier(Modifier::BOLD)
+        today_cell_style(palette)
     } else if is_weekend(day) {
         style::secondary(palette)
     } else {

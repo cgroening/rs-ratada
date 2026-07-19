@@ -17,30 +17,25 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{
-    Frame,
-    layout::{Constraint, Direction, Layout, Rect},
-    text::{Line, Span},
-    widgets::Paragraph,
-};
+use ratatui::Frame;
 
 use super::{
     chrome, fuzzy,
-    input::{self, InputField},
+    input::InputField,
     layout::centered_fraction,
-    list,
     modal::ModalSignal,
-    nav,
     overlay::{self, PopupFlow, popup_with_paste},
-    shortcut_hints, style,
     terminal::Tui,
-    text::truncate,
 };
 use crate::theme::Skin;
 
-/// The prefix of the filter line; its width is taken off the caret line's.
-const FILTER_LABEL: &str = "filter ";
+mod fs;
+mod interaction;
+mod render;
+
+use fs::{confine, first_existing, read_entries, within_root};
+use interaction::handle_key;
+use render::render_body;
 
 struct Entry {
     name: String,
@@ -166,108 +161,6 @@ impl State {
     }
 }
 
-/// Applies one key to the picker, or reports the chosen path.
-///
-/// A named function rather than a closure inside [`popup_with_paste`], so the
-/// `Ctrl+H` guard is reachable from a test: everything in the popup needs a
-/// live terminal. `allow_files` decides whether `Enter` may return a file.
-fn handle_key(
-    state: &mut State,
-    key: KeyEvent,
-    allow_files: bool,
-) -> PopupFlow<PathBuf> {
-    match key.code {
-        KeyCode::Esc => PopupFlow::Cancelled,
-        KeyCode::Up => {
-            state.cursor = nav::cycle(state.cursor, state.visible.len(), -1);
-            PopupFlow::Continue
-        }
-        KeyCode::Down => {
-            state.cursor = nav::cycle(state.cursor, state.visible.len(), 1);
-            PopupFlow::Continue
-        }
-        KeyCode::PageUp => {
-            let page = state.viewport.get().max(1) as isize;
-            state.cursor =
-                nav::step_clamped(state.cursor, state.visible.len(), -page);
-            PopupFlow::Continue
-        }
-        KeyCode::PageDown => {
-            let page = state.viewport.get().max(1) as isize;
-            state.cursor =
-                nav::step_clamped(state.cursor, state.visible.len(), page);
-            PopupFlow::Continue
-        }
-        KeyCode::Home => {
-            state.cursor = 0;
-            PopupFlow::Continue
-        }
-        KeyCode::End => {
-            state.cursor = state.visible.len().saturating_sub(1);
-            PopupFlow::Continue
-        }
-        KeyCode::Right => {
-            state.descend();
-            PopupFlow::Continue
-        }
-        KeyCode::Left => {
-            state.ascend();
-            PopupFlow::Continue
-        }
-        KeyCode::Backspace if state.filter.value().is_empty() => {
-            state.ascend();
-            PopupFlow::Continue
-        }
-        // `is_command`, so AltGr (Control+Alt) types instead of toggling.
-        KeyCode::Char('h') if input::is_command(key) => {
-            state.toggle_hidden();
-            PopupFlow::Continue
-        }
-        KeyCode::Enter => match state.selected() {
-            Some(entry) if entry.is_dir || allow_files => {
-                PopupFlow::Done(entry.path.clone())
-            }
-            _ => PopupFlow::Continue,
-        },
-        _ => {
-            if state.filter.handle_key(key) {
-                state.refilter();
-            }
-            PopupFlow::Continue
-        }
-    }
-}
-
-/// Whether `path` is allowed given an optional confinement `root`: always so
-/// without a root, otherwise only when `path` lies at or below it.
-fn within_root(path: &Path, root: Option<&Path>) -> bool {
-    root.is_none_or(|root| path.starts_with(root))
-}
-
-/// Clamps `dir` into `root` (canonicalizing it first): returns the canonical
-/// `dir` when it lies within `root`, otherwise `root` itself. Without a `root`,
-/// returns `dir` unchanged.
-fn confine(dir: PathBuf, root: Option<&Path>) -> PathBuf {
-    let Some(root) = root else {
-        return dir;
-    };
-    let canonical = match dir.canonicalize() {
-        Ok(canonical) => canonical,
-        Err(error) => {
-            log::warn!(
-                "could not canonicalize {}: {error}; checking the path as given",
-                dir.display()
-            );
-            dir
-        }
-    };
-    if within_root(&canonical, Some(root)) {
-        canonical
-    } else {
-        root.to_path_buf()
-    }
-}
-
 /// How to open the [`path_picker`]: the modal `title`, the `start` directory,
 /// whether files (not just folders) are selectable, and an optional confinement
 /// `root` that navigation may not leave.
@@ -319,152 +212,15 @@ pub fn path_picker(
     )
 }
 
-fn render_body(frame: &mut Frame, inner: Rect, skin: &Skin, state: &State) {
-    let palette = &skin.palette;
-    let inner_width = inner.width as usize;
-
-    // Header (current dir), filter line, the scrollable entry list, footer. The
-    // footer always reserves its row (popup hints ignore the F1 toggle).
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(1),
-            Constraint::Length(shortcut_hints::footer_height(1)),
-        ])
-        .split(inner);
-
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            truncate(&state.dir.display().to_string(), inner_width),
-            style::secondary(palette),
-        ))),
-        rows[0],
-    );
-    // The filter carries a real caret: `Home`/`End`/`Ctrl+A` reach the field
-    // even though `Left`/`Right` are taken by browsing.
-    let mut filter =
-        vec![Span::styled(FILTER_LABEL, style::secondary(palette))];
-    filter.extend(
-        state.filter.caret_spans(
-            palette,
-            inner_width.saturating_sub(FILTER_LABEL.len()),
-        ),
-    );
-    frame.render_widget(Paragraph::new(Line::from(filter)), rows[1]);
-
-    // The list widget owns the cursor highlight, scroll-to-cursor and the
-    // scrollbar on overflow; directories keep their accent color when not
-    // under the cursor.
-    let entries: Vec<Line<'static>> = state
-        .visible
-        .iter()
-        .map(|&index| {
-            let entry = &state.entries[index];
-            let marker = if entry.is_dir { "/" } else { " " };
-            let line = Line::from(truncate(
-                &format!("{marker} {}", entry.name),
-                inner_width,
-            ));
-            if entry.is_dir {
-                line.style(style::fg(palette.accent))
-            } else {
-                line
-            }
-        })
-        .collect();
-    let viewport = list::render(
-        frame,
-        rows[2],
-        skin,
-        list::ListView {
-            rows: entries,
-            selected: state.cursor,
-            offset: &state.offset,
-        },
-    );
-    state.viewport.set(viewport);
-
-    frame.render_widget(
-        Paragraph::new(
-            shortcut_hints::lines(
-                &[
-                    ("\u{2190}\u{2192}", "browse"),
-                    ("enter", "pick"),
-                    ("ctrl+h", "hidden"),
-                ],
-                palette.accent_dim,
-                inner_width,
-            )
-            .into_iter()
-            .next()
-            .unwrap_or_default(),
-        ),
-        rows[3],
-    );
-}
-
-/// Returns `start` if it exists, else its nearest existing ancestor, else the
-/// current directory.
-fn first_existing(start: &Path) -> PathBuf {
-    let mut candidate = Some(start);
-    while let Some(path) = candidate {
-        if path.is_dir() {
-            return path.to_path_buf();
-        }
-        candidate = path.parent();
-    }
-    PathBuf::from(".")
-}
-
-fn read_entries(
-    dir: &Path,
-    allow_files: bool,
-    show_hidden: bool,
-) -> Vec<Entry> {
-    let read = match std::fs::read_dir(dir) {
-        Ok(read) => read,
-        Err(error) => {
-            log::warn!("could not read directory {}: {error}", dir.display());
-            return Vec::new();
-        }
-    };
-    let mut entries: Vec<Entry> = read
-        .flatten()
-        .filter_map(|item| {
-            let path = item.path();
-            let is_dir = path.is_dir();
-            if !is_dir && !allow_files {
-                return None;
-            }
-            let name = item.file_name().to_string_lossy().into_owned();
-            if !show_hidden && is_hidden(&name) {
-                return None;
-            }
-            Some(Entry { name, path, is_dir })
-        })
-        .collect();
-    entries.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
-    entries
-}
-
-/// Whether an entry name is hidden (dot-prefixed, the Unix convention).
-fn is_hidden(name: &str) -> bool {
-    name.starts_with('.')
-}
-
 #[cfg(test)]
 mod tests {
     use std::{fs, path::Path};
 
+    use crossterm::event::{KeyCode, KeyEvent};
+
     use crossterm::event::KeyModifiers;
 
-    use super::*;
+    use super::{fs::is_hidden, *};
 
     /// A picker over a fresh temp dir holding one visible and one hidden entry.
     /// The directory name carries the pid, so parallel test binaries cannot
@@ -479,6 +235,70 @@ mod tests {
         fs::create_dir_all(dir.join("visible")).expect("temp dir is writable");
         fs::create_dir_all(dir.join(".hidden")).expect("temp dir is writable");
         (State::new(&dir, false, None), dir)
+    }
+
+    /// A confined picker whose root holds one real folder plus a symlink
+    /// pointing at a directory *outside* the root. Returns the state and the
+    /// symlink's own path inside the root.
+    #[cfg(unix)]
+    fn picker_with_an_escaping_symlink() -> State {
+        let base = std::env::temp_dir().join(format!(
+            "ratada-path-picker-escape-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id(),
+        ));
+        let _ = fs::remove_dir_all(&base);
+        let root = base.join("root");
+        let outside = base.join("outside");
+        fs::create_dir_all(root.join("inside")).expect("temp dir is writable");
+        fs::create_dir_all(&outside).expect("temp dir is writable");
+        std::os::unix::fs::symlink(&outside, root.join("escape"))
+            .expect("symlink is allowed");
+        let canonical_root = root.canonicalize().expect("the root resolves");
+        State::new(&root, false, Some(&canonical_root))
+    }
+
+    /// Moves the cursor onto the visible entry named `name`. Matching by name
+    /// rather than by path: the picker lists the *canonicalized* directory, so
+    /// the entry paths do not equal the ones the test just built.
+    #[cfg(unix)]
+    fn select_by_name(state: &mut State, name: &str) {
+        state.cursor = state
+            .visible
+            .iter()
+            .position(|&index| state.entries[index].name == name)
+            .unwrap_or_else(|| panic!("{name} is listed"));
+    }
+
+    /// `descend` refuses to follow a symlink out of the root, but `Enter` is
+    /// the only path that hands a value back to the caller - so it must check
+    /// the confinement too, or the guarantee in the module doc is void.
+    #[cfg(unix)]
+    #[test]
+    fn enter_does_not_return_a_symlink_leading_out_of_the_root() {
+        let mut state = picker_with_an_escaping_symlink();
+        select_by_name(&mut state, "escape");
+
+        let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        assert!(
+            matches!(handle_key(&mut state, enter, false), PopupFlow::Continue),
+            "Enter handed an out-of-root path to the caller"
+        );
+    }
+
+    /// The counterpart: a folder genuinely inside the root is still selectable,
+    /// so the guard above is not simply refusing everything.
+    #[cfg(unix)]
+    #[test]
+    fn enter_still_returns_a_folder_inside_the_root() {
+        let mut state = picker_with_an_escaping_symlink();
+        select_by_name(&mut state, "inside");
+
+        let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let PopupFlow::Done(path) = handle_key(&mut state, enter, false) else {
+            panic!("a folder inside the root must be selectable");
+        };
+        assert_eq!(path.file_name(), Some("inside".as_ref()));
     }
 
     /// `Ctrl+H` toggles hidden entries, but the picker also has a filter field

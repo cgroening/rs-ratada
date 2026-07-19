@@ -7,6 +7,12 @@ use ratatui::style::{Color as RatColor, Modifier, Style};
 
 use crate::theme::{Color, Palette};
 
+/// Light backdrop for judging a color's contrast in the color pickers.
+pub(crate) const LIGHT_BG: Color = Color::hex("#e5e5e5");
+
+/// Dark backdrop for judging a color's contrast in the color pickers.
+pub(crate) const DARK_BG: Color = Color::hex("#151515");
+
 /// Converts a theme color to a ratatui color (`Default` -> `Reset`).
 pub fn to_ratatui(color: Color) -> RatColor {
     match color {
@@ -161,5 +167,47 @@ mod tests {
     fn darken_leaves_non_rgb_unchanged() {
         assert_eq!(darken(RatColor::Reset, 0.5), RatColor::Reset);
         assert_eq!(darken(RatColor::Red, 0.5), RatColor::Red);
+    }
+
+    /// This module is the crate's only `theme::Color` -> ratatui seam, so the
+    /// mapping itself is worth pinning rather than assuming.
+    #[test]
+    fn an_rgb_color_maps_channel_for_channel() {
+        assert_eq!(to_ratatui(Color::Rgb(1, 2, 3)), RatColor::Rgb(1, 2, 3));
+    }
+
+    /// `Default` means "whatever the terminal uses", which is ratatui's
+    /// `Reset` - not black, and not the palette's background.
+    #[test]
+    fn the_default_color_maps_to_reset() {
+        assert_eq!(to_ratatui(Color::Default), RatColor::Reset);
+    }
+
+    #[test]
+    fn fg_and_bg_set_only_their_own_side() {
+        let color = Color::Rgb(10, 20, 30);
+        let foreground = fg(color);
+        assert_eq!(foreground.fg, Some(RatColor::Rgb(10, 20, 30)));
+        assert_eq!(foreground.bg, None);
+
+        let background = bg(color);
+        assert_eq!(background.bg, Some(RatColor::Rgb(10, 20, 30)));
+        assert_eq!(background.fg, None);
+    }
+
+    #[test]
+    fn base_sets_both_sides_at_once() {
+        let style = base(Color::Rgb(1, 1, 1), Color::Rgb(9, 9, 9));
+        assert_eq!(style.fg, Some(RatColor::Rgb(1, 1, 1)));
+        assert_eq!(style.bg, Some(RatColor::Rgb(9, 9, 9)));
+    }
+
+    /// The two contrast backdrops the colour pickers share; they were
+    /// duplicated in both pickers before living here.
+    #[test]
+    fn the_contrast_backdrops_are_light_and_dark() {
+        let light = LIGHT_BG.luminance();
+        let dark = DARK_BG.luminance();
+        assert!(light > dark, "light {light} is not brighter than {dark}");
     }
 }

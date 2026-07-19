@@ -114,3 +114,58 @@ fn pack(brand: &str, tabs: &[(&str, &str)], width: usize) -> Vec<Vec<usize>> {
     }
     rows
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TABS: &[(&str, &str)] =
+        &[("1", "Summary"), ("2", "Tasks"), ("3", "Gallery")];
+
+    #[test]
+    fn everything_fits_on_one_row_when_wide() {
+        let rows = pack("app", TABS, 200);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0], vec![0, 1, 2]);
+    }
+
+    /// A continuation row is indented under the brand, so the brand width
+    /// counts against every row, not only the first.
+    #[test]
+    fn a_narrow_width_wraps_onto_further_rows() {
+        let rows = pack("app", TABS, 30);
+        assert!(rows.len() > 1, "expected a wrap, got {rows:?}");
+        let flat: Vec<usize> = rows.concat();
+        assert_eq!(flat, vec![0, 1, 2], "every tab must appear exactly once");
+    }
+
+    /// A tab wider than the row must still get a row of its own rather than
+    /// being dropped or looping forever.
+    #[test]
+    fn a_tab_too_wide_for_the_row_still_gets_one() {
+        let rows = pack("brand", &[("1", "an extremely long tab label")], 4);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0], vec![0]);
+    }
+
+    #[test]
+    fn no_tabs_yields_a_single_empty_row() {
+        let rows = pack("app", &[], 80);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].is_empty());
+    }
+
+    /// `height` is what a caller reserves before rendering; it must agree with
+    /// the number of rows `pack` actually produces, or the bar is clipped.
+    #[test]
+    fn the_reported_height_matches_the_packed_rows() {
+        for width in [200, 40, 30, 20, 12] {
+            let rows = pack("app", TABS, width);
+            assert_eq!(
+                height("app", TABS, width) as usize,
+                rows.len(),
+                "width {width}"
+            );
+        }
+    }
+}

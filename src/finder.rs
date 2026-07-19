@@ -4,7 +4,7 @@
 //! A thin wrapper over [`overlay::popup`]; returns the original index of the
 //! chosen item via a [`ModalSignal`].
 
-use std::{cell::Cell, io};
+use std::io;
 
 use crossterm::event::KeyCode;
 use ratatui::{
@@ -15,11 +15,12 @@ use ratatui::{
 };
 
 use super::{
-    chrome, fuzzy, input,
+    chrome,
+    filter_list::FilterList,
+    fuzzy, input,
     layout::centered_fraction,
     list,
     modal::ModalSignal,
-    nav,
     overlay::{self, PopupFlow, popup_with_paste},
     style,
     terminal::Tui,
@@ -31,13 +32,6 @@ const SEARCH_LABEL: &str = "search ";
 
 /// The state of the fuzzy finder: the query, the cursor into the filtered
 /// results, and the persistent list scroll offset.
-struct Finder {
-    query: String,
-    cursor: usize,
-    offset: Cell<usize>,
-    viewport: Cell<usize>,
-}
-
 /// Lets the user pick one entry from `items` with a live fuzzy filter. `Enter`
 /// confirms the highlighted entry (returning its index into `items`), `Esc`
 /// cancels. An empty `items` cancels immediately.
@@ -51,18 +45,13 @@ pub fn finder(
     if items.is_empty() {
         return Ok(ModalSignal::Cancelled);
     }
-    let mut state = Finder {
-        query: String::new(),
-        cursor: 0,
-        offset: Cell::new(0),
-        viewport: Cell::new(1),
-    };
+    let mut state = FilterList::new();
     popup_with_paste(
         tui,
         &mut state,
         |area, _| centered_fraction(area, 2, 3, 40, 8),
         |frame, _| render_bg(frame),
-        |frame, rect, state: &Finder| {
+        |frame, rect, state: &FilterList| {
             let inner = overlay::framed(frame, rect, skin, title);
             render_body(frame, inner, skin, items, state);
             // The badge counts the matches, not the whole item list; the
@@ -80,54 +69,16 @@ pub fn finder(
                     None => PopupFlow::Continue,
                 }
             }
-            KeyCode::Up => {
-                let len = filter(items, &state.query).len();
-                state.cursor = nav::cycle(state.cursor, len, -1);
+            // Everything else is list navigation or filter text, shared with
+            // the other filtered overlays.
+            _ => {
+                let count = filter(items, &state.query).len();
+                state.handle_key(key, count, &[]);
                 PopupFlow::Continue
             }
-            KeyCode::Down => {
-                let len = filter(items, &state.query).len();
-                state.cursor = nav::cycle(state.cursor, len, 1);
-                PopupFlow::Continue
-            }
-            KeyCode::PageUp => {
-                let len = filter(items, &state.query).len();
-                let page = state.viewport.get().max(1) as isize;
-                state.cursor = nav::step_clamped(state.cursor, len, -page);
-                PopupFlow::Continue
-            }
-            KeyCode::PageDown => {
-                let len = filter(items, &state.query).len();
-                let page = state.viewport.get().max(1) as isize;
-                state.cursor = nav::step_clamped(state.cursor, len, page);
-                PopupFlow::Continue
-            }
-            KeyCode::Home => {
-                state.cursor = 0;
-                PopupFlow::Continue
-            }
-            KeyCode::End => {
-                let len = filter(items, &state.query).len();
-                state.cursor = len.saturating_sub(1);
-                PopupFlow::Continue
-            }
-            KeyCode::Backspace => {
-                state.query.pop();
-                state.cursor = 0;
-                PopupFlow::Continue
-            }
-            KeyCode::Char(ch) => {
-                state.query.push(ch);
-                state.cursor = 0;
-                PopupFlow::Continue
-            }
-            _ => PopupFlow::Continue,
         },
         |state, text| {
-            state
-                .query
-                .extend(text.chars().filter(|ch| !ch.is_control()));
-            state.cursor = 0;
+            state.paste(&text);
             PopupFlow::Continue
         },
     )
@@ -136,18 +87,7 @@ pub fn finder(
 /// The indices of `items` matching `query`, best score first. An empty query
 /// keeps the original order.
 pub fn filter(items: &[String], query: &str) -> Vec<usize> {
-    if query.trim().is_empty() {
-        return (0..items.len()).collect();
-    }
-    let mut scored: Vec<(u32, usize)> = items
-        .iter()
-        .enumerate()
-        .filter_map(|(index, item)| {
-            fuzzy::score(item, query).map(|score| (score, index))
-        })
-        .collect();
-    scored.sort_by_key(|entry| std::cmp::Reverse(entry.0));
-    scored.into_iter().map(|(_, index)| index).collect()
+    fuzzy::rank_by(items, query, |item| item.as_str().into())
 }
 
 fn render_body(
@@ -155,7 +95,7 @@ fn render_body(
     inner: Rect,
     skin: &Skin,
     items: &[String],
-    state: &Finder,
+    state: &FilterList,
 ) {
     let palette = &skin.palette;
     let filtered = filter(items, &state.query);

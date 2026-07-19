@@ -14,7 +14,7 @@
 //! emitted through the `log` facade at `warn`/`error`; install a logger to
 //! surface them.
 //!
-//! # Example
+//! # Examples
 //!
 //! Implement [`Screen`] and hand it to [`run`], which owns the draw/input loop
 //! inside a raw-mode [`Tui`] guard:
@@ -81,6 +81,8 @@ pub mod date_range_picker;
 pub mod double_press;
 pub mod driver;
 pub mod editor;
+mod filter_list;
+
 pub mod finder;
 pub mod form;
 pub mod fuzzy;

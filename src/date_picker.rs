@@ -252,6 +252,21 @@ pub(super) fn is_weekend(day: NaiveDate) -> bool {
     day.weekday().num_days_from_monday() >= WEEKEND_START
 }
 
+/// The style of the calendar cell under the cursor (or a selected range end).
+///
+/// Shared by every calendar-style picker so the highlight looks the same in
+/// all of them; the pickers differ in *when* they apply it, not in how it looks.
+pub(super) fn cursor_cell_style(palette: &Palette) -> Style {
+    style::bg(palette.selection)
+        .fg(style::to_ratatui(palette.accent))
+        .add_modifier(Modifier::BOLD)
+}
+
+/// The style marking today's cell, when it is not under the cursor.
+pub(super) fn today_cell_style(palette: &Palette) -> Style {
+    style::fg(palette.accent_dim).add_modifier(Modifier::BOLD)
+}
+
 fn day_style(
     palette: &Palette,
     day: NaiveDate,
@@ -259,11 +274,9 @@ fn day_style(
     today: NaiveDate,
 ) -> Style {
     if day == cursor {
-        style::bg(palette.selection)
-            .fg(style::to_ratatui(palette.accent))
-            .add_modifier(Modifier::BOLD)
+        cursor_cell_style(palette)
     } else if day == today {
-        style::fg(palette.accent_dim).add_modifier(Modifier::BOLD)
+        today_cell_style(palette)
     } else if is_weekend(day) {
         style::secondary(palette)
     } else {

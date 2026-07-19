@@ -7,6 +7,8 @@
 //! [`score_indices`] hands back the score and the matched positions in one
 //! pass, for a view that ranks *and* highlights.
 
+use std::borrow::Cow;
+
 use nucleo_matcher::{
     Config, Matcher, Utf32Str,
     pattern::{CaseMatching, Normalization, Pattern},
@@ -133,6 +135,48 @@ pub fn score(haystack: &str, query: &str) -> Option<u32> {
     with_pattern(haystack, query, |pattern, utf32, matcher| {
         pattern.score(utf32, matcher)
     })
+}
+
+/// The indices of `items` matching `query`, best score first.
+///
+/// `haystack` derives the text to match each item against, so a caller can
+/// join several columns or prepend a category without building a parallel
+/// vector first. It returns a [`Cow`], so an item that already *is* its own
+/// haystack is matched without a copy while a derived one is built on the fly.
+///
+/// An empty query keeps every item, in its original order: with nothing to
+/// rank by, the caller's order is the meaningful one.
+///
+/// This is the shared ranking pass behind the filter pickers - scoring,
+/// dropping non-matches and sorting descending is one decision, and it was
+/// previously spelled out identically in three places.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::fuzzy;
+///
+/// let items = ["readme.md", "Cargo.toml", "src/lib.rs"];
+/// let ranked = fuzzy::rank_by(&items, "cgo", |item| (*item).into());
+/// assert_eq!(ranked, vec![1]);
+/// ```
+pub fn rank_by<T>(
+    items: &[T],
+    query: &str,
+    haystack: impl for<'a> Fn(&'a T) -> Cow<'a, str>,
+) -> Vec<usize> {
+    if query.trim().is_empty() {
+        return (0..items.len()).collect();
+    }
+    let mut scored: Vec<(u32, usize)> = items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            score(&haystack(item), query).map(|score| (score, index))
+        })
+        .collect();
+    scored.sort_by_key(|entry| std::cmp::Reverse(entry.0));
+    scored.into_iter().map(|(_, index)| index).collect()
 }
 
 /// Returns the char positions in `haystack` that `query` matches.

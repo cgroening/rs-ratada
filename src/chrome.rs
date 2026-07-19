@@ -309,4 +309,46 @@ mod tests {
     fn position_badge_is_empty_without_items() {
         assert!(position_badge(0, 0).is_empty());
     }
+
+    /// The three badge modes are the whole point of [`BoxDecor`]: a widget
+    /// offers its own count, a caller may override it, and either may be
+    /// suppressed. Getting `Auto` versus `Hidden` backwards would silently
+    /// drop every position indicator in the kit.
+    #[test]
+    fn auto_badge_uses_the_widgets_own_count() {
+        let decor = BoxDecor::new();
+        assert_eq!(decor.badge_text("3/9"), Some("3/9"));
+    }
+
+    #[test]
+    fn an_empty_auto_count_yields_no_badge() {
+        let decor = BoxDecor::new();
+        assert_eq!(decor.badge_text(""), None);
+    }
+
+    #[test]
+    fn an_explicit_badge_overrides_the_automatic_count() {
+        let decor = BoxDecor::new().badge("saved");
+        assert_eq!(decor.badge_text("3/9"), Some("saved"));
+    }
+
+    #[test]
+    fn a_hidden_badge_wins_over_any_count() {
+        let decor = BoxDecor::new().no_badge();
+        assert_eq!(decor.badge_text("3/9"), None);
+    }
+
+    /// `no_badge` after `badge` must clear it, not leave the text in place.
+    #[test]
+    fn hiding_after_setting_a_badge_clears_it() {
+        let decor = BoxDecor::new().badge("x").no_badge();
+        assert_eq!(decor.badge_text("3/9"), None);
+    }
+
+    #[test]
+    fn a_caption_is_optional_and_survives_the_builder() {
+        assert!(BoxDecor::new().caption.is_none());
+        let decor = BoxDecor::new().caption("Name");
+        assert_eq!(decor.caption.as_deref(), Some("Name"));
+    }
 }

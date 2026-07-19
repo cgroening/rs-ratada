@@ -168,7 +168,7 @@ fn classify(event: &Event) -> Option<TuiEvent> {
 /// Bracketed pastes carry whatever line endings the source used (Windows text
 /// arrives as `\r\n`); normalizing here means every consumer sees `\n`-only,
 /// regardless of the platform the clipboard content came from.
-fn normalize_newlines(text: &str) -> String {
+pub(crate) fn normalize_newlines(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 
@@ -245,6 +245,26 @@ mod tests {
             KeyCode::Char('s'),
             KeyModifiers::CONTROL,
         )));
+    }
+
+    /// `shortcut_hints::global_bindings` is what a host splices into its footer
+    /// and help overlay, so it is a second, hand-maintained statement of a rule
+    /// this module enforces. This ties the two together: the advertised chord,
+    /// parsed back into a key, must be the one actually intercepted. A comment
+    /// asking to keep them in sync would go stale silently; this fails.
+    #[test]
+    fn the_advertised_quit_chord_is_the_one_that_quits() {
+        let (chord, _) = crate::shortcut_hints::global_bindings()
+            .into_iter()
+            .find(|(_, label)| label.contains("quit"))
+            .expect("the global bindings name a quit chord");
+        let key = crate::keymap::KeyChord::parse(&chord)
+            .expect("the advertised chord parses")
+            .to_key();
+        assert!(
+            is_global_quit(&key),
+            "global_bindings advertises {chord:?}, which does not quit"
+        );
     }
 
     /// The quit is routed before any host or widget sees the key, which is why

@@ -11,7 +11,7 @@ A reusable [ratatui](https://ratatui.rs) widget toolkit for Rust terminal apps.
 ## Overview
 
 - **Driver** – a `Tui` RAII terminal guard (raw mode + alternate screen) and a generic `run` loop over a `Screen` trait.
-- **Widgets** – modals (`confirm`, `confirm_default`, `input`, `input_wide`, `select`, `multi_select`, `number_input`, `message`), forms, single- and multi-line text editing with a shared editor core, autocomplete, tables, trees, selectable lists, sectioned sidebars, tabs, pagers, gauges, spinners, toasts (timed, stacked, each box as tall as its wrapped message).
+- **Widgets** – modals (`confirm`, `confirm_default`, `input`, `input_wide`, `select`, `select_styled`, `select_reorderable`, `multi_select`, `multi_select_styled`, `number_input`, `number_input_bounded`, `message`), forms, single- and multi-line text editing with a shared editor core, autocomplete, tables, trees, selectable lists, sectioned sidebars, tabs, pagers, gauges, spinners, toasts (timed, stacked, each box as tall as its wrapped message).
 - **Pickers** – color, swatch, date, date-range, month, path (with an optional confinement root) and slider pickers.
 - **Overlays & chrome** – a fuzzy help overlay, a command palette, box framing, header and status bars, and wrapping shortcut-hint footers.
 - **Key bindings** – `keymap`: a `KeyChord` grammar (`"ctrl+s"`, `"shift+left"`) and a user-remappable `Keymap<A>` over an app's own `Action` enum, with footer hints and conflict detection.
