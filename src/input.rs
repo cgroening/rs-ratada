@@ -103,7 +103,8 @@ pub struct LineCaret {
     pub selection: Option<(usize, usize)>,
 }
 
-/// Whether an input is a single line or a word-wrapped box of the given width.
+/// Whether an input is a single line, a word-wrapped box, or one logical line
+/// that merely *looks* wrapped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditMode {
     /// One line: `Home`/`End` jump to the value's start/end, `Enter` is free
@@ -119,6 +120,47 @@ pub enum EditMode {
         /// The viewport height in display rows, driving `PageUp`/`PageDown`.
         height: usize,
     },
+    /// One logical line, soft-wrapped at `width` columns for display only.
+    ///
+    /// Navigation behaves as in [`EditMode::Multiline`] - `Home`/`End` act on
+    /// the display line and `Up`/`Down` walk the wrapped rows - but the buffer
+    /// never gains a `\n`: `Enter` is left to the caller and a paste drops its
+    /// line breaks, exactly as in [`EditMode::SingleLine`].
+    ///
+    /// This is the mode for a field whose value is a single line by definition
+    /// while being too long to show on one row - an expression, a query, a
+    /// path. Using [`EditMode::Multiline`] there would let a paste smuggle a
+    /// newline into a value that must not contain one.
+    Wrapped {
+        /// The wrap width in columns.
+        width: usize,
+        /// The viewport height in display rows, driving `PageUp`/`PageDown`.
+        height: usize,
+    },
+}
+
+impl EditMode {
+    /// The column count the text wraps at, or `None` when it does not wrap.
+    fn wrap_width(self) -> Option<usize> {
+        match self {
+            EditMode::SingleLine => None,
+            EditMode::Multiline { width, .. }
+            | EditMode::Wrapped { width, .. } => Some(width),
+        }
+    }
+
+    /// Whether the text is laid out over several display rows, which is what
+    /// gives `Up`/`Down` and the page keys something to move through.
+    fn is_wrapping(self) -> bool {
+        self.wrap_width().is_some()
+    }
+
+    /// Whether the buffer may contain a `\n`. Only a true multiline box may;
+    /// this is what decides whether `Enter` inserts one and whether a paste
+    /// keeps the ones it carries.
+    fn keeps_newlines(self) -> bool {
+        matches!(self, EditMode::Multiline { .. })
+    }
 }
 
 /// The overlap of the half-open range `[s, e)` with the window `[lo, hi)`, or
@@ -407,7 +449,6 @@ pub fn apply_edit_key(
 ) -> bool {
     let ctrl = is_command(key);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-    let multiline = matches!(mode, EditMode::Multiline { .. });
     let mut chars: Vec<char> = text.chars().collect();
     let len = chars.len();
     cursor.pos = cursor.pos.min(len);
@@ -453,7 +494,7 @@ pub fn apply_edit_key(
             delete_forward(&mut chars, cursor);
             true
         }
-        KeyCode::Enter if multiline => {
+        KeyCode::Enter if mode.keeps_newlines() => {
             insert_char(&mut chars, cursor, '\n', max_len);
             true
         }
@@ -578,7 +619,7 @@ fn motion_target(
     key: KeyEvent,
     mode: EditMode,
 ) -> Option<usize> {
-    let multiline = matches!(mode, EditMode::Multiline { .. });
+    let multiline = mode.is_wrapping();
     let target = match key.code {
         KeyCode::Left => pos.saturating_sub(1),
         KeyCode::Right => (pos + 1).min(text.chars().count()),
@@ -601,14 +642,15 @@ fn motion_target(
 /// (at least one). A single line has no page, so it reports one row.
 fn page(mode: EditMode) -> isize {
     match mode {
-        EditMode::Multiline { height, .. } => height.max(1) as isize,
+        EditMode::Multiline { height, .. }
+        | EditMode::Wrapped { height, .. } => height.max(1) as isize,
         EditMode::SingleLine => 1,
     }
 }
 
 /// The caret index for `Home`: the value's start, or the display line's start.
 fn line_start(text: &str, pos: usize, mode: EditMode) -> usize {
-    let EditMode::Multiline { width, .. } = mode else {
+    let Some(width) = mode.wrap_width() else {
         return 0;
     };
     let lines = textarea::wrap_offsets(text, width);
@@ -619,7 +661,7 @@ fn line_start(text: &str, pos: usize, mode: EditMode) -> usize {
 
 /// The caret index for `End`: the value's end, or the display line's end.
 fn line_end(text: &str, pos: usize, mode: EditMode) -> usize {
-    let EditMode::Multiline { width, .. } = mode else {
+    let Some(width) = mode.wrap_width() else {
         return text.chars().count();
     };
     let lines = textarea::wrap_offsets(text, width);
@@ -639,7 +681,7 @@ fn display_line_target(
     mode: EditMode,
     delta: isize,
 ) -> usize {
-    let EditMode::Multiline { width, .. } = mode else {
+    let Some(width) = mode.wrap_width() else {
         return pos;
     };
     let lines = textarea::wrap_offsets(text, width);
@@ -1137,7 +1179,7 @@ pub(crate) fn copy_selection(chars: &[char], cursor: &TextCursor) {
 /// always dropped, and newlines survive only in a multiline field, so a paste
 /// into a single-line field can never break onto a second line.
 fn paste_keep(mode: EditMode) -> fn(char) -> bool {
-    if matches!(mode, EditMode::Multiline { .. }) {
+    if mode.keeps_newlines() {
         |ch| ch == '\n' || !ch.is_control()
     } else {
         |ch| !ch.is_control()
@@ -1794,5 +1836,97 @@ mod tests {
         let mode = EditMode::SingleLine;
         paste_text(&mut text, &mut cursor, mode, None, "hi");
         assert_eq!((text.as_str(), cursor.pos, cursor.anchor), ("hi", 2, None));
+    }
+
+    /// `Wrapped` is the mode for a value that is one logical line but too long
+    /// to show on one row. Everything below is the contract that separates it
+    /// from the two modes it sits between.
+    mod wrapped {
+        use super::*;
+
+        /// Wraps at 6 columns, 3 rows tall.
+        const MODE: EditMode = EditMode::Wrapped {
+            width: 6,
+            height: 3,
+        };
+
+        fn press(
+            text: &mut String,
+            cursor: &mut TextCursor,
+            code: KeyCode,
+        ) -> bool {
+            apply_edit_key(text, cursor, KeyEvent::from(code), MODE, None)
+        }
+
+        /// The whole point of the mode: `Enter` belongs to the caller, which
+        /// uses it to submit. Consuming it here would insert a newline into a
+        /// value that must never hold one.
+        #[test]
+        fn enter_is_left_to_the_caller() {
+            let mut text = "ab".to_string();
+            let mut cursor = TextCursor::at(2);
+
+            assert!(!press(&mut text, &mut cursor, KeyCode::Enter));
+            assert_eq!(text, "ab", "the buffer must be untouched");
+        }
+
+        /// A multi-line paste collapses, as it does in a single-line field.
+        #[test]
+        fn a_paste_drops_its_line_breaks() {
+            let mut text = String::new();
+            let mut cursor = TextCursor::at(0);
+
+            paste_text(&mut text, &mut cursor, MODE, None, "one\ntwo");
+            assert!(!text.contains('\n'), "got: {text:?}");
+            assert_eq!(text, "onetwo");
+        }
+
+        /// Navigation follows the display, not the logical line: that is what
+        /// it borrows from `Multiline`.
+        #[test]
+        fn home_and_end_act_on_the_display_line() {
+            // Wrapped at 6 columns: "aaa" / "bbb".
+            let text = "aaa bbb".to_string();
+            let mut cursor = TextCursor::at(5);
+            let mut buffer = text.clone();
+
+            press(&mut buffer, &mut cursor, KeyCode::Home);
+            assert_eq!(cursor.pos, 4, "the second display line starts at 4");
+
+            press(&mut buffer, &mut cursor, KeyCode::End);
+            assert_eq!(cursor.pos, 7, "and ends at the value's end");
+        }
+
+        #[test]
+        fn up_and_down_walk_the_wrapped_rows() {
+            let mut text = "aaa bbb".to_string();
+            let mut cursor = TextCursor::at(5);
+
+            assert!(press(&mut text, &mut cursor, KeyCode::Up));
+            assert!(
+                cursor.pos < 4,
+                "moved onto the first row, got {}",
+                cursor.pos
+            );
+
+            assert!(press(&mut text, &mut cursor, KeyCode::Down));
+            assert!(cursor.pos >= 4, "back onto the second row");
+        }
+
+        /// Typing, deleting and selecting are unchanged - the mode only alters
+        /// the geometry and the newline rule.
+        #[test]
+        fn ordinary_editing_still_works() {
+            let mut text = String::new();
+            let mut cursor = TextCursor::at(0);
+
+            for ch in "abc".chars() {
+                press(&mut text, &mut cursor, KeyCode::Char(ch));
+            }
+            assert_eq!(text, "abc");
+
+            press(&mut text, &mut cursor, KeyCode::Backspace);
+            assert_eq!(text, "ab");
+        }
     }
 }

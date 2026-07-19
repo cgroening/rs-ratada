@@ -4,6 +4,10 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **`input::EditMode::Wrapped` – one logical line, soft-wrapped for display.** It navigates like `Multiline` (`Home`/`End` on the display line, `Up`/`Down` across the wrapped rows, `PageUp`/`PageDown` by the viewport height) but keeps `SingleLine`'s newline rule: `Enter` is left to the caller and a paste drops its line breaks, so the buffer never gains a `\n`. This is the mode for a field whose value is a single line by definition while being too long for one row – an expression, a query, a path. Such a field previously had to choose between wrong navigation (`SingleLine`) and a buffer that a paste could smuggle a newline into (`Multiline`).
+
 ### Removed
 
 - **Breaking: `keymap::KeyChord::code`.** It was added in 0.4.0 on spec and has no caller in any consuming app; `KeyChord::to_key` covers the one real need (synthesizing the press a chord matches). Since 0.4.0 is the release that introduced it, nothing that ever shipped can depend on it.
