@@ -23,7 +23,7 @@ A reusable [ratatui](https://ratatui.rs) widget toolkit for Rust terminal apps.
 
 ```toml
 [dependencies]
-ratada = "0.4"
+ratada = "0.5"
 ```
 
 Requires Rust 1.88 or newer (the crate uses `let`-chains).
