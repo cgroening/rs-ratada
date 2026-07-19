@@ -4,13 +4,22 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-19
+
 ### Added
 
 - **`input::EditMode::Wrapped` – one logical line, soft-wrapped for display.** It navigates like `Multiline` (`Home`/`End` on the display line, `Up`/`Down` across the wrapped rows, `PageUp`/`PageDown` by the viewport height) but keeps `SingleLine`'s newline rule: `Enter` is left to the caller and a paste drops its line breaks, so the buffer never gains a `\n`. This is the mode for a field whose value is a single line by definition while being too long for one row – an expression, a query, a path. Such a field previously had to choose between wrong navigation (`SingleLine`) and a buffer that a paste could smuggle a newline into (`Multiline`).
+- `fuzzy::rank_by` - the shared score/filter/sort pass behind the filter pickers. A caller supplies only how to derive each item's haystack (a `Cow`, so an item that already is its own haystack costs no copy); an empty query keeps every item in its original order. `finder`, `command_palette` and `table` previously spelled this out identically.
 
 ### Removed
 
 - **Breaking: `keymap::KeyChord::code`.** It was added in 0.4.0 on spec and has no caller in any consuming app; `KeyChord::to_key` covers the one real need (synthesizing the press a chord matches). Since 0.4.0 is the release that introduced it, nothing that ever shipped can depend on it.
+
+### Fixed
+
+- **A multi-word `$EDITOR` works again.** `EDITOR="code --wait"` (likewise `subl -w`, `emacs -nw`, `vim -f`) was passed to `Command::new` whole, so the OS looked for a program whose file name contains a space, failed with `ENOENT`, and the error landed in the branch that logs a warning and returns `None` - indistinguishable from the user cancelling, with the edit silently discarded. The value is now split on whitespace into program and arguments. Deliberately not via `sh -c`, which would reintroduce the injection path.
+- **`layout::centered_fraction` no longer overflows or divides by zero.** `area.width * numerator` was unchecked `u16` arithmetic on caller-supplied geometry and panicked in debug (wrapping in release) for an area wider than ~7281 columns; the fraction is now computed in `u32`. A `denominator` of zero panicked as well and is now read as "the whole area".
+- **A clipboard paste on macOS/Linux now normalizes its line endings.** Only the Windows path collapsed `\r\n` and lone `\r` to `\n`, although its doc claimed the shape was uniform; text copied out of a Windows VM, a CRLF editor or a browser text area therefore reached a field through `pbpaste`/`xclip` with stray `\r` control characters. Both paths and `terminal`'s bracketed-paste seam now share one normalizer. Its tests were `#[cfg(all(test, windows))]` and so never ran on the development machine; they are platform-independent now.
 
 ### Security
 
@@ -18,22 +27,12 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 - **`opener::open` no longer goes through `cmd.exe` on Windows.** It ran `cmd /C start`, which is a shell: Rust escapes arguments for the CRT `argv` convention, not for `cmd`'s own handling of `&`, `|`, `^` and `%VAR%`, so a file name carrying one of those could break out (the class of CVE-2024-24576). It now uses `rundll32 url.dll,FileProtocolHandler`, which takes the path as a single argument with no shell involved. This makes the module's long-standing "never a shell" documentation true on every platform. **Untested on Windows** - the change was made on macOS and needs a check there.
 - **A path is no longer mistaken for an option by the platform opener.** `open`/`xdg-open` parse their arguments, so a *relative* path to a file named e.g. `-a` arrived as a flag (`open -a` even swallows the next token as an application name). `opener::open` now makes the path absolute first, which closes this on every platform without depending on a `--` separator that not all `xdg-open` implementations honour.
 
-### Fixed
-
-- **A multi-word `$EDITOR` works again.** `EDITOR="code --wait"` (likewise `subl -w`, `emacs -nw`, `vim -f`) was passed to `Command::new` whole, so the OS looked for a program whose file name contains a space, failed with `ENOENT`, and the error landed in the branch that logs a warning and returns `None` - indistinguishable from the user cancelling, with the edit silently discarded. The value is now split on whitespace into program and arguments. Deliberately not via `sh -c`, which would reintroduce the injection path.
-- **`layout::centered_fraction` no longer overflows or divides by zero.** `area.width * numerator` was unchecked `u16` arithmetic on caller-supplied geometry and panicked in debug (wrapping in release) for an area wider than ~7281 columns; the fraction is now computed in `u32`. A `denominator` of zero panicked as well and is now read as "the whole area".
-- **A clipboard paste on macOS/Linux now normalizes its line endings.** Only the Windows path collapsed `\r\n` and lone `\r` to `\n`, although its doc claimed the shape was uniform; text copied out of a Windows VM, a CRLF editor or a browser text area therefore reached a field through `pbpaste`/`xclip` with stray `\r` control characters. Both paths and `terminal`'s bracketed-paste seam now share one normalizer. Its tests were `#[cfg(all(test, windows))]` and so never ran on the development machine; they are platform-independent now.
-- Nothing else user-visible: this release pins the 0.4.0 key-handling rules with tests.
-
-### Added
-
-- `fuzzy::rank_by` - the shared score/filter/sort pass behind the filter pickers. A caller supplies only how to derive each item's haystack (a `Cow`, so an item that already is its own haystack costs no copy); an empty query keeps every item in its original order. `finder`, `command_palette` and `table` previously spelled this out identically.
-
 ### Internal
 
 - **Thirteen modules are split into child modules along responsibility lines**, following the pattern `table/` already used: the type stays in `mod.rs` and its methods move into sibling `impl` blocks. `input` (1179 non-test lines, now 28), `markdown/render`, `modal` (six unrelated widget families in one file, now one per family), `swatches`, `keymap`, `color_picker`, `sidebar` (a 22-method impl, now four), `theme::color` (19 methods), `form`, `path_picker`, `command_palette`, `shortcut_hints` and `textarea`. **The module paths and every public item are unchanged** - `clibase` builds and tests against this without a single edit, which is what makes the claim checkable.
 - **`filter_list::FilterList`** now carries the query buffer, cursor, scroll state and the whole navigation/typing key dispatch shared by `finder`, `help` and `command_palette`. The three were near-verbatim copies of it - including the `Ctrl` guard and the `Tab` section jump - so a fix reached at most one of them. Their public signatures are unchanged.
-- `markdown/theme.rs` no longer holds 34 raw `ratatui::style::Color::Rgb` literals. Its palette is declared in `theme::Color` and mapped through `style::to_ratatui`, restoring the invariant that `style.rs` is the single seam. The rendered colours are identical, pinned by a test asserting literal RGB values. Every Ctrl guard, the `AltGr`-must-type rule of each filter buffer, `is_bare_character`'s `Alt` clause, `is_global_quit`, and `keymap::Action::overlaps` now have a test that fails if the behaviour is reverted. Several were previously provable only by reading the code - and one, `is_bare_character`'s `Alt` clause, could be deleted with every doctest still green.
+- `markdown/theme.rs` no longer holds 34 raw `ratatui::style::Color::Rgb` literals. Its palette is declared in `theme::Color` and mapped through `style::to_ratatui`, restoring the invariant that `style.rs` is the single seam. The rendered colours are identical, pinned by a test asserting literal RGB values.
+- **The 0.4.0 key-handling rules are now pinned by tests.** Every Ctrl guard, the `AltGr`-must-type rule of each filter buffer, `is_bare_character`'s `Alt` clause, `is_global_quit`, and `keymap::Action::overlaps` now have a test that fails if the behaviour is reverted. Several were previously provable only by reading the code - and one, `is_bare_character`'s `Alt` clause, could be deleted with every doctest still green.
 
 ## [0.4.0] - 2026-07-17
 
@@ -157,7 +156,8 @@ Crate-wide cleanup and API consolidation. This release contains breaking changes
 - `textarea` now reuses the shared single-line edit core from `input` (SSOT).
 - Documentation synced with the code and the public API surface tightened.
 
-[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/cgroening/rs-ratada/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/cgroening/rs-ratada/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/cgroening/rs-ratada/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/cgroening/rs-ratada/compare/v0.2.0...v0.3.0
