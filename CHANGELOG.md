@@ -4,6 +4,14 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **`Tui::for_test(width, height)` – a terminal guard a test can actually build.** The other two constructors enable raw mode and enter the alternate screen, so a consuming app could never construct the context its key handlers take: driving a keypress in a test meant reconfiguring the developer's own terminal. The test guard renders into an in-memory `TestBackend`, runs no lifecycle hooks, and `Drop` restores nothing – restoring would disable raw mode for the whole test process and write escape sequences to the real stdout. Only terminal-free key paths can be exercised this way: a handler that opens a modal still reaches `read_event`, which blocks on real stdin regardless of the backend.
+
+### Internal
+
+- `Tui`'s backend is now an enum over `CrosstermBackend<Stdout>` and `TestBackend` instead of a type alias for the former. Deliberately not a type parameter on `Tui`: every consuming app takes `&mut Tui`, so `Tui<B>` would ripple a generic through each of those signatures to serve a case only tests need. The variant also *is* the fact `Drop` asks about – whether this guard ever took the screen – so no separate flag has to be kept in sync with it. `TestBackend`'s `Infallible` errors are widened into the enum's `io::Error` through an empty `match`, which proves rather than asserts that the conversion is unreachable. The public API is otherwise unchanged.
+
 ## [0.5.0] - 2026-07-19
 
 ### Added

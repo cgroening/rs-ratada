@@ -1,6 +1,7 @@
 //! RAII terminal guard and event reader.
 
 use std::{
+    convert::Infallible,
     io::{self, Stdout},
     time::Duration,
 };
@@ -18,11 +19,133 @@ use crossterm::{
 // `enter_screen`).
 #[cfg(not(windows))]
 use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
-use ratatui::{Frame, Terminal, backend::CrosstermBackend};
+use ratatui::{
+    Frame, Terminal,
+    backend::{ClearType, CrosstermBackend, TestBackend, WindowSize},
+    buffer::Cell,
+    layout::{Position, Size},
+};
 
 use crate::input;
 
-type Backend = CrosstermBackend<Stdout>;
+/// What a [`Tui`] renders into: the real terminal, or an in-memory buffer.
+///
+/// An enum rather than a type parameter on [`Tui`]: every consuming app takes
+/// `&mut Tui`, so a `Tui<B>` would ripple a generic through each of those
+/// signatures to serve a case only tests need. The variant also *is* the fact
+/// [`Tui::drop`] asks about - whether this guard ever took the screen - so no
+/// separate flag has to be kept in sync with it.
+enum Backend {
+    /// The real terminal: raw mode plus alternate screen, restored on drop.
+    Crossterm(CrosstermBackend<Stdout>),
+    /// An in-memory buffer for tests, touching no real terminal.
+    Test(TestBackend),
+}
+
+/// Widens a [`TestBackend`]'s [`Infallible`] error into the enum's `io::Error`.
+///
+/// The empty `match` is the proof rather than a claim: `Infallible` has no
+/// variants, so there is no value to convert and no panic to reach.
+fn never(error: Infallible) -> io::Error {
+    match error {}
+}
+
+impl ratatui::backend::Backend for Backend {
+    type Error = io::Error;
+
+    fn draw<'a, I>(&mut self, content: I) -> io::Result<()>
+    where
+        I: Iterator<Item = (u16, u16, &'a Cell)>,
+    {
+        match self {
+            Backend::Crossterm(backend) => backend.draw(content),
+            Backend::Test(backend) => backend.draw(content).map_err(never),
+        }
+    }
+
+    fn append_lines(&mut self, lines: u16) -> io::Result<()> {
+        match self {
+            Backend::Crossterm(backend) => backend.append_lines(lines),
+            Backend::Test(backend) => {
+                backend.append_lines(lines).map_err(never)
+            }
+        }
+    }
+
+    fn hide_cursor(&mut self) -> io::Result<()> {
+        match self {
+            Backend::Crossterm(backend) => backend.hide_cursor(),
+            Backend::Test(backend) => backend.hide_cursor().map_err(never),
+        }
+    }
+
+    fn show_cursor(&mut self) -> io::Result<()> {
+        match self {
+            Backend::Crossterm(backend) => backend.show_cursor(),
+            Backend::Test(backend) => backend.show_cursor().map_err(never),
+        }
+    }
+
+    fn get_cursor_position(&mut self) -> io::Result<Position> {
+        match self {
+            Backend::Crossterm(backend) => backend.get_cursor_position(),
+            Backend::Test(backend) => {
+                backend.get_cursor_position().map_err(never)
+            }
+        }
+    }
+
+    fn set_cursor_position<P: Into<Position>>(
+        &mut self,
+        position: P,
+    ) -> io::Result<()> {
+        match self {
+            Backend::Crossterm(backend) => {
+                backend.set_cursor_position(position)
+            }
+            Backend::Test(backend) => {
+                backend.set_cursor_position(position).map_err(never)
+            }
+        }
+    }
+
+    fn clear(&mut self) -> io::Result<()> {
+        match self {
+            Backend::Crossterm(backend) => backend.clear(),
+            Backend::Test(backend) => backend.clear().map_err(never),
+        }
+    }
+
+    fn clear_region(&mut self, clear_type: ClearType) -> io::Result<()> {
+        match self {
+            Backend::Crossterm(backend) => backend.clear_region(clear_type),
+            Backend::Test(backend) => {
+                backend.clear_region(clear_type).map_err(never)
+            }
+        }
+    }
+
+    fn size(&self) -> io::Result<Size> {
+        match self {
+            Backend::Crossterm(backend) => backend.size(),
+            Backend::Test(backend) => backend.size().map_err(never),
+        }
+    }
+
+    fn window_size(&mut self) -> io::Result<WindowSize> {
+        match self {
+            Backend::Crossterm(backend) => backend.window_size(),
+            Backend::Test(backend) => backend.window_size().map_err(never),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Backend::Crossterm(backend) => backend.flush(),
+            Backend::Test(backend) => backend.flush().map_err(never),
+        }
+    }
+}
 
 /// A terminal input event relevant to the app.
 ///
@@ -83,11 +206,37 @@ impl Tui {
         let on_enter: Box<dyn Fn()> = Box::new(on_enter);
         let on_leave: Box<dyn Fn()> = Box::new(on_leave);
         on_enter();
-        let terminal = Terminal::new(CrosstermBackend::new(out))?;
+        let terminal =
+            Terminal::new(Backend::Crossterm(CrosstermBackend::new(out)))?;
         Ok(Self {
             terminal,
             on_enter,
             on_leave,
+        })
+    }
+
+    /// Creates a guard over an in-memory `width` by `height` buffer for tests.
+    ///
+    /// Touches no real terminal: no raw mode, no alternate screen, no hooks,
+    /// and `Drop` restores nothing. It exists so a consuming app can build the
+    /// context its key handlers take and drive them from a test, which is
+    /// otherwise impossible - the only other constructors reconfigure the
+    /// developer's own terminal.
+    ///
+    /// Only terminal-free key paths can be exercised this way. A handler that
+    /// opens a modal reaches [`Tui::read_event`], which blocks on real stdin
+    /// regardless of the backend, and one that shells out reaches
+    /// [`Tui::suspend`], which does reconfigure the real terminal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if the in-memory terminal cannot be created.
+    pub fn for_test(width: u16, height: u16) -> io::Result<Self> {
+        let backend = Backend::Test(TestBackend::new(width, height));
+        Ok(Self {
+            terminal: Terminal::new(backend)?,
+            on_enter: Box::new(|| {}),
+            on_leave: Box::new(|| {}),
         })
     }
 
@@ -136,6 +285,12 @@ impl Tui {
 
 impl Drop for Tui {
     fn drop(&mut self) {
+        // A test guard never took the screen, so it has nothing to give back.
+        // Restoring anyway would disable raw mode for the whole test process
+        // and write escape sequences to the real stdout.
+        if matches!(self.terminal.backend(), Backend::Test(_)) {
+            return;
+        }
         // Drop cannot return the error, so log it: a failed restore leaves the
         // terminal in raw mode / the alternate screen, which the user must
         // otherwise recover blindly.
@@ -215,6 +370,38 @@ mod tests {
     use crossterm::event::KeyModifiers;
 
     use super::*;
+
+    /// The point of the test backend: a guard a test can build and draw
+    /// through, without a terminal to reconfigure.
+    #[test]
+    fn a_test_guard_renders_into_its_own_buffer() {
+        let mut tui = Tui::for_test(12, 2).expect("in-memory terminal");
+        tui.draw(|frame| {
+            frame.render_widget(
+                ratatui::widgets::Paragraph::new("hello"),
+                frame.area(),
+            );
+        })
+        .expect("draw");
+        let Backend::Test(backend) = tui.terminal.backend() else {
+            panic!("for_test must build a test backend");
+        };
+        let rendered: String =
+            (0..12).map(|x| backend.buffer()[(x, 0)].symbol()).collect();
+        assert_eq!(rendered.trim_end(), "hello");
+    }
+
+    /// A test guard must not run the real restore on drop: that would disable
+    /// raw mode for the whole test process and write escape sequences to the
+    /// developer's stdout, corrupting whatever else runs in it.
+    #[test]
+    fn dropping_a_test_guard_leaves_the_real_terminal_alone() {
+        drop(Tui::for_test(4, 1).expect("in-memory terminal"));
+        assert!(
+            !crossterm::terminal::is_raw_mode_enabled()
+                .expect("raw mode state"),
+        );
+    }
 
     #[test]
     fn normalize_newlines_collapses_crlf_and_lone_cr() {
