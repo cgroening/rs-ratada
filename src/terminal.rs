@@ -1,6 +1,8 @@
 //! RAII terminal guard and event reader.
 
 use std::{
+    cell::RefCell,
+    collections::VecDeque,
     convert::Infallible,
     io::{self, Stdout},
     time::Duration,
@@ -247,9 +249,11 @@ impl Tui {
     }
 
     /// Blocks for the next key or resize event, skipping key releases.
+    ///
+    /// Reads through [`read_raw_event`], so a scripted queue drives it.
     pub fn read_event(&self) -> io::Result<TuiEvent> {
         loop {
-            let event = event::read()?;
+            let event = read_raw_event()?;
             if let Some(classified) = classify(&event) {
                 return Ok(classified);
             }
@@ -262,11 +266,10 @@ impl Tui {
         &self,
         timeout: Duration,
     ) -> io::Result<Option<TuiEvent>> {
-        if event::poll(timeout)? {
-            let event = event::read()?;
-            return Ok(classify(&event));
+        match poll_raw_event(timeout)? {
+            Some(event) => Ok(classify(&event)),
+            None => Ok(None),
         }
-        Ok(None)
     }
 
     /// Restores the terminal, runs `action` (e.g. an external editor), then
@@ -299,6 +302,101 @@ impl Drop for Tui {
         }
         (self.on_leave)();
     }
+}
+
+thread_local! {
+    /// This thread's scripted input, or `None` when reads go to the terminal.
+    ///
+    /// Thread-local rather than a global lock because the test harness runs
+    /// each `#[test]` on its own thread: a per-thread queue needs no locking
+    /// and cannot leak between tests running in parallel.
+    static SCRIPT: RefCell<Option<VecDeque<Event>>> = const {
+        RefCell::new(None)
+    };
+}
+
+/// Installs a scripted key sequence for this thread, replacing any previous
+/// one, so a test can answer a modal instead of blocking on stdin.
+///
+/// Every reader in this crate draws from it, and so does any consuming app
+/// that reads through [`read_raw_event`] - one ordered queue, which is what
+/// lets a single keypress cross an app's own loop and a modal of this crate's
+/// in the right order.
+///
+/// Once installed, a queue that runs dry is an **error**, never a fall back to
+/// the terminal: an under-fed test must fail in milliseconds rather than hang
+/// waiting for a key nobody will press. Call [`clear_scripted_input`] to go
+/// back to the real terminal.
+pub fn script_keys(keys: impl IntoIterator<Item = KeyEvent>) {
+    let queued = keys.into_iter().map(Event::Key).collect();
+    SCRIPT.with(|script| *script.borrow_mut() = Some(queued));
+}
+
+/// Removes this thread's scripted input, so reads go to the terminal again.
+pub fn clear_scripted_input() {
+    SCRIPT.with(|script| *script.borrow_mut() = None);
+}
+
+/// How many scripted events are still queued, or `None` when no script is
+/// installed.
+///
+/// A test asserts on this to prove the keys it queued were actually consumed:
+/// a leftover answer means the modal never opened, which would otherwise pass
+/// as a green test proving nothing.
+#[must_use]
+pub fn scripted_remaining() -> Option<usize> {
+    SCRIPT.with(|script| script.borrow().as_ref().map(VecDeque::len))
+}
+
+/// Takes the next scripted event, or reports that the script is installed but
+/// exhausted. `Ok(None)` means no script is installed at all.
+fn next_scripted_event() -> io::Result<Option<Event>> {
+    SCRIPT.with(|script| match script.borrow_mut().as_mut() {
+        None => Ok(None),
+        Some(queue) => queue.pop_front().map(Some).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "scripted input exhausted",
+            )
+        }),
+    })
+}
+
+/// The next terminal event: from this thread's scripted queue when one is
+/// installed, else from the real terminal.
+///
+/// The single seam through which input enters. A consuming app with its own
+/// event source must read through this rather than calling crossterm, or its
+/// loops cannot be driven from a test - and, because the queue is shared, its
+/// keys would fall out of order against this crate's modals.
+///
+/// # Errors
+///
+/// Returns an I/O error when the terminal cannot be read, or `UnexpectedEof`
+/// when a scripted queue is exhausted.
+pub fn read_raw_event() -> io::Result<Event> {
+    match next_scripted_event()? {
+        Some(event) => Ok(event),
+        None => event::read(),
+    }
+}
+
+/// Like [`read_raw_event`], but gives up after `timeout`.
+///
+/// A scripted queue answers at once either way: it either has an event or is
+/// exhausted, so it never waits out the timeout.
+///
+/// # Errors
+///
+/// As [`read_raw_event`].
+pub fn poll_raw_event(timeout: Duration) -> io::Result<Option<Event>> {
+    if let Some(event) = next_scripted_event()? {
+        return Ok(Some(event));
+    }
+    if event::poll(timeout)? {
+        return event::read().map(Some);
+    }
+    Ok(None)
 }
 
 /// Maps a crossterm event to a [`TuiEvent`], or `None` for events the app
@@ -401,6 +499,78 @@ mod tests {
             !crossterm::terminal::is_raw_mode_enabled()
                 .expect("raw mode state"),
         );
+    }
+
+    /// A scripted key is handed back in the order it was queued, so a test can
+    /// answer a modal's prompts one after another.
+    #[test]
+    fn scripted_keys_are_read_back_in_order() {
+        script_keys([
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+        ]);
+
+        let first = read_raw_event().expect("a scripted event");
+        let second = read_raw_event().expect("a scripted event");
+
+        assert_eq!(
+            first,
+            Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)),
+        );
+        assert_eq!(
+            second,
+            Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+        );
+        clear_scripted_input();
+    }
+
+    /// The property the whole seam rests on: an exhausted script must fail, not
+    /// fall back to the terminal. A test that queues too few keys has to fail
+    /// in milliseconds instead of hanging forever on a key nobody will press.
+    ///
+    /// This test would hang rather than fail if the rule were broken, which is
+    /// exactly the failure it guards against.
+    #[test]
+    fn an_exhausted_script_errors_instead_of_reading_the_terminal() {
+        script_keys([]);
+
+        let error = read_raw_event().expect_err("an exhausted script");
+
+        assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+        clear_scripted_input();
+    }
+
+    /// The timeout variant must answer from the script too, or a form loop
+    /// polling for its toast expiry would fall through to the real terminal.
+    #[test]
+    fn polling_answers_from_the_script_without_waiting() {
+        script_keys([KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)]);
+
+        let polled = poll_raw_event(Duration::from_secs(0))
+            .expect("a scripted event")
+            .expect("not a timeout");
+
+        assert_eq!(
+            polled,
+            Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+        );
+        clear_scripted_input();
+    }
+
+    /// `scripted_remaining` is how a test proves its answers were consumed;
+    /// it must distinguish "no script" from "script, now empty".
+    #[test]
+    fn the_remaining_count_tracks_consumption_and_clearing() {
+        assert_eq!(scripted_remaining(), None, "no script by default");
+
+        script_keys([KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)]);
+        assert_eq!(scripted_remaining(), Some(1));
+
+        let _ = read_raw_event().expect("a scripted event");
+        assert_eq!(scripted_remaining(), Some(0), "installed but drained");
+
+        clear_scripted_input();
+        assert_eq!(scripted_remaining(), None, "back to the terminal");
     }
 
     #[test]

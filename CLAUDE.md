@@ -229,6 +229,8 @@ For individual functions, small scripts, or code only for personal use, the scop
 - **Unit tests** in the respective file under `#[cfg(test)] mod tests { … }` with `use super::*;`; **integration tests** in the `tests/` directory.
 - Test functions `#[test]`, names describe the expected behavior; error cases where appropriate with `#[should_panic]` or `Result` return. FIRST and fakes-over-mocks apply.
 - Doctests in `# Examples` count as tests and must run.
+- **Driving a terminal app from a test:** `terminal.rs` owns both halves. `Tui::for_test(w, h)` renders into an in-memory `TestBackend` (no raw mode, no alternate screen, `Drop` restores nothing), and `script_keys` installs a thread-local key queue every reader in this crate draws from, so a modal can be answered instead of blocking on stdin. An installed queue that runs dry returns `UnexpectedEof` and **never falls back to the terminal** – that is what turns an under-fed test into a fast failure rather than a hung run; `scripted_remaining` lets a test prove its answers were consumed at all.
+- **`read_raw_event`/`poll_raw_event` are the one seam through which input enters.** Nothing in this crate may call `crossterm::event::read`/`poll` directly, and neither may a consuming app with its own event source: the queue is shared, so a keypress crossing the app's loop and one of our modals stays in order only if both read through here.
 
 ### 7.9 Security
 
