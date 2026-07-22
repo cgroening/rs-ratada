@@ -4,6 +4,10 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **`editor::edit_in_editor` / `edit_in_editor_as` normalise the edited text's line endings.** The returned text was trimmed with `trim_end_matches('\n')`, so an editor configured for CRLF (Notepad, VS Code with `files.eol = "\r\n"`, `vim` with `fileformat=dos`) handed the caller back interior `\r\n` **and** a trailing lone `\r` - `"text\r\n"` trimmed to `"text\r"`. Both now collapse to LF through the existing `normalize_newlines`, which is what every other text entering an `input`/`textarea` buffer already goes through (typing inserts `'\n'`, and both the clipboard reader and bracketed paste normalise). A consuming app therefore no longer has to guess whether a `\r` can reach a buffer depending on which way the text arrived. The read/normalise/trim step is now the pure `edited_text`, so the rule is unit-tested rather than sitting behind `Command` and `Tui::suspend`.
+
 ### Added
 
 - **Scripted input – `script_keys` / `clear_scripted_input` / `scripted_remaining`, plus the `read_raw_event` / `poll_raw_event` seam.** `script_keys` installs a key sequence for the current thread; every reader in this crate draws from it, so a test can answer a modal instead of blocking on stdin. Thread-local rather than a global lock because the test harness runs each `#[test]` on its own thread: no locking, and no leaking between tests running in parallel. **An installed queue that runs dry is an error (`UnexpectedEof`), never a fall back to the terminal** – an under-fed test has to fail in milliseconds instead of hanging on a key nobody will press. `scripted_remaining` lets a test assert its answers were actually consumed; a leftover one means the modal never opened, which would otherwise read as a green test proving nothing. A consuming app with its own event source should read through `read_raw_event`/`poll_raw_event` rather than calling crossterm directly: the queue is shared, so a single keypress can cross the app's own loop and one of this crate's modals in the right order. Cost in a normal run: one thread-local read per event.

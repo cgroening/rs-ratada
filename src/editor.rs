@@ -11,6 +11,7 @@ use std::{
 };
 
 use super::terminal::Tui;
+use super::terminal::normalize_newlines;
 
 /// Resolves the editor command: `$VISUAL`, then `$EDITOR`, then `vi`.
 pub fn resolve_editor() -> String {
@@ -20,7 +21,8 @@ pub fn resolve_editor() -> String {
 }
 
 /// Edits `initial` in `editor` via a plain-text temp file, returning the text
-/// (trailing newlines trimmed), or `None` when the editor could not be run.
+/// (line endings normalised to LF, trailing newlines trimmed), or `None` when
+/// the editor could not be run.
 ///
 /// Use [`edit_in_editor_as`] when the text has a syntax the editor should
 /// recognise.
@@ -78,8 +80,7 @@ pub fn edit_in_editor_as(
 
     let result = match status {
         Ok(code) if code.success() => {
-            let text = std::fs::read_to_string(&path)?;
-            Some(text.trim_end_matches('\n').to_string())
+            Some(edited_text(&std::fs::read_to_string(&path)?))
         }
         Ok(code) => {
             log::warn!("editor '{editor}' exited with {code}; discarding edit");
@@ -94,6 +95,17 @@ pub fn edit_in_editor_as(
         log::debug!("could not remove temp file {}: {error}", path.display());
     }
     Ok(result)
+}
+
+/// The text an editor session produced: line endings normalised to LF and
+/// trailing blank lines dropped.
+///
+/// Normalising *before* trimming is what makes an editor configured for CRLF
+/// (Notepad, `files.eol=\r\n`, `fileformat=dos`) behave: trimming only `\n`
+/// would leave a lone `\r` behind on `"text\r\n"`, and every interior `\r\n`
+/// would ride out into the caller's buffer.
+fn edited_text(raw: &str) -> String {
+    normalize_newlines(raw).trim_end_matches('\n').to_string()
 }
 
 /// Splits an `$EDITOR` value into the program and its leading arguments.
@@ -144,6 +156,24 @@ mod tests {
         let (program, args) = split_editor("emacs -nw -Q");
         assert_eq!(program, "emacs");
         assert_eq!(args, vec!["-nw", "-Q"]);
+    }
+
+    /// An editor that writes CRLF must not leak either an interior `\r\n` or
+    /// a trailing lone `\r` into the returned text.
+    #[test]
+    fn edited_text_normalises_crlf_and_trims_the_trailing_break() {
+        assert_eq!(edited_text("text\r\n"), "text");
+        assert_eq!(edited_text("a\r\nb\r\n"), "a\nb");
+        assert!(!edited_text("a\r\nb\r\n").contains('\r'));
+    }
+
+    /// LF input is already right, and a body's interior blank lines are
+    /// content - only the trailing ones go.
+    #[test]
+    fn edited_text_keeps_lf_input_and_interior_blank_lines() {
+        assert_eq!(edited_text("a\n\nb\n\n\n"), "a\n\nb");
+        assert_eq!(edited_text("plain"), "plain");
+        assert_eq!(edited_text(""), "");
     }
 
     #[test]
