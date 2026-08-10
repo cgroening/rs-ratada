@@ -76,6 +76,8 @@ pub mod chrome;
 pub mod clipboard;
 pub mod color_picker;
 pub mod command_palette;
+mod date_entry;
+
 pub mod date_picker;
 pub mod date_range_picker;
 pub mod double_press;
