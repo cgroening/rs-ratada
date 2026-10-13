@@ -5,7 +5,9 @@
 //! Yes/no questions go through [`confirm`], which lets `Enter` mean yes. A
 //! destructive action goes through [`confirm_default`] with
 //! [`Question::declining`] instead, so a stray `Enter` cannot confirm the
-//! deletion.
+//! deletion. [`confirm_styled`] asks the same question with a frame title and
+//! a body the caller styles line by line, for a dialog that shows what is
+//! about to be affected rather than one plain sentence.
 //!
 //! Every modal takes a [`crate::theme::Skin`], whose palette drives the colors.
 
@@ -16,7 +18,9 @@ mod picker;
 mod render;
 mod text_input;
 
-pub use confirm::{Question, confirm, confirm_default};
+pub use confirm::{
+    Question, StyledQuestion, confirm, confirm_default, confirm_styled,
+};
 pub use message::message;
 pub use number::{number_input, number_input_bounded};
 pub use picker::{
@@ -41,10 +45,16 @@ mod tests {
 
     use ratatui::layout::Rect;
 
-    use ratatui::{Terminal, backend::TestBackend};
+    use std::cell::RefCell;
+
+    use ratatui::{Terminal, backend::TestBackend, text::Line};
 
     use super::{
-        confirm::{Question, confirm_area, confirm_key, render_confirm},
+        ModalSignal,
+        confirm::{
+            Question, StyledQuestion, confirm_area, confirm_key,
+            confirm_styled, render_confirm, render_styled, styled_area,
+        },
         message::message_area,
         picker::navigate_list,
         render::{
@@ -55,6 +65,7 @@ mod tests {
     use crate::{
         overlay::PopupFlow,
         shortcut_hints,
+        terminal::{Tui, clear_scripted_input, script_keys},
         theme::{
             ColorOverrides, GlyphVariant, Glyphs, Palette, Skin, ThemeRegistry,
         },
@@ -288,6 +299,114 @@ mod tests {
         let total = total.expect("the first prompt line is drawn");
         assert_eq!(factor, Some(total + 1));
         assert_eq!(hints, Some(total + 3), "the hint block stays in view");
+    }
+
+    /// Draws a styled confirm dialog on a real frame and returns the text of
+    /// every screen row.
+    fn rendered_styled(question: &StyledQuestion<'_>) -> Vec<String> {
+        let backend = TestBackend::new(SCREEN.width, SCREEN.height);
+        let mut terminal = Terminal::new(backend).expect("a test terminal");
+        terminal
+            .draw(|frame| {
+                let rect = styled_area(question, frame.area());
+                render_styled(frame, &skin(), question, rect);
+            })
+            .expect("the frame draws");
+        let buffer = terminal.backend().buffer();
+        (0..SCREEN.height)
+            .map(|y| {
+                (0..SCREEN.width).map(|x| buffer[(x, y)].symbol()).collect()
+            })
+            .collect()
+    }
+
+    fn two_rows(_width: u16) -> Vec<Line<'static>> {
+        vec![Line::from("Date:    today"), Line::from("Amount:  -4,20")]
+    }
+
+    #[test]
+    fn a_styled_confirm_shows_its_title_body_rows_and_hints() {
+        let question = StyledQuestion {
+            title: " Delete? ",
+            lines: &two_rows,
+            default_yes: true,
+        };
+        let rows = rendered_styled(&question);
+        let title = rows.iter().position(|row| row.contains(" Delete? "));
+        let date = rows.iter().position(|row| row.contains("Date:    today"));
+        let amount = rows.iter().position(|row| row.contains("Amount:  -4,20"));
+        let hints = rows.iter().position(|row| row.contains("enter/y"));
+        let title = title.expect("the title sits in the frame");
+        assert_eq!(date, Some(title + 1));
+        assert_eq!(amount, Some(title + 2));
+        assert_eq!(hints, Some(title + 4), "the hint block stays in view");
+    }
+
+    #[test]
+    fn a_styled_confirm_box_grows_one_row_per_further_body_line() {
+        let question = StyledQuestion {
+            title: " Delete? ",
+            lines: &two_rows,
+            default_yes: true,
+        };
+        assert_eq!(
+            styled_area(&question, SCREEN).height,
+            hinted_box_height() + 1
+        );
+    }
+
+    /// A title longer than the body must not be cut off by a box sized for
+    /// the body alone.
+    #[test]
+    fn a_styled_confirm_box_is_wide_enough_for_a_long_title() {
+        let title = " Combine all of these into one transaction? ";
+        let question = StyledQuestion {
+            title,
+            lines: &|_| vec![Line::from("x")],
+            default_yes: true,
+        };
+        let rows = rendered_styled(&question);
+        assert!(rows.iter().any(|row| row.contains(title)));
+    }
+
+    /// Sizing and drawing must ask for the same body width, or a body that
+    /// wraps to it would be measured at one height and drawn at another.
+    #[test]
+    fn a_styled_confirm_asks_for_one_body_width_when_sizing_and_drawing() {
+        let seen = RefCell::new(Vec::new());
+        let lines = |width: u16| {
+            seen.borrow_mut().push(width);
+            vec![Line::from("x".repeat(usize::from(width)))]
+        };
+        let question = StyledQuestion {
+            title: " Wide ",
+            lines: &lines,
+            default_yes: true,
+        };
+        rendered_styled(&question);
+        let seen = seen.borrow();
+        assert!(seen.len() >= 2);
+        assert!(seen.iter().all(|width| *width == seen[0]), "{seen:?}");
+    }
+
+    #[test]
+    fn a_styled_confirm_honours_its_enter_default() {
+        let mut tui = Tui::for_test(SCREEN.width, SCREEN.height)
+            .expect("an in-memory terminal");
+        for default_yes in [true, false] {
+            script_keys([key(KeyCode::Enter)]);
+            let question = StyledQuestion {
+                title: " Delete? ",
+                lines: &two_rows,
+                default_yes,
+            };
+            let answer = confirm_styled(&mut tui, &skin(), &question, |_| {})
+                .expect("the scripted modal runs");
+            assert!(
+                matches!(answer, ModalSignal::Value(v) if v == default_yes)
+            );
+        }
+        clear_scripted_input();
     }
 
     #[test]
