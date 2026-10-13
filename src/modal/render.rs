@@ -10,6 +10,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{List, ListItem, ListState},
 };
+use unicode_width::UnicodeWidthStr;
 
 use crate::{
     chrome,
@@ -171,4 +172,21 @@ pub(super) fn hint_block(
 /// border rows, the row itself, and the always-shown hint block.
 pub(super) fn hinted_box_height() -> u16 {
     3 + shortcut_hints::footer_height(HINT_BLOCK_ROWS)
+}
+
+/// The columns and rows `text` needs when every `\n` starts a new row: the
+/// width of its longest line and the number of lines (at least one, so an
+/// empty text keeps its row). A modal sizes its box from this instead of from
+/// the text's total width, which would lay a multi-line body out as one line.
+pub(super) fn text_extent(text: &str) -> (u16, u16) {
+    let widest = text
+        .split('\n')
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(0);
+    let rows = text.split('\n').count();
+    (
+        u16::try_from(widest).unwrap_or(u16::MAX),
+        u16::try_from(rows).unwrap_or(u16::MAX),
+    )
 }

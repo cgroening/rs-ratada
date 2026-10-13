@@ -10,10 +10,9 @@ use ratatui::{
     text::Line,
     widgets::{Paragraph, Wrap},
 };
-use unicode_width::UnicodeWidthStr;
 
 use super::ModalSignal;
-use super::render::{hint_block, hinted_box_height};
+use super::render::{hint_block, hinted_box_height, text_extent};
 use crate::{
     input::{self},
     layout::{centered_rect, fit},
@@ -91,10 +90,7 @@ pub fn confirm_default(
     popup(
         tui,
         &mut state,
-        |area, (): &()| {
-            let width = fit(prompt.width() as u16 + 6, 28, area.width);
-            centered_rect(width, hinted_box_height(), area)
-        },
+        |area, (): &()| confirm_area(prompt, area),
         |frame, (): &()| render_bg(frame),
         |frame, rect, (): &()| render_confirm(frame, skin, question, rect),
         |(): &mut (), key| confirm_key(key, default_yes),
@@ -120,7 +116,17 @@ pub(super) fn confirm_key(key: KeyEvent, default_yes: bool) -> PopupFlow<bool> {
     }
 }
 
-fn render_confirm(
+/// The box of a confirm dialog asking `prompt`: as wide as its longest line
+/// and one row taller per further line, so a multi-line prompt keeps its line
+/// breaks and the hint block stays in view.
+pub(super) fn confirm_area(prompt: &str, area: Rect) -> Rect {
+    let (widest, rows) = text_extent(prompt);
+    let width = fit(widest.saturating_add(6), 28, area.width);
+    let height = hinted_box_height().saturating_add(rows - 1);
+    centered_rect(width, height, area)
+}
+
+pub(super) fn render_confirm(
     frame: &mut Frame,
     skin: &Skin,
     question: &Question<'_>,
@@ -128,7 +134,8 @@ fn render_confirm(
 ) {
     let inner = overlay::framed(frame, rect, skin, " Confirm ");
     let width = inner.width as usize;
-    let mut lines = vec![Line::from(question.prompt.to_string())];
+    let mut lines: Vec<Line> =
+        question.prompt.split('\n').map(Line::from).collect();
     lines.extend(hint_block(&question.hints(), &skin.palette, width));
     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: true });
     frame.render_widget(paragraph, inner);

@@ -41,13 +41,55 @@ mod tests {
 
     use ratatui::layout::Rect;
 
+    use ratatui::{Terminal, backend::TestBackend};
+
     use super::{
-        confirm::{Question, confirm_key},
+        confirm::{Question, confirm_area, confirm_key, render_confirm},
+        message::message_area,
         picker::navigate_list,
-        render::{HINT_BLOCK_ROWS, hinted_box_height, picker_area},
+        render::{
+            HINT_BLOCK_ROWS, hinted_box_height, picker_area, text_extent,
+        },
         text_input::{input_area, input_area_wide},
     };
-    use crate::{overlay::PopupFlow, shortcut_hints};
+    use crate::{
+        overlay::PopupFlow,
+        shortcut_hints,
+        theme::{
+            ColorOverrides, GlyphVariant, Glyphs, Palette, Skin, ThemeRegistry,
+        },
+    };
+
+    const SCREEN: Rect = Rect::new(0, 0, 80, 24);
+
+    fn skin() -> Skin {
+        let base = ThemeRegistry::builtin().resolve("default");
+        Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        )
+    }
+
+    /// Draws a confirm dialog asking `prompt` on a real frame and returns the
+    /// text of every screen row, so the line breaks are checked on the
+    /// rendered widget rather than on the sizing arithmetic alone.
+    fn rendered_confirm(prompt: &str) -> Vec<String> {
+        let backend = TestBackend::new(SCREEN.width, SCREEN.height);
+        let mut terminal = Terminal::new(backend).expect("a test terminal");
+        let question = Question::new(prompt);
+        terminal
+            .draw(|frame| {
+                let rect = confirm_area(prompt, frame.area());
+                render_confirm(frame, &skin(), &question, rect);
+            })
+            .expect("the frame draws");
+        let buffer = terminal.backend().buffer();
+        (0..SCREEN.height)
+            .map(|y| {
+                (0..SCREEN.width).map(|x| buffer[(x, y)].symbol()).collect()
+            })
+            .collect()
+    }
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -209,6 +251,50 @@ mod tests {
         let question = Question::declining("Delete everything?");
         assert!(!question.default_yes);
         assert_eq!(question.hints(), [("y", "yes"), ("enter/n", "no")]);
+    }
+
+    #[test]
+    fn a_text_extent_is_the_longest_line_and_the_line_count() {
+        assert_eq!(text_extent("one\nthree\nxy"), (5, 3));
+        assert_eq!(text_extent("single"), (6, 1));
+        assert_eq!(text_extent(""), (0, 1));
+    }
+
+    #[test]
+    fn a_confirm_box_grows_one_row_per_further_prompt_line() {
+        let single = confirm_area("Delete?", SCREEN);
+        let triple = confirm_area("Delete?\nDate: today\nAmount: 1", SCREEN);
+        assert_eq!(single.height, hinted_box_height());
+        assert_eq!(triple.height, hinted_box_height() + 2);
+    }
+
+    /// The width follows the longest line, not the whole prompt: summing the
+    /// lines is what laid a multi-line prompt out as one overlong row.
+    #[test]
+    fn a_confirm_box_is_as_wide_as_its_longest_prompt_line() {
+        let prompt = "Current total: 508,02\nFactor: 0.136727";
+        assert_eq!(
+            confirm_area(prompt, SCREEN).width,
+            confirm_area("Current total: 508,02", SCREEN).width,
+        );
+    }
+
+    #[test]
+    fn a_confirm_renders_each_prompt_line_on_its_own_row() {
+        let rows = rendered_confirm("Current total: 508,02\nFactor: 0.136727");
+        let total = rows.iter().position(|row| row.contains("Current total"));
+        let factor = rows.iter().position(|row| row.contains("Factor:"));
+        let hints = rows.iter().position(|row| row.contains("yes"));
+        let total = total.expect("the first prompt line is drawn");
+        assert_eq!(factor, Some(total + 1));
+        assert_eq!(hints, Some(total + 3), "the hint block stays in view");
+    }
+
+    #[test]
+    fn a_message_box_grows_with_its_body_lines_but_keeps_its_minimum() {
+        assert_eq!(message_area("Saved.", SCREEN).height, 5);
+        assert_eq!(message_area("a\nb\nc", SCREEN).height, 5);
+        assert_eq!(message_area("a\nb\nc\nd\ne", SCREEN).height, 7);
     }
 
     /// A confirm's key prompt is essential, so the box reserves its hint rows
