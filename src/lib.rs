@@ -120,6 +120,7 @@ pub mod textarea;
 pub mod theme_preview;
 pub mod toast;
 pub mod tree;
+mod week_column;
 
 pub use driver::{Flow, Screen, run};
 pub use modal::ModalSignal;

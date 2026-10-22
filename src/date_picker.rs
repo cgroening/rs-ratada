@@ -11,6 +11,10 @@
 //! typed `%Y-%m-%d` value as soon as it parses; while it does not, the field is
 //! coloured as an error and `Enter` does nothing. `Enter` returns the typed
 //! date, `Esc` leaves the field and puts the cursor back.
+//!
+//! A column left of the grid shows the ISO calendar week of each row, the
+//! cursor's week in the accent and today's in the muted accent. It is on by
+//! default; [`set_week_column`] hides it for this and the range picker.
 
 use std::io;
 
@@ -32,7 +36,12 @@ use super::{
     style,
     terminal::Tui,
 };
-use crate::theme::{Palette, Skin};
+use crate::{
+    theme::{Palette, Skin},
+    week_column::WeekGutter,
+};
+
+pub use crate::week_column::{WeekColumn, set_week_column, week_column};
 
 const BOX_WIDTH: u16 = 24;
 const INNER_WIDTH: usize = 22;
@@ -46,11 +55,12 @@ const WEEKDAY_NAMES: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 /// The weekday index (Monday = 0) at which the weekend begins (Saturday).
 const WEEKEND_START: u32 = 5;
 
-/// The picker state: the day under the cursor, plus the typed-entry field while
-/// it is open.
+/// The picker state: the day under the cursor, the typed-entry field while it
+/// is open, and the week-column setting the picker opened with.
 struct Picker {
     cursor: NaiveDate,
     entry: Option<DateEntry<NaiveDate>>,
+    week_column: WeekColumn,
 }
 
 /// Opens the calendar at `current` (or today). `allow_clear` lets `Del` return
@@ -68,19 +78,20 @@ pub fn date_picker(
     let mut state = Picker {
         cursor: current.unwrap_or_else(today),
         entry: None,
+        week_column: week_column(),
     };
     popup_with_paste(
         tui,
         &mut state,
         |area, state: &Picker| {
-            let rows =
-                body_lines(&skin.palette, state, allow_clear).len() as u16 + 2;
-            centered_rect(BOX_WIDTH, rows, area)
+            let rows = body_lines(skin, state, allow_clear).len() as u16 + 2;
+            let width = BOX_WIDTH + state.week_column.extra_width();
+            centered_rect(width, rows, area)
         },
         |frame, _| render_bg(frame),
         |frame, rect, state: &Picker| {
             let inner = overlay::framed(frame, rect, skin, prompt);
-            let lines = body_lines(&skin.palette, state, allow_clear);
+            let lines = body_lines(skin, state, allow_clear);
             frame.render_widget(Paragraph::new(lines), inner);
         },
         |state, key| handle_key(state, key, allow_clear),
@@ -280,40 +291,52 @@ pub(super) fn month_cells(cursor: NaiveDate) -> Vec<Option<NaiveDate>> {
 }
 
 fn body_lines(
-    palette: &Palette,
+    skin: &Skin,
     state: &Picker,
     allow_clear: bool,
 ) -> Vec<Line<'static>> {
+    let palette = &skin.palette;
     let today = today();
-    let mut lines = vec![header_line(palette, state), weekday_header(palette)];
+    let width = INNER_WIDTH + usize::from(state.week_column.extra_width());
+    let gutter = state.week_column.gutter(skin, today);
+    let mut lines = vec![
+        header_line(palette, state, width),
+        weekday_header(palette, gutter.as_ref()),
+    ];
 
-    lines.extend(day_grid(state.cursor, |day| {
+    lines.extend(day_grid(state.cursor, gutter.as_ref(), |day| {
         day_style(palette, day, state.cursor, today)
     }));
 
-    lines.extend(hint_lines(palette, state, allow_clear));
+    lines.extend(hint_lines(palette, state, allow_clear, width));
     lines
 }
 
-/// The centred ISO date, or the entry field drawn in its place.
-fn header_line(palette: &Palette, state: &Picker) -> Line<'static> {
+/// The ISO date centred in `width`, or the entry field drawn in its place.
+fn header_line(
+    palette: &Palette,
+    state: &Picker,
+    width: usize,
+) -> Line<'static> {
     let Some(entry) = &state.entry else {
         let iso = state.cursor.format(ISO_FORMAT).to_string();
-        let pad = INNER_WIDTH.saturating_sub(iso.len()) / 2;
+        let pad = width.saturating_sub(iso.len()) / 2;
         return Line::from(Span::styled(
             format!("{}{iso}", " ".repeat(pad)),
             style::fg(palette.accent).add_modifier(Modifier::BOLD),
         ));
     };
     let validity = Validity::of(parse_entry(entry.text()).is_some());
-    entry.header_line(palette, INNER_WIDTH, validity)
+    entry.header_line(palette, width, validity)
 }
 
-/// The hint footer for the current mode, at a height the mode does not change.
+/// The hint footer for the current mode, wrapped to `width`, at a height the
+/// mode does not change.
 fn hint_lines(
     palette: &Palette,
     state: &Picker,
     allow_clear: bool,
+    width: usize,
 ) -> Vec<Line<'static>> {
     let calendar = calendar_hints(allow_clear);
     match state.entry {
@@ -321,13 +344,13 @@ fn hint_lines(
             &date_entry::ENTRY_HINTS,
             &calendar,
             palette,
-            INNER_WIDTH,
+            width,
         ),
         None => date_entry::hint_lines(
             &calendar,
             &date_entry::ENTRY_HINTS,
             palette,
-            INNER_WIDTH,
+            width,
         ),
     }
 }
@@ -349,9 +372,16 @@ fn calendar_hints(allow_clear: bool) -> Vec<(&'static str, &'static str)> {
 }
 
 /// The Monday-first weekday header row (`Mo Tu We Th Fr Sa Su`), shared by the
-/// calendar pickers.
-pub(super) fn weekday_header(palette: &Palette) -> Line<'static> {
+/// calendar pickers; with a `gutter`, the week column's label leads it.
+pub(super) fn weekday_header(
+    palette: &Palette,
+    gutter: Option<&WeekGutter>,
+) -> Line<'static> {
     let mut spans: Vec<Span> = vec![Span::raw(" ")];
+    if let Some(gutter) = gutter {
+        spans.extend(gutter.header());
+        spans.push(Span::raw(" "));
+    }
     for (index, name) in WEEKDAY_NAMES.into_iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw(" "));
@@ -362,15 +392,21 @@ pub(super) fn weekday_header(palette: &Palette) -> Line<'static> {
 }
 
 /// The month around `cursor` as week rows, each day styled by `style_of`. Shared
-/// by the calendar pickers, which differ only in how a day is styled.
+/// by the calendar pickers, which differ only in how a day is styled. With a
+/// `gutter`, each row is led by its ISO week number.
 pub(super) fn day_grid(
     cursor: NaiveDate,
+    gutter: Option<&WeekGutter>,
     style_of: impl Fn(NaiveDate) -> Style,
 ) -> Vec<Line<'static>> {
     month_cells(cursor)
         .chunks(7)
         .map(|week| {
             let mut spans: Vec<Span> = vec![Span::raw(" ")];
+            if let Some(gutter) = gutter {
+                spans.extend(week_cell(gutter, week, cursor));
+                spans.push(Span::raw(" "));
+            }
             for (index, cell) in week.iter().enumerate() {
                 if index > 0 {
                     spans.push(Span::raw(" "));
@@ -386,6 +422,19 @@ pub(super) fn day_grid(
             Line::from(spans)
         })
         .collect()
+}
+
+/// The week column's cell for one grid row, taken from the row's first day:
+/// every day of a Monday-first row shares one ISO week.
+fn week_cell(
+    gutter: &WeekGutter,
+    week: &[Option<NaiveDate>],
+    cursor: NaiveDate,
+) -> [Span<'static>; 2] {
+    match week.iter().flatten().next() {
+        Some(day) => gutter.row(*day, cursor),
+        None => gutter.blank(),
+    }
 }
 
 /// Whether `day` falls on the weekend (Saturday or Sunday).
@@ -430,6 +479,7 @@ mod tests {
     use crossterm::event::KeyModifiers;
 
     use super::*;
+    use crate::theme::{ColorOverrides, GlyphVariant, Glyphs, ThemeRegistry};
 
     /// The reference day every test starts from.
     fn start() -> NaiveDate {
@@ -440,6 +490,7 @@ mod tests {
         Picker {
             cursor: start(),
             entry: None,
+            week_column: WeekColumn::Shown,
         }
     }
 
@@ -622,6 +673,53 @@ mod tests {
         ));
         let entry = state.entry.as_ref().expect("the field is open");
         assert_eq!(entry.text(), "");
+    }
+
+    fn skin() -> Skin {
+        let base = ThemeRegistry::builtin().resolve("default");
+        Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        )
+    }
+
+    fn text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
+    /// The weekday header and the six week rows of June 2026.
+    fn calendar_rows(state: &Picker) -> Vec<String> {
+        body_lines(&skin(), state, true)[1..7]
+            .iter()
+            .map(text)
+            .collect()
+    }
+
+    #[test]
+    fn a_shown_week_column_leads_every_row_with_its_iso_week() {
+        let rows = calendar_rows(&picker());
+        assert_eq!(rows[0], " Wk \u{2502} Mo Tu We Th Fr Sa Su");
+        assert_eq!(rows[1], " 23 \u{2502}  1  2  3  4  5  6  7");
+        assert_eq!(rows[5], format!(" 27 \u{2502} 29 30{}", " ".repeat(15)));
+        let width = INNER_WIDTH + usize::from(WeekColumn::Shown.extra_width());
+        for row in &rows {
+            assert!(row.chars().count() < width, "{row:?} fills the box");
+        }
+    }
+
+    /// Hidden, the calendar is the one the pickers drew before the column.
+    #[test]
+    fn a_hidden_week_column_keeps_the_previous_calendar() {
+        let state = Picker {
+            week_column: WeekColumn::Hidden,
+            ..picker()
+        };
+        let rows = calendar_rows(&state);
+        assert_eq!(rows[0], " Mo Tu We Th Fr Sa Su");
+        assert_eq!(rows[1], "  1  2  3  4  5  6  7");
     }
 
     #[test]

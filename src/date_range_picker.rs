@@ -10,6 +10,10 @@
 //! error and `Enter` does nothing. A reversed pair is normalised, exactly as
 //! the calendar's second `Enter` does. `Enter` returns the range, `Esc` leaves
 //! the field and puts the calendar back.
+//!
+//! The ISO calendar-week column of [`super::date_picker`] leads each row here
+//! too, its emphasis following the cursor. Its switch,
+//! [`set_week_column`](super::date_picker::set_week_column), covers both.
 
 use std::io;
 
@@ -25,9 +29,9 @@ use ratatui::{
 use super::{
     date_entry::{self, DateEntry, EntryAction, OPEN_KEY, Validity},
     date_picker::{
-        ISO_FORMAT, add_months, cursor_cell_style, day_grid, first_of_month,
-        is_weekend, last_of_month, shift, today, today_cell_style,
-        weekday_header,
+        ISO_FORMAT, WeekColumn, add_months, cursor_cell_style, day_grid,
+        first_of_month, is_weekend, last_of_month, shift, today,
+        today_cell_style, week_column, weekday_header,
     },
     input,
     layout::centered_rect,
@@ -57,10 +61,12 @@ struct Range {
     start: Option<NaiveDate>,
 }
 
-/// The picker state: the calendar plus the typed-entry field while it is open.
+/// The picker state: the calendar, the typed-entry field while it is open, and
+/// the week-column setting the picker opened with.
 struct Picker {
     range: Range,
     entry: Option<DateEntry<Range>>,
+    week_column: WeekColumn,
 }
 
 /// Opens the range picker. `initial` pre-selects a range (resumes with the end
@@ -83,13 +89,18 @@ pub fn date_range_picker(
             start: None,
         },
     };
-    let mut state = Picker { range, entry: None };
+    let mut state = Picker {
+        range,
+        entry: None,
+        week_column: week_column(),
+    };
     popup_with_paste(
         tui,
         &mut state,
         |area, state: &Picker| {
             let rows = body_lines(skin, state).len() as u16 + 2;
-            centered_rect(BOX_WIDTH, rows, area)
+            let width = BOX_WIDTH + state.week_column.extra_width();
+            centered_rect(width, rows, area)
         },
         |frame, _| render_bg(frame),
         |frame, rect, state: &Picker| {
@@ -272,18 +283,23 @@ fn body_lines(skin: &Skin, state: &Picker) -> Vec<Line<'static>> {
     let palette = &skin.palette;
     let today = today();
     let range = state.range;
-    let mut lines = vec![header_line(skin, state), weekday_header(palette)];
+    let width = INNER_WIDTH + usize::from(state.week_column.extra_width());
+    let gutter = state.week_column.gutter(skin, today);
+    let mut lines = vec![
+        header_line(skin, state, width),
+        weekday_header(palette, gutter.as_ref()),
+    ];
 
-    lines.extend(day_grid(range.cursor, |day| {
+    lines.extend(day_grid(range.cursor, gutter.as_ref(), |day| {
         day_style(skin, day, range.cursor, range.start, today)
     }));
 
-    lines.extend(hint_lines(skin, state));
+    lines.extend(hint_lines(skin, state, width));
     lines
 }
 
-/// The centred range header, or the entry field drawn in its place.
-fn header_line(skin: &Skin, state: &Picker) -> Line<'static> {
+/// The range header centred in `width`, or the entry field drawn in its place.
+fn header_line(skin: &Skin, state: &Picker, width: usize) -> Line<'static> {
     let palette = &skin.palette;
     let Some(entry) = &state.entry else {
         let range = state.range;
@@ -300,21 +316,22 @@ fn header_line(skin: &Skin, state: &Picker) -> Line<'static> {
                 )
             }
         };
-        let pad = INNER_WIDTH.saturating_sub(header.len()) / 2;
+        let pad = width.saturating_sub(header.len()) / 2;
         return Line::from(Span::styled(
             format!("{}{header}", " ".repeat(pad)),
             style::fg(palette.accent).add_modifier(Modifier::BOLD),
         ));
     };
     let validity = Validity::of(parse_entry(entry.text()).is_some());
-    entry.header_line(palette, INNER_WIDTH, validity)
+    entry.header_line(palette, width, validity)
 }
 
-/// The hint footer for the current mode, at a height the mode does not change.
+/// The hint footer for the current mode, wrapped to `width`, at a height the
+/// mode does not change.
 ///
 /// The edit token sits second on purpose: it shares the first row with the
 /// short `move` token there, which keeps the footer two rows tall.
-fn hint_lines(skin: &Skin, state: &Picker) -> Vec<Line<'static>> {
+fn hint_lines(skin: &Skin, state: &Picker, width: usize) -> Vec<Line<'static>> {
     let calendar = [
         ("\u{2190}\u{2192}\u{2191}\u{2193}", "move"),
         date_entry::EDIT_HINT,
@@ -326,13 +343,13 @@ fn hint_lines(skin: &Skin, state: &Picker) -> Vec<Line<'static>> {
             &date_entry::ENTRY_HINTS,
             &calendar,
             palette,
-            INNER_WIDTH,
+            width,
         ),
         None => date_entry::hint_lines(
             &calendar,
             &date_entry::ENTRY_HINTS,
             palette,
-            INNER_WIDTH,
+            width,
         ),
     }
 }
@@ -379,6 +396,7 @@ mod tests {
                 start: None,
             },
             entry: None,
+            week_column: WeekColumn::Shown,
         }
     }
 
