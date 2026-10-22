@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     style,
-    theme::{GlyphVariant, Skin},
+    theme::{GlyphVariant, Palette, Skin},
 };
 
 /// The label above the week numbers.
@@ -24,6 +24,9 @@ const LABEL: &str = "Wk";
 /// The columns the week column adds to a calendar row: the two-digit week, a
 /// space and the separator, and the space that then leads the day grid.
 const EXTRA_COLUMNS: u16 = 5;
+/// How far today's week number is mixed from `foreground_dim` toward
+/// `foreground`: brighter than the weekend days, still below full text.
+const TODAY_WEEK_LIFT: f32 = 0.5;
 
 /// Whether the calendar pickers show the ISO calendar week left of each row.
 #[derive(
@@ -112,7 +115,7 @@ impl WeekGutter {
             plain: style::muted(palette),
             rule: style::fg(palette.border),
             cursor_week: style::fg(palette.accent).add_modifier(Modifier::BOLD),
-            today_week: style::secondary(palette),
+            today_week: today_week_style(palette),
             today,
         }
     }
@@ -153,6 +156,15 @@ impl WeekGutter {
     }
 }
 
+/// The style of today's week number, between secondary and primary text.
+fn today_week_style(palette: &Palette) -> Style {
+    style::fg(
+        palette
+            .foreground_dim
+            .mix(palette.foreground, TODAY_WEEK_LIFT),
+    )
+}
+
 /// The vertical separator for `variant`.
 fn separator(variant: GlyphVariant) -> &'static str {
     match variant {
@@ -164,7 +176,7 @@ fn separator(variant: GlyphVariant) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::theme::{ColorOverrides, Glyphs, Palette, ThemeRegistry};
+    use crate::theme::{ColorOverrides, Glyphs, ThemeRegistry};
 
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(year, month, day).expect("a real date")
@@ -232,7 +244,8 @@ mod tests {
             style::fg(palette.accent).add_modifier(Modifier::BOLD),
         );
         let [today_number, _] = gutter.row(today, cursor);
-        assert_eq!(today_number.style, style::secondary(palette));
+        assert_eq!(today_number.style, today_week_style(palette));
+        assert_ne!(today_number.style, style::secondary(palette));
         let [other_number, _] = gutter.row(date(2026, 6, 22), cursor);
         assert_eq!(other_number.style, style::muted(palette));
     }
