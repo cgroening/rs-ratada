@@ -112,7 +112,7 @@ impl WeekGutter {
             plain: style::muted(palette),
             rule: style::fg(palette.border),
             cursor_week: style::fg(palette.accent).add_modifier(Modifier::BOLD),
-            today_week: style::fg(palette.accent_dim),
+            today_week: style::secondary(palette),
             today,
         }
     }
@@ -219,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn the_cursor_week_is_accent_bold_and_today_week_accent_dim() {
+    fn the_cursor_week_is_accent_bold_and_today_week_one_step_brighter() {
         let skin = skin(GlyphVariant::Unicode);
         let palette = &skin.palette;
         let today = date(2026, 6, 3);
@@ -232,7 +232,7 @@ mod tests {
             style::fg(palette.accent).add_modifier(Modifier::BOLD),
         );
         let [today_number, _] = gutter.row(today, cursor);
-        assert_eq!(today_number.style, style::fg(palette.accent_dim));
+        assert_eq!(today_number.style, style::secondary(palette));
         let [other_number, _] = gutter.row(date(2026, 6, 22), cursor);
         assert_eq!(other_number.style, style::muted(palette));
     }

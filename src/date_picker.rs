@@ -13,8 +13,8 @@
 //! date, `Esc` leaves the field and puts the cursor back.
 //!
 //! A column left of the grid shows the ISO calendar week of each row, the
-//! cursor's week in the accent and today's in the muted accent. It is on by
-//! default; [`set_week_column`] hides it for this and the range picker.
+//! cursor's week in the accent and today's a step brighter than the rest. It is
+//! on by default; [`set_week_column`] hides it for this and the range picker.
 
 use std::io;
 
@@ -446,15 +446,22 @@ pub(super) fn is_weekend(day: NaiveDate) -> bool {
 ///
 /// Shared by every calendar-style picker so the highlight looks the same in
 /// all of them; the pickers differ in *when* they apply it, not in how it looks.
+///
+/// Filled with the accent rather than tinted: today is drawn in accent text and
+/// the range between two ends in the `selection` tint, so only a full fill keeps
+/// the cursor the most prominent cell. The text takes whichever of the
+/// background tone or a near-black/near-white fallback reads on the accent, so
+/// a light theme or an accent override stays legible.
 pub(super) fn cursor_cell_style(palette: &Palette) -> Style {
-    style::bg(palette.selection)
-        .fg(style::to_ratatui(palette.accent))
+    let text = palette.background.readable_on(palette.accent);
+    style::bg(palette.accent)
+        .fg(style::to_ratatui(text))
         .add_modifier(Modifier::BOLD)
 }
 
 /// The style marking today's cell, when it is not under the cursor.
 pub(super) fn today_cell_style(palette: &Palette) -> Style {
-    style::fg(palette.accent_dim).add_modifier(Modifier::BOLD)
+    style::fg(palette.accent)
 }
 
 fn day_style(
@@ -720,6 +727,22 @@ mod tests {
         let rows = calendar_rows(&state);
         assert_eq!(rows[0], " Mo Tu We Th Fr Sa Su");
         assert_eq!(rows[1], "  1  2  3  4  5  6  7");
+    }
+
+    /// The cursor is filled with the accent and its text contrasts with it;
+    /// today is plain accent text, so the two never look alike.
+    #[test]
+    fn the_cursor_cell_is_filled_and_today_is_plain_accent() {
+        let skin = skin();
+        let palette = &skin.palette;
+        let cursor = cursor_cell_style(palette);
+        assert_eq!(cursor.bg, Some(style::to_ratatui(palette.accent)));
+        assert_ne!(cursor.fg, cursor.bg);
+        assert!(cursor.add_modifier.contains(Modifier::BOLD));
+
+        let today = today_cell_style(palette);
+        assert_eq!(today, style::fg(palette.accent));
+        assert!(!today.add_modifier.contains(Modifier::BOLD));
     }
 
     #[test]
