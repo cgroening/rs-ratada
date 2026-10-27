@@ -14,14 +14,20 @@ use super::{
     named::nearest_name,
 };
 use crate::{
-    chrome, input, list, overlay, shortcut_hints, style,
-    theme::{Palette, Skin},
+    chrome,
+    color_picker::{CLEAR_KEYS, Clearing},
+    input, list, overlay, shortcut_hints, style,
+    theme::{Color, Palette, Skin},
 };
 
 const LIST_WIDTH: u16 = 30;
 
-/// Rows the hint footer occupies (always shown: popup hints ignore F1).
+/// The fewest rows the hint footer occupies (always shown: popup hints ignore
+/// F1); it grows when the hints wrap onto more.
 const FOOTER_ROWS: u16 = 2;
+
+/// The glyph in the `(none)` entry's swatch, which has no color to show.
+const NONE_GLYPH: &str = " \u{2205}  ";
 
 /// Width of the color swatch shown at the start of each list row.
 const SWATCH_WIDTH: usize = 4;
@@ -44,22 +50,29 @@ const MARK_RIGHT: &str = "\u{258f}";
 /// an optional filter row, the content, a blank, a 4-row preview and the
 /// two-row footer (always shown), all inside the border.
 pub(super) fn box_size(state: &State) -> (u16, u16) {
-    let footer = shortcut_hints::footer_height(FOOTER_ROWS);
+    let width = match state.mode {
+        Mode::Names | Mode::Palette => LIST_WIDTH,
+        Mode::Grid => (GRID_COLS * CELL_WIDTH) as u16 + 4,
+        Mode::Grays => (GRAY_STEPS * CELL_WIDTH).max(24) as u16 + 4,
+    };
+    // The footer wraps at the inner width (inside the border).
+    let footer = footer_rows(state, width.saturating_sub(2) as usize);
     let extras = 1 + 1 + 4 + footer + 2; // bar + blank + preview + footer + border
-    match state.mode {
+    let body = match state.mode {
         Mode::Names | Mode::Palette => {
-            let filter_row = u16::from(state.filtering);
-            (LIST_WIDTH, VISIBLE_ROWS + filter_row + extras)
+            VISIBLE_ROWS + u16::from(state.filtering)
         }
-        Mode::Grid => {
-            let width = (GRID_COLS * CELL_WIDTH) as u16 + 4;
-            (width, GRID_ROWS as u16 + extras)
-        }
-        Mode::Grays => {
-            let width = (GRAY_STEPS * CELL_WIDTH).max(24) as u16 + 4;
-            (width, 1 + extras)
-        }
-    }
+        Mode::Grid => GRID_ROWS as u16,
+        Mode::Grays => 1,
+    };
+    (width, body + extras)
+}
+
+/// The rows the hint footer takes at `width`: its wrapped hints, at least
+/// [`FOOTER_ROWS`].
+fn footer_rows(state: &State, width: usize) -> u16 {
+    let wrapped = shortcut_hints::lines(&hints(state), Color::Default, width);
+    shortcut_hints::footer_height(FOOTER_ROWS.max(wrapped.len() as u16))
 }
 
 /// Renders the frame, mode bar, content, preview and footer.
@@ -81,7 +94,7 @@ pub(super) fn render_box(
         Constraint::Min(0),
         Constraint::Length(1),
         Constraint::Length(4),
-        Constraint::Length(shortcut_hints::footer_height(FOOTER_ROWS)),
+        Constraint::Length(footer_rows(state, inner.width as usize)),
     ]);
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -180,6 +193,13 @@ fn list_rows(state: &State, skin: &Skin) -> Vec<Line<'static>> {
         .iter()
         .map(|cell| {
             let name = cell.name.clone().unwrap_or_default();
+            if cell.is_none_entry() {
+                return Line::from(vec![
+                    Span::styled(NONE_GLYPH, style::secondary(&skin.palette)),
+                    Span::raw(" "),
+                    Span::styled(name, style::fg(skin.palette.foreground)),
+                ]);
+            }
             Line::from(vec![
                 Span::styled(" ".repeat(SWATCH_WIDTH), style::bg(cell.color)),
                 Span::raw(" "),
@@ -227,6 +247,16 @@ fn render_grid(frame: &mut Frame, area: Rect, state: &State, _skin: &Skin) {
 /// The focus preview: a swatch, the hex/hsl readout with the nearest name, and a
 /// light/dark contrast sample with the luminance.
 fn preview_lines(state: &State, palette: &Palette) -> Vec<Line<'static>> {
+    if state
+        .cells
+        .get(state.cursor)
+        .is_some_and(super::Swatch::is_none_entry)
+    {
+        return vec![Line::from(Span::styled(
+            "No color: the terminal default",
+            style::secondary(palette),
+        ))];
+    }
     let color = state.focus_color();
     let (hue, saturation, lightness) =
         color.to_hsl().unwrap_or((0.0, 0.0, 0.0));
@@ -265,35 +295,37 @@ fn preview_lines(state: &State, palette: &Palette) -> Vec<Line<'static>> {
     vec![swatch.clone(), swatch, info, contrast]
 }
 
-/// The focus-/mode-dependent footer hints.
+/// The footer hints, wrapped at `width`.
 fn footer_lines(
     state: &State,
     palette: &Palette,
     width: usize,
 ) -> Vec<Line<'static>> {
-    let hints: Vec<(&str, &str)> =
-        if state.mode == Mode::Names && state.filtering {
-            vec![
-                ("type", "filter"),
-                ("\u{2191}/\u{2193}", "move"),
-                ("enter", "edit"),
-                ("esc", "clear"),
-            ]
-        } else {
-            let mut hints = vec![("m", "mode")];
-            if state.mode == Mode::Grid {
-                hints.push(("[ ]", "light"));
-            }
-            if state.mode == Mode::Names {
-                hints.push(("/", "filter"));
-            }
-            hints.extend_from_slice(&[
-                ("space", "pick"),
-                ("y", "copy"),
-                ("enter", "edit"),
-                ("esc", "cancel"),
-            ]);
-            hints
-        };
-    shortcut_hints::lines(&hints, palette.accent_dim, width)
+    shortcut_hints::lines(&hints(state), palette.accent_dim, width)
+}
+
+/// The focus-/mode-dependent footer hints.
+fn hints(state: &State) -> Vec<(&'static str, &'static str)> {
+    if state.mode == Mode::Names && state.filtering {
+        return vec![
+            ("type", "filter"),
+            ("\u{2191}/\u{2193}", "move"),
+            ("enter", "edit"),
+            ("esc", "clear"),
+        ];
+    }
+    let mut hints = vec![("m", "mode")];
+    if state.mode == Mode::Grid {
+        hints.push(("[ ]", "light"));
+    }
+    if state.mode == Mode::Names {
+        hints.push(("/", "filter"));
+    }
+    hints.extend_from_slice(&[("space", "pick"), ("y", "copy")]);
+    hints.push(("e", "current"));
+    if state.clearing == Clearing::On {
+        hints.push((CLEAR_KEYS, "none"));
+    }
+    hints.extend_from_slice(&[("enter", "edit"), ("esc", "cancel")]);
+    hints
 }

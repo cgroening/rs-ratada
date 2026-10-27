@@ -4,8 +4,13 @@
 //! `m` cycles the modes (carrying the focused color over via perceptual
 //! distance). `Space` returns the focused color directly; `Enter` hands it to
 //! the full [`color_picker`] for editing. `y` copies its
-//! hex. Each mode shows a focus preview (swatch, hex/hsl, nearest name,
-//! light/dark contrast).
+//! hex, `e` opens the picker on the color the chooser opened with. Each mode
+//! shows a focus preview (swatch, hex/hsl, nearest name, light/dark
+//! contrast).
+//!
+//! [`color_chooser_with`] adds two opt-ins: removing the color (a `(none)`
+//! entry plus `Backspace`/`Delete`) and opening straight in the picker for a
+//! color that no list holds.
 
 mod cells;
 mod interaction;
@@ -14,7 +19,7 @@ mod render;
 
 pub use named::NAMED_COLORS;
 
-use cells::{mode_cells, nearest, palette_entries};
+use cells::{is_listed, mode_cells, nearest, palette_entries};
 use interaction::handle;
 use render::{box_size, render_box};
 
@@ -23,7 +28,10 @@ use std::{cell::Cell, io};
 use ratatui::Frame;
 
 use super::{
-    color_picker, layout::centered_rect, modal::ModalSignal, overlay::popup,
+    color_picker::{self, Clearing, PickerResult},
+    layout::centered_rect,
+    modal::ModalSignal,
+    overlay::popup,
     terminal::Tui,
 };
 use crate::theme::{Color, Skin};
@@ -84,10 +92,14 @@ struct Swatch {
     name: Option<String>,
 }
 
-/// What `Enter`/`Space` produced: edit in the color picker, or take as-is.
+/// How the swatch view was answered: take a color as-is, edit one in the
+/// color picker, edit the color the chooser opened with (`e`), or remove the
+/// color (`Clearing::On` only).
 enum Choice {
     Pick(Color),
     Edit(Color),
+    EditOriginal,
+    Clear,
 }
 
 /// The picker state (threaded through [`popup`]).
@@ -101,13 +113,21 @@ struct State {
     grid_light: f32,
     filter: String,
     filtering: bool,
+    /// Whether the color can be removed: adds the `(none)` entry and the
+    /// `Backspace`/`Delete` keys.
+    clearing: Clearing,
 }
 
 impl State {
     /// Rebuilds the current mode's cells (after a mode/filter/lightness change).
     fn rebuild(&mut self) {
-        let (cells, cols) =
-            mode_cells(self.mode, &self.palette, self.grid_light, &self.filter);
+        let (cells, cols) = mode_cells(
+            self.mode,
+            &self.palette,
+            self.grid_light,
+            &self.filter,
+            self.clearing,
+        );
         self.cells = cells;
         self.cols = cols.max(1);
         if self.cursor >= self.cells.len() {
@@ -145,8 +165,35 @@ pub enum Start {
 enum SwatchExit {
     Pick(Color),
     Edit(Color),
+    EditOriginal,
+    Clear,
     Cancel,
     Quit,
+}
+
+/// Opt-in behaviour of [`color_chooser_with`]; the default is the plain
+/// chooser of [`color_chooser`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ChooserOptions {
+    /// The color can be removed: a `(none)` entry heads the Names and Palette
+    /// lists, and `Backspace`/`Delete` remove it in the list and in the
+    /// picker (outside its hex field). Reported as [`ColorChoice::Cleared`].
+    pub clearable: bool,
+    /// Open straight in the picker when the initial color is set but no named
+    /// color and no palette entry equals it exactly, so a custom value is not
+    /// replaced by its nearest swatch. `Esc` there cancels; `s` still shows
+    /// the list.
+    pub picker_unless_listed: bool,
+}
+
+/// What [`color_chooser_with`] returns: a color, or "no color" when the user
+/// removed it (only with [`ChooserOptions::clearable`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorChoice {
+    /// The chosen color.
+    Color(Color),
+    /// The color was removed.
+    Cleared,
 }
 
 /// The swatch view state that survives a trip through the picker, so returning
@@ -194,8 +241,75 @@ pub fn color_chooser(
     start: Start,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<Color>> {
+    let session = Session {
+        title,
+        initial,
+        clearing: Clearing::Off,
+    };
+    Ok(match run_chooser(tui, skin, &session, start, render_bg)? {
+        ModalSignal::Value(ColorChoice::Color(color)) => {
+            ModalSignal::Value(color)
+        }
+        // Cannot occur with clearing off; cancelling is the harmless reading.
+        ModalSignal::Value(ColorChoice::Cleared) | ModalSignal::Cancelled => {
+            ModalSignal::Cancelled
+        }
+        ModalSignal::Quit => ModalSignal::Quit,
+    })
+}
+
+/// The swatch chooser with the opt-ins of [`ChooserOptions`]: removing the
+/// color, and opening straight in the picker for a color no list holds.
+/// Otherwise it behaves like [`swatch_picker`].
+pub fn color_chooser_with(
+    tui: &mut Tui,
+    skin: &Skin,
+    title: &str,
+    initial: Option<Color>,
+    options: ChooserOptions,
+    render_bg: impl Fn(&mut Frame),
+) -> io::Result<ModalSignal<ColorChoice>> {
+    let palette = palette_entries(&skin.palette);
+    let custom = initial.is_some_and(|color| {
+        color != Color::Default && !is_listed(color, &palette)
+    });
+    let start = if options.picker_unless_listed && custom {
+        Start::Picker
+    } else {
+        Start::Swatches
+    };
+    let session = Session {
+        title,
+        initial,
+        clearing: if options.clearable {
+            Clearing::On
+        } else {
+            Clearing::Off
+        },
+    };
+    run_chooser(tui, skin, &session, start, render_bg)
+}
+
+/// What one chooser run is about: its title, the color it opened with (the
+/// one `e` returns to) and whether the color can be removed.
+struct Session<'a> {
+    title: &'a str,
+    initial: Option<Color>,
+    clearing: Clearing,
+}
+
+/// The chooser loop behind [`color_chooser`] and [`color_chooser_with`],
+/// alternating between the swatch view and the picker.
+fn run_chooser(
+    tui: &mut Tui,
+    skin: &Skin,
+    session: &Session,
+    start: Start,
+    render_bg: impl Fn(&mut Frame),
+) -> io::Result<ModalSignal<ColorChoice>> {
+    let title = session.title;
     let mut view = start;
-    let mut color = initial;
+    let mut color = session.initial;
     let mut memory = SwatchMemory::default();
     // Whether the swatch view has been shown, so the picker's `Esc` (back) knows
     // whether there is a swatch view to return to (else it cancels).
@@ -205,27 +319,53 @@ pub fn color_chooser(
             Start::Swatches => {
                 swatch_seen = true;
                 let (exit, updated) =
-                    run_swatch(tui, skin, title, color, memory, &render_bg)?;
+                    run_swatch(tui, skin, session, color, memory, &render_bg)?;
                 memory = updated;
                 match exit {
                     SwatchExit::Pick(chosen) => {
-                        return Ok(ModalSignal::Value(chosen));
+                        return Ok(ModalSignal::Value(ColorChoice::Color(
+                            chosen,
+                        )));
                     }
                     SwatchExit::Edit(chosen) => {
                         color = Some(chosen);
                         view = Start::Picker;
+                    }
+                    // The color the chooser opened with, else the one the
+                    // list last showed.
+                    SwatchExit::EditOriginal => {
+                        color = session
+                            .initial
+                            .filter(|original| *original != Color::Default)
+                            .or(color);
+                        view = Start::Picker;
+                    }
+                    SwatchExit::Clear => {
+                        return Ok(ModalSignal::Value(ColorChoice::Cleared));
                     }
                     SwatchExit::Cancel => return Ok(ModalSignal::Cancelled),
                     SwatchExit::Quit => return Ok(ModalSignal::Quit),
                 }
             }
             Start::Picker => {
-                let exit = color_picker::color_picker(
-                    tui, skin, title, color, &render_bg,
-                )?;
+                let exit = match color_picker::run_picker(
+                    tui,
+                    skin,
+                    title,
+                    color,
+                    session.clearing,
+                    &render_bg,
+                )? {
+                    PickerResult::Exit(exit) => exit,
+                    PickerResult::Cleared => {
+                        return Ok(ModalSignal::Value(ColorChoice::Cleared));
+                    }
+                };
                 match exit {
                     color_picker::ColorExit::Done(chosen) => {
-                        return Ok(ModalSignal::Value(chosen));
+                        return Ok(ModalSignal::Value(ColorChoice::Color(
+                            chosen,
+                        )));
                     }
                     color_picker::ColorExit::Swatches(chosen) => {
                         color = Some(chosen);
@@ -254,11 +394,12 @@ pub fn color_chooser(
 fn run_swatch(
     tui: &mut Tui,
     skin: &Skin,
-    title: &str,
+    session: &Session,
     initial: Option<Color>,
     memory: SwatchMemory,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<(SwatchExit, SwatchMemory)> {
+    let title = session.title;
     let mut state = State {
         mode: memory.mode,
         cursor: 0,
@@ -269,9 +410,14 @@ fn run_swatch(
         grid_light: memory.grid_light,
         filter: String::new(),
         filtering: false,
+        clearing: session.clearing,
     };
     state.rebuild();
-    if let Some(color) = initial {
+    // With clearing on, no color starts on `(none)`, the first entry;
+    // `nearest` never lands there.
+    let starts_on_none = session.clearing == Clearing::On
+        && initial.is_none_or(|color| color == Color::Default);
+    if let Some(color) = initial.filter(|_| !starts_on_none) {
         state.cursor = nearest(&state.cells, color);
     }
     let signal = popup(
@@ -293,6 +439,8 @@ fn run_swatch(
     let exit = match signal {
         ModalSignal::Value(Choice::Pick(color)) => SwatchExit::Pick(color),
         ModalSignal::Value(Choice::Edit(color)) => SwatchExit::Edit(color),
+        ModalSignal::Value(Choice::EditOriginal) => SwatchExit::EditOriginal,
+        ModalSignal::Value(Choice::Clear) => SwatchExit::Clear,
         ModalSignal::Cancelled => SwatchExit::Cancel,
         ModalSignal::Quit => SwatchExit::Quit,
     };
@@ -328,7 +476,16 @@ mod tests {
             grid_light: GRID_LIGHT_DEFAULT,
             filter: String::new(),
             filtering: false,
+            clearing: Clearing::Off,
         };
+        state.rebuild();
+        state
+    }
+
+    /// A state whose color can be removed.
+    fn clearable() -> State {
+        let mut state = state();
+        state.clearing = Clearing::On;
         state.rebuild();
         state
     }
@@ -478,5 +635,89 @@ mod tests {
             );
         }
         assert_eq!(state.filter, "@\\[");
+    }
+
+    #[test]
+    fn the_none_entry_heads_the_lists_only_when_clearable() {
+        assert!(!state().cells[0].is_none_entry());
+        let mut state = clearable();
+        assert!(state.cells[0].is_none_entry(), "Names");
+        assert_eq!(state.cells.len(), NAMED_COLORS.len() + 1);
+        state.mode = Mode::Palette;
+        state.rebuild();
+        assert!(state.cells[0].is_none_entry(), "Palette");
+        state.mode = Mode::Grid;
+        state.rebuild();
+        assert!(!state.cells.iter().any(Swatch::is_none_entry), "Grid");
+    }
+
+    #[test]
+    fn a_filtered_list_has_no_none_entry() {
+        let mut state = clearable();
+        handle(&mut state, key(KeyCode::Char('/')));
+        handle(&mut state, key(KeyCode::Char('r')));
+        assert!(!state.cells.iter().any(Swatch::is_none_entry));
+    }
+
+    #[test]
+    fn enter_and_space_on_the_none_entry_remove_the_color() {
+        let mut state = clearable();
+        state.cursor = 0;
+        assert!(matches!(
+            handle(&mut state, key(KeyCode::Enter)),
+            PopupFlow::Done(Choice::Clear)
+        ));
+        assert!(matches!(
+            handle(&mut state, key(KeyCode::Char(' '))),
+            PopupFlow::Done(Choice::Clear)
+        ));
+    }
+
+    #[test]
+    fn backspace_and_delete_remove_the_color_only_when_clearable() {
+        for code in [KeyCode::Backspace, KeyCode::Delete] {
+            assert!(matches!(
+                handle(&mut clearable(), key(code)),
+                PopupFlow::Done(Choice::Clear)
+            ));
+            assert!(matches!(
+                handle(&mut state(), key(code)),
+                PopupFlow::Continue
+            ));
+        }
+    }
+
+    #[test]
+    fn backspace_still_edits_the_filter() {
+        let mut state = clearable();
+        handle(&mut state, key(KeyCode::Char('/')));
+        handle(&mut state, key(KeyCode::Char('r')));
+        handle(&mut state, key(KeyCode::Backspace));
+        assert_eq!(state.filter, "");
+        assert!(state.filtering, "still filtering, nothing removed");
+    }
+
+    #[test]
+    fn e_edits_the_color_the_chooser_opened_with() {
+        assert!(matches!(
+            handle(&mut state(), key(KeyCode::Char('e'))),
+            PopupFlow::Done(Choice::EditOriginal)
+        ));
+    }
+
+    #[test]
+    fn nearest_never_lands_on_the_none_entry() {
+        let state = clearable();
+        let index = nearest(&state.cells, Color::Default);
+        assert!(!state.cells[index].is_none_entry());
+    }
+
+    #[test]
+    fn only_an_exact_named_or_palette_color_is_listed() {
+        let palette = [("accent", Color::hex("#8bd3cd"))];
+        assert!(is_listed(NAMED_COLORS[0].1, &palette));
+        assert!(is_listed(Color::hex("#8bd3cd"), &palette));
+        // One step off a named color is a custom color.
+        assert!(!is_listed(Color::hex("#000001"), &palette));
     }
 }

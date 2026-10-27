@@ -4,7 +4,9 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
 use super::{Choice, GRID_LIGHT_STEP, Mode, State, VISIBLE_ROWS};
-use crate::{clipboard, input, nav, overlay::PopupFlow};
+use crate::{
+    clipboard, color_picker::Clearing, input, nav, overlay::PopupFlow,
+};
 
 /// Routes a key to the active mode.
 pub(super) fn handle(state: &mut State, key: KeyEvent) -> PopupFlow<Choice> {
@@ -21,6 +23,12 @@ pub(super) fn handle(state: &mut State, key: KeyEvent) -> PopupFlow<Choice> {
         KeyCode::Enter => return done(state, false),
         KeyCode::Char(' ') => return done(state, true),
         KeyCode::Esc => return PopupFlow::Cancelled,
+        KeyCode::Char('e') => return PopupFlow::Done(Choice::EditOriginal),
+        KeyCode::Backspace | KeyCode::Delete
+            if state.clearing == Clearing::On =>
+        {
+            return PopupFlow::Done(Choice::Clear);
+        }
         KeyCode::Char('m') => state.switch_mode(),
         KeyCode::Char('y') => {
             let _ = clipboard::copy(&state.focus_color().to_hex());
@@ -92,9 +100,11 @@ pub(super) fn handle_filter(
     PopupFlow::Continue
 }
 
-/// Finishes with the focused color, either taken directly or sent to the editor.
+/// Finishes with the focused color, either taken directly or sent to the
+/// editor; the `(none)` entry removes the color either way.
 pub(super) fn done(state: &State, pick: bool) -> PopupFlow<Choice> {
     match state.cells.get(state.cursor) {
+        Some(cell) if cell.is_none_entry() => PopupFlow::Done(Choice::Clear),
         Some(cell) if pick => PopupFlow::Done(Choice::Pick(cell.color)),
         Some(cell) => PopupFlow::Done(Choice::Edit(cell.color)),
         None => PopupFlow::Continue,

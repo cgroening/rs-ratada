@@ -3,7 +3,7 @@
 
 use crossterm::event::{KeyCode, KeyModifiers};
 
-use super::{Focus, Outcome, State};
+use super::{Clearing, Focus, Outcome, State};
 use crate::{clipboard, input, nav, overlay::PopupFlow, theme::parse_color};
 
 /// Routes a key press to the focused control.
@@ -28,11 +28,23 @@ pub(super) fn handle(
         }
         _ => {}
     }
+    if removes_color(state, key) {
+        return PopupFlow::Done(Outcome::Cleared);
+    }
     match state.focus {
         Focus::Hex => handle_hex(state, key),
         Focus::Channel(index) => handle_channel(state, index, key),
         Focus::Presets => handle_presets(state, key),
     }
+}
+
+/// Whether `key` removes the color: `Backspace`/`Delete` with clearing on,
+/// except in the hex field, where both keys edit the text.
+fn removes_color(state: &State, key: crossterm::event::KeyEvent) -> bool {
+    state.clearing == Clearing::On
+        && state.focus != Focus::Hex
+        && !input::is_command(key)
+        && matches!(key.code, KeyCode::Backspace | KeyCode::Delete)
 }
 
 /// Edits the hex field; a valid entry updates the channels live.

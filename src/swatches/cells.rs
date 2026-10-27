@@ -2,9 +2,16 @@
 //! hue/lightness grid and the grayscale ramp.
 
 use super::{
-    GRAY_STEPS, GRID_COLS, GRID_ROWS, Mode, Swatch, named::named_cells,
+    GRAY_STEPS, GRID_COLS, GRID_ROWS, Mode, Swatch,
+    named::{NAMED_COLORS, named_cells},
 };
-use crate::theme::{Color, Palette};
+use crate::{
+    color_picker::Clearing,
+    theme::{Color, Palette},
+};
+
+/// The name of the entry that removes the color.
+pub(super) const NONE_NAME: &str = "(none)";
 
 /// A full turn of hue in degrees, spread across the grid's columns.
 const HUE_DEGREES: f32 = 360.0;
@@ -12,21 +19,51 @@ const HUE_DEGREES: f32 = 360.0;
 /// The maximum 8-bit channel value, for spreading the gray ramp.
 const MAX_CHANNEL: f32 = 255.0;
 
-/// Builds the cells and column count for `mode`.
 /// The swatch cells for `mode` and the grid column count used to lay them out
-/// (`1` for the single-column list modes).
+/// (`1` for the single-column list modes). With `clearing` on, the unfiltered
+/// lists start with the `(none)` entry.
 pub(super) fn mode_cells(
     mode: Mode,
     palette: &[(&'static str, Color)],
     grid_light: f32,
     filter: &str,
+    clearing: Clearing,
 ) -> (Vec<Swatch>, usize) {
-    match mode {
+    let (cells, cols) = match mode {
         Mode::Names => (named_cells(filter), 1),
         Mode::Palette => (palette_cells(palette), 1),
         Mode::Grid => (grid_cells(grid_light), GRID_COLS),
         Mode::Grays => (gray_cells(), GRAY_STEPS),
+    };
+    let heads_with_none =
+        clearing == Clearing::On && mode.is_list() && filter.is_empty();
+    if !heads_with_none {
+        return (cells, cols);
     }
+    let none = Swatch {
+        color: Color::Default,
+        name: Some(NONE_NAME.to_string()),
+    };
+    (std::iter::once(none).chain(cells).collect(), cols)
+}
+
+impl Swatch {
+    /// Whether this is the `(none)` entry that removes the color. Matched by
+    /// name too, since a palette entry may itself be `Color::Default`.
+    pub(super) fn is_none_entry(&self) -> bool {
+        self.color == Color::Default && self.name.as_deref() == Some(NONE_NAME)
+    }
+}
+
+/// Whether `color` is exactly one of the named colors or palette entries.
+pub(super) fn is_listed(
+    color: Color,
+    palette: &[(&'static str, Color)],
+) -> bool {
+    NAMED_COLORS
+        .iter()
+        .chain(palette)
+        .any(|(_, listed)| *listed == color)
 }
 
 /// The current theme palette entries as named swatches.
@@ -70,11 +107,13 @@ pub(super) fn gray_cells() -> Vec<Swatch> {
         .collect()
 }
 
-/// The index of the cell perceptually closest to `color`.
+/// The index of the cell perceptually closest to `color`, never the `(none)`
+/// entry.
 pub(super) fn nearest(cells: &[Swatch], color: Color) -> usize {
     cells
         .iter()
         .enumerate()
+        .filter(|(_, cell)| !cell.is_none_entry())
         .min_by(|(_, first), (_, second)| {
             first
                 .color

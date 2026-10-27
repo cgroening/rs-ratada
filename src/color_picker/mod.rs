@@ -153,6 +153,20 @@ const FOCUS_ORDER: [Focus; 5] = [
     Focus::Presets,
 ];
 
+/// The hint key for the two keys that remove a color (`Backspace`/`Delete`).
+pub(crate) const CLEAR_KEYS: &str = "\u{232b}/del";
+
+/// Whether `Backspace`/`Delete` remove the color ("no color") instead of
+/// doing nothing. Shared with the swatch view, which opts in through
+/// `swatches::ChooserOptions`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Clearing {
+    /// The keys do nothing; the picker only ever yields a color.
+    Off,
+    /// The keys leave with "no color".
+    On,
+}
+
 /// The full picker state.
 struct State {
     model: Model,
@@ -161,6 +175,7 @@ struct State {
     hex: InputField,
     presets: Vec<Color>,
     preset: usize,
+    clearing: Clearing,
 }
 
 impl State {
@@ -230,11 +245,19 @@ pub enum ColorExit {
 }
 
 /// The picker's popup result: confirmed, stepped back, or switched to swatches,
-/// each carrying the current color.
+/// each carrying the current color - or the color removed (`Clearing::On`).
 enum Outcome {
     Done(Color),
     Back(Color),
     Swatches(Color),
+    Cleared,
+}
+
+/// How the crate-internal picker run ended: a [`ColorExit`], or the color
+/// removed, which only a picker opened with `Clearing::On` reports.
+pub(crate) enum PickerResult {
+    Exit(ColorExit),
+    Cleared,
 }
 
 /// Lets the user compose a color. `↑`/`↓` (or `Tab`) move focus across the three
@@ -250,6 +273,28 @@ pub fn color_picker(
     initial: Option<Color>,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ColorExit> {
+    let fallback = initial.unwrap_or(Color::Default);
+    Ok(
+        match run_picker(tui, skin, title, initial, Clearing::Off, render_bg)? {
+            PickerResult::Exit(exit) => exit,
+            // Cannot occur with `Clearing::Off`; stepping back is the harmless
+            // reading should it ever do.
+            PickerResult::Cleared => ColorExit::Back(fallback),
+        },
+    )
+}
+
+/// The picker behind [`color_picker`] and the swatch chooser; `clearing`
+/// decides whether `Backspace`/`Delete` (outside the hex field) remove the
+/// color.
+pub(crate) fn run_picker(
+    tui: &mut Tui,
+    skin: &Skin,
+    title: &str,
+    initial: Option<Color>,
+    clearing: Clearing,
+    render_bg: impl Fn(&mut Frame),
+) -> io::Result<PickerResult> {
     let color = initial
         .filter(|c| c.rgb().is_some())
         .or_else(|| {
@@ -266,6 +311,7 @@ pub fn color_picker(
         hex: InputField::new(&color.to_hex()),
         presets: preset_colors(&skin.palette),
         preset: 0,
+        clearing,
     };
     let signal = popup_with_paste(
         tui,
@@ -283,15 +329,19 @@ pub fn color_picker(
         handle,
         |state, text| handle_paste(state, &text),
     )?;
-    Ok(match signal {
+    let exit = match signal {
         ModalSignal::Value(Outcome::Done(color)) => ColorExit::Done(color),
         // `Esc` maps to a step-back; `Cancelled` cannot occur (no such path).
         ModalSignal::Value(Outcome::Back(color)) => ColorExit::Back(color),
         ModalSignal::Value(Outcome::Swatches(color)) => {
             ColorExit::Swatches(color)
         }
+        ModalSignal::Value(Outcome::Cleared) => {
+            return Ok(PickerResult::Cleared);
+        }
         ModalSignal::Cancelled | ModalSignal::Quit => ColorExit::Quit,
-    })
+    };
+    Ok(PickerResult::Exit(exit))
 }
 
 /// The palette colors offered as quick-start presets.
@@ -331,6 +381,7 @@ mod tests {
             hex: InputField::new(&color.to_hex()),
             presets: vec![Color::hex("#8bd3cd"), Color::hex("#a3c995")],
             preset: 0,
+            clearing: Clearing::Off,
         }
     }
 
@@ -464,5 +515,28 @@ mod tests {
         state.hex = InputField::new("#ffffff");
         state.adopt(parse_color(state.hex.value()).unwrap());
         assert_eq!(state.current_color(), Color::Rgb(255, 255, 255));
+    }
+
+    #[test]
+    fn backspace_and_delete_remove_the_color_outside_the_hex_field() {
+        for code in [KeyCode::Backspace, KeyCode::Delete] {
+            let mut state = state_from(Color::hex("#8bd3cd"));
+            state.clearing = Clearing::On;
+            assert!(matches!(
+                handle(&mut state, key(code)),
+                PopupFlow::Done(Outcome::Cleared)
+            ));
+            // Off by default, and the hex field keeps both keys for its text.
+            let mut plain = state_from(Color::hex("#8bd3cd"));
+            assert!(matches!(
+                handle(&mut plain, key(code)),
+                PopupFlow::Continue
+            ));
+            state.focus = Focus::Hex;
+            assert!(matches!(
+                handle(&mut state, key(code)),
+                PopupFlow::Continue
+            ));
+        }
     }
 }

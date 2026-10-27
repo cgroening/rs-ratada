@@ -6,7 +6,7 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use super::{BOX_WIDTH, Focus, Model, State};
+use super::{BOX_WIDTH, CLEAR_KEYS, Clearing, Focus, Model, State};
 use crate::{
     shortcut_hints, style,
     theme::{Palette, Skin},
@@ -168,15 +168,15 @@ fn hint_lines(
     palette: &Palette,
     width: usize,
 ) -> Vec<Line<'static>> {
-    let hints: &[(&str, &str)] = match state.focus {
-        Focus::Hex => &[
+    let mut hints: Vec<(&str, &str)> = match state.focus {
+        Focus::Hex => vec![
             ("type", "hex"),
             ("m", "model"),
             ("\u{2191}/\u{2193}", "focus"),
             ("enter", "ok"),
             ("esc", "back"),
         ],
-        Focus::Presets => &[
+        Focus::Presets => vec![
             ("\u{2190}/\u{2192}", "choose"),
             ("m", "model"),
             ("s", "swatches"),
@@ -184,7 +184,7 @@ fn hint_lines(
             ("enter", "ok"),
             ("esc", "back"),
         ],
-        Focus::Channel(_) => &[
+        Focus::Channel(_) => vec![
             ("\u{2190}/\u{2192}", "adjust"),
             ("shift", "fine"),
             ("m", "model"),
@@ -194,7 +194,11 @@ fn hint_lines(
             ("esc", "back"),
         ],
     };
-    shortcut_hints::lines(hints, palette.accent_dim, width)
+    // The hex field keeps both keys for its text.
+    if state.clearing == Clearing::On && state.focus != Focus::Hex {
+        hints.insert(hints.len() - 2, (CLEAR_KEYS, "none"));
+    }
+    shortcut_hints::lines(&hints, palette.accent_dim, width)
 }
 
 /// Accent+bold for a focused label, dim secondary otherwise.
