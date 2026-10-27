@@ -8,6 +8,7 @@
 use ratatui::{
     Frame,
     layout::Rect,
+    style::{Color as RatColor, Style},
     text::Span,
     widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
@@ -115,6 +116,31 @@ fn scrollable_length(view: ScrollView) -> Option<usize> {
     Some(view.total.saturating_sub(view.viewport).saturating_add(1))
 }
 
+/// The fills of a solid-cell scrollbar ([`render_cell_scrollbar`]).
+pub(crate) struct CellColors {
+    /// The thumb cells.
+    pub thumb: RatColor,
+    /// The track cells.
+    pub track: RatColor,
+}
+
+/// Draws a vertical scrollbar of solid cells at the right edge of `area`, but
+/// only when the content overflows the viewport. This is the menu look of the
+/// autocomplete popup, where the bar fills the popup's own padding column.
+pub(crate) fn render_cell_scrollbar(
+    frame: &mut Frame,
+    area: Rect,
+    view: ScrollView,
+    colors: &CellColors,
+) {
+    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .thumb_symbol(" ")
+        .track_symbol(Some(" "))
+        .thumb_style(Style::default().bg(colors.thumb))
+        .track_style(Style::default().bg(colors.track));
+    draw(frame, area, view, scrollbar);
+}
+
 /// Shared scrollbar rendering for both orientations.
 fn render(
     frame: &mut Frame,
@@ -122,6 +148,20 @@ fn render(
     skin: &Skin,
     orientation: ScrollbarOrientation,
     view: ScrollView,
+) {
+    let scrollbar = Scrollbar::new(orientation)
+        .thumb_style(style::fg(skin.palette.foreground_dim))
+        .track_style(style::fg(skin.palette.border));
+    draw(frame, area, view, scrollbar);
+}
+
+/// Draws `scrollbar` over `area` for `view`, or nothing when the content fits
+/// or the area is empty.
+fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    view: ScrollView,
+    scrollbar: Scrollbar<'_>,
 ) {
     // An empty area (e.g. a boxed widget squeezed into a tiny viewport) has no
     // room for a track; ratatui's scrollbar panics on it, so skip it.
@@ -136,11 +176,7 @@ fn render(
     let mut state = ScrollbarState::new(content_length)
         .viewport_content_length(view.viewport)
         .position(view.offset);
-    let scrollbar = Scrollbar::new(orientation)
-        .begin_symbol(None)
-        .end_symbol(None)
-        .thumb_style(style::fg(skin.palette.foreground_dim))
-        .track_style(style::fg(skin.palette.border));
+    let scrollbar = scrollbar.begin_symbol(None).end_symbol(None);
     frame.render_stateful_widget(scrollbar, area, &mut state);
 }
 

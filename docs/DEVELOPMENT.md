@@ -39,7 +39,9 @@ src/
                     mutate / clip (clipboard) / paint (spans, scroll window)
   textarea/         TextArea (wrapped multi-line editor; reuses input's core),
                     split into mod / wrap (wrapping + caret<->display mapping)
-  autocomplete.rs   inline suggestion dropdown
+  autocomplete/     Autocomplete (suggestion state, blink-style keys), split
+                    into mod / matching (case-insensitive substring in chars)
+                    / popup (floating menu) / inline (rows for the host)
   editor.rs         launch $EDITOR via Tui::suspend
   clipboard.rs      best-effort copy/paste (native Win32 on Windows, CLI tools elsewhere)
 
