@@ -6,7 +6,7 @@
 //! month, `Enter` picks, `Del`/`Backspace` clears (when allowed) and `Esc`
 //! cancels.
 //!
-//! `i` turns the header into a text field prefilled with the current date and
+//! `e` turns the header into a text field prefilled with the current date and
 //! fully selected, for a date too far away to walk to. The calendar follows the
 //! typed `%Y-%m-%d` value as soon as it parses; while it does not, the field is
 //! coloured as an error and `Enter` does nothing. `Enter` returns the typed
@@ -64,7 +64,7 @@ struct Picker {
 }
 
 /// Opens the calendar at `current` (or today). `allow_clear` lets `Del` return
-/// an empty date, and `i` opens a field for typing the date instead of walking
+/// an empty date, and `e` opens a field for typing the date instead of walking
 /// to it. Returns `Value(Some(date))` when picked, `Value(None)` when cleared,
 /// `Cancelled` on `Esc`, `Quit` on the global quit chord.
 pub fn date_picker(
@@ -517,13 +517,13 @@ mod tests {
     }
 
     /// `Ctrl+H`/`Ctrl+J` arrive as plain characters in raw mode, so without the
-    /// guard a chord would walk the day cursor - or, for `Ctrl+I`, open the
+    /// guard a chord would walk the day cursor - or, for `Ctrl+E`, open the
     /// entry field.
     #[test]
     fn ctrl_chords_do_not_move_the_day_cursor() {
         for code in [
             KeyCode::Char('h'),
-            KeyCode::Char('i'),
+            KeyCode::Char('e'),
             KeyCode::Char('j'),
             KeyCode::Char('k'),
             KeyCode::Char('l'),
@@ -569,7 +569,7 @@ mod tests {
     #[test]
     fn i_opens_the_entry_field_prefilled_with_the_cursor() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         let entry = state.entry.as_ref().expect("the field is open");
         assert_eq!(entry.text(), "2026-06-15");
     }
@@ -579,7 +579,7 @@ mod tests {
     #[test]
     fn a_typed_date_moves_the_cursor_live() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         type_text(&mut state, "2026-01-02");
         assert!(state.entry.is_some());
         assert_eq!(
@@ -592,7 +592,7 @@ mod tests {
     fn an_unparseable_entry_blocks_enter() {
         for text in ["", "2026-13-40", "2026-06"] {
             let mut state = picker();
-            handle_key(&mut state, press(KeyCode::Char('i')), true);
+            handle_key(&mut state, press(KeyCode::Char('e')), true);
             handle_key(&mut state, ctrl(KeyCode::Char('a')), true);
             handle_key(&mut state, press(KeyCode::Delete), true);
             type_text(&mut state, text);
@@ -610,7 +610,7 @@ mod tests {
     #[test]
     fn enter_returns_the_typed_date() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         type_text(&mut state, "2026-01-02");
         let expected =
             NaiveDate::from_ymd_opt(2026, 1, 2).expect("a real date");
@@ -625,7 +625,7 @@ mod tests {
     #[test]
     fn esc_leaves_entry_mode_and_restores_the_cursor() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         type_text(&mut state, "2026-01-02");
         assert!(matches!(
             handle_key(&mut state, press(KeyCode::Esc), true),
@@ -647,7 +647,7 @@ mod tests {
         handle_key(&mut state, ctrl(KeyCode::Char('u')), true);
         assert_eq!(state.cursor, start());
 
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         handle_key(&mut state, press(KeyCode::End), true);
         handle_key(&mut state, ctrl(KeyCode::Char('u')), true);
         let entry = state.entry.as_ref().expect("the field is open");
@@ -662,7 +662,7 @@ mod tests {
         handle_paste(&mut state, "2026-01-02");
         assert_eq!(state.cursor, start());
 
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         handle_paste(&mut state, "2026-01-02");
         assert_eq!(
             state.cursor,
@@ -673,7 +673,7 @@ mod tests {
     #[test]
     fn delete_clears_only_in_calendar_mode() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         assert!(matches!(
             handle_key(&mut state, press(KeyCode::Delete), true),
             PopupFlow::Continue

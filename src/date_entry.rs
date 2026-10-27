@@ -23,10 +23,10 @@ use super::{
 use crate::theme::Palette;
 
 /// The key that turns a picker's header into the entry field.
-pub(crate) const OPEN_KEY: char = 'i';
+pub(crate) const OPEN_KEY: char = 'e';
 
 /// The hint token advertising [`OPEN_KEY`], so all three pickers word it alike.
-pub(crate) const EDIT_HINT: (&str, &str) = ("i", "edit");
+pub(crate) const EDIT_HINT: (&str, &str) = ("e", "edit");
 
 /// The hints shown while the entry field holds the keyboard.
 pub(crate) const ENTRY_HINTS: [(&str, &str); 2] =

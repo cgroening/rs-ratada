@@ -4,7 +4,7 @@
 //! `Enter` fixes the start; the range up to the cursor is highlighted; the
 //! second `Enter` returns the ordered `(start, end)` pair.
 //!
-//! `i` turns the header into a text field holding the whole range as
+//! `e` turns the header into a text field holding the whole range as
 //! `YYYY-MM-DD..YYYY-MM-DD`, prefilled and fully selected. Both ends light up
 //! as soon as the text parses; while it does not, the field is coloured as an
 //! error and `Enter` does nothing. A reversed pair is normalised, exactly as
@@ -70,7 +70,7 @@ struct Picker {
 }
 
 /// Opens the range picker. `initial` pre-selects a range (resumes with the end
-/// under the cursor). `Enter` fixes the start, then the end; `i` opens a field
+/// under the cursor). `Enter` fixes the start, then the end; `e` opens a field
 /// for typing the whole range instead; `Esc` cancels.
 pub fn date_range_picker(
     tui: &mut Tui,
@@ -423,13 +423,13 @@ mod tests {
     }
 
     /// `Ctrl+H`/`Ctrl+J` arrive as plain characters in raw mode, so without the
-    /// guard a chord would walk the day cursor - or, for `Ctrl+I`, open the
+    /// guard a chord would walk the day cursor - or, for `Ctrl+E`, open the
     /// entry field.
     #[test]
     fn ctrl_chords_do_not_move_the_day_cursor() {
         for code in [
             KeyCode::Char('h'),
-            KeyCode::Char('i'),
+            KeyCode::Char('e'),
             KeyCode::Char('j'),
             KeyCode::Char('k'),
             KeyCode::Char('l'),
@@ -485,7 +485,7 @@ mod tests {
     #[test]
     fn i_prefills_the_cursor_twice_without_a_fixed_start() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')));
+        handle_key(&mut state, press(KeyCode::Char('e')));
         let entry = state.entry.as_ref().expect("the field is open");
         assert_eq!(entry.text(), "2026-06-15..2026-06-15");
     }
@@ -495,7 +495,7 @@ mod tests {
         let mut state = picker();
         handle_key(&mut state, press(KeyCode::Enter));
         handle_key(&mut state, press(KeyCode::Char('l')));
-        handle_key(&mut state, press(KeyCode::Char('i')));
+        handle_key(&mut state, press(KeyCode::Char('e')));
         let entry = state.entry.as_ref().expect("the field is open");
         assert_eq!(entry.text(), "2026-06-15..2026-06-16");
     }
@@ -505,7 +505,7 @@ mod tests {
     #[test]
     fn a_typed_range_highlights_both_ends_live() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')));
+        handle_key(&mut state, press(KeyCode::Char('e')));
         retype(&mut state, "2026-06-10..2026-06-20");
         assert_eq!(state.range.start, Some(day(10)));
         assert_eq!(state.range.cursor, day(20));
@@ -514,7 +514,7 @@ mod tests {
     #[test]
     fn a_reversed_typed_range_is_normalised() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')));
+        handle_key(&mut state, press(KeyCode::Char('e')));
         retype(&mut state, "2026-06-20..2026-06-10");
         assert!(matches!(
             handle_key(&mut state, press(KeyCode::Enter)),
@@ -527,7 +527,7 @@ mod tests {
         for text in ["", "2026-06-20", "2026-06-20..", "2026-06-20..2026-13-01"]
         {
             let mut state = picker();
-            handle_key(&mut state, press(KeyCode::Char('i')));
+            handle_key(&mut state, press(KeyCode::Char('e')));
             retype(&mut state, text);
             assert!(
                 matches!(
@@ -545,7 +545,7 @@ mod tests {
     #[test]
     fn esc_restores_both_the_start_and_the_cursor() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')));
+        handle_key(&mut state, press(KeyCode::Char('e')));
         retype(&mut state, "2026-06-10..2026-06-20");
         assert!(matches!(
             handle_key(&mut state, press(KeyCode::Esc)),
@@ -564,7 +564,7 @@ mod tests {
         handle_key(&mut state, ctrl(KeyCode::Char('u')));
         assert_eq!(state.range.cursor, day(15));
 
-        handle_key(&mut state, press(KeyCode::Char('i')));
+        handle_key(&mut state, press(KeyCode::Char('e')));
         handle_key(&mut state, press(KeyCode::End));
         handle_key(&mut state, ctrl(KeyCode::Char('u')));
         let entry = state.entry.as_ref().expect("the field is open");
@@ -578,7 +578,7 @@ mod tests {
         handle_paste(&mut state, "2026-06-10..2026-06-20");
         assert_eq!(state.range.cursor, day(15));
 
-        handle_key(&mut state, press(KeyCode::Char('i')));
+        handle_key(&mut state, press(KeyCode::Char('e')));
         handle_paste(&mut state, "2026-06-10..2026-06-20");
         assert_eq!(state.range.start, Some(day(10)));
         assert_eq!(state.range.cursor, day(20));

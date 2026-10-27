@@ -4,7 +4,7 @@
 //! `Home`/`End` jump to January/December, `Enter` picks, `Del`/`Backspace`
 //! clears (when allowed) and `Esc` cancels.
 //!
-//! `i` turns the header into a text field prefilled with the current
+//! `e` turns the header into a text field prefilled with the current
 //! `YYYY-MM` and fully selected, for a year too far away to page to. The grid
 //! follows the typed value as soon as it parses; while it does not, the field
 //! is coloured as an error and `Enter` does nothing. `Enter` returns the typed
@@ -61,7 +61,7 @@ struct Picker {
     entry: Option<DateEntry<Month>>,
 }
 
-/// Opens the month grid at `current` (or the local month). `i` opens a field
+/// Opens the month grid at `current` (or the local month). `e` opens a field
 /// for typing the month instead of paging to it. Returns
 /// `Value(Some((year, month)))` when picked (`month` is 1-12), `Value(None)`
 /// when cleared, `Cancelled` on `Esc`, `Quit` on the global quit chord.
@@ -386,13 +386,13 @@ mod tests {
     }
 
     /// `Ctrl+H`/`Ctrl+J` arrive as plain characters in raw mode, so without the
-    /// guard a chord would walk the month cursor - or, for `Ctrl+I`, open the
+    /// guard a chord would walk the month cursor - or, for `Ctrl+E`, open the
     /// entry field.
     #[test]
     fn ctrl_chords_do_not_move_the_month_cursor() {
         for code in [
             KeyCode::Char('h'),
-            KeyCode::Char('i'),
+            KeyCode::Char('e'),
             KeyCode::Char('j'),
             KeyCode::Char('k'),
             KeyCode::Char('l'),
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn i_prefills_the_year_and_month() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         let entry = state.entry.as_ref().expect("the field is open");
         assert_eq!(entry.text(), "2026-06");
     }
@@ -459,7 +459,7 @@ mod tests {
     #[test]
     fn a_typed_month_moves_the_grid_live() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         retype(&mut state, "2025-01");
         assert_eq!(state.month.year, 2025);
         assert_eq!(state.month.month, 1);
@@ -471,7 +471,7 @@ mod tests {
     fn a_month_outside_one_to_twelve_is_invalid() {
         for text in ["", "2026", "2026-13", "2026-00"] {
             let mut state = picker();
-            handle_key(&mut state, press(KeyCode::Char('i')), true);
+            handle_key(&mut state, press(KeyCode::Char('e')), true);
             retype(&mut state, text);
             assert!(
                 matches!(
@@ -487,7 +487,7 @@ mod tests {
     #[test]
     fn enter_returns_the_typed_month() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         retype(&mut state, "2025-01");
         assert!(matches!(
             handle_key(&mut state, press(KeyCode::Enter), true),
@@ -498,7 +498,7 @@ mod tests {
     #[test]
     fn esc_restores_the_year_and_month() {
         let mut state = picker();
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         retype(&mut state, "2025-01");
         assert!(matches!(
             handle_key(&mut state, press(KeyCode::Esc), true),
@@ -521,7 +521,7 @@ mod tests {
         handle_key(&mut state, ctrl(KeyCode::Char('u')), true);
         assert_eq!(state.month.month, 6);
 
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         handle_key(&mut state, press(KeyCode::End), true);
         handle_key(&mut state, ctrl(KeyCode::Char('u')), true);
         let entry = state.entry.as_ref().expect("the field is open");
@@ -535,7 +535,7 @@ mod tests {
         handle_paste(&mut state, "2025-01");
         assert_eq!(state.month.year, 2026);
 
-        handle_key(&mut state, press(KeyCode::Char('i')), true);
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
         handle_paste(&mut state, "2025-01");
         assert_eq!(state.month.year, 2025);
         assert_eq!(state.month.month, 1);
