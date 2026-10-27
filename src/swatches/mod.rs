@@ -2,11 +2,9 @@
 //! grid, a grayscale ramp or the theme palette.
 //!
 //! `m` cycles the modes (carrying the focused color over via perceptual
-//! distance). `Space` returns the focused color directly; `Enter` hands it to
-//! the full [`color_picker`] for editing. `y` copies its
-//! hex, `e` opens the picker on the color the chooser opened with. Each mode
-//! shows a focus preview (swatch, hex/hsl, nearest name, light/dark
-//! contrast).
+//! distance). `Enter` returns the focused color; `e` hands it to the full
+//! [`color_picker`] for fine-tuning. `y` copies its hex. Each mode shows a
+//! focus preview (swatch, hex/hsl, nearest name, light/dark contrast).
 //!
 //! [`color_chooser_with`] adds two opt-ins: removing the color (a `(none)`
 //! entry plus `Backspace`/`Delete`) and opening straight in the picker for a
@@ -92,13 +90,11 @@ struct Swatch {
     name: Option<String>,
 }
 
-/// How the swatch view was answered: take a color as-is, edit one in the
-/// color picker, edit the color the chooser opened with (`e`), or remove the
-/// color (`Clearing::On` only).
+/// How the swatch view was answered: take a color as-is (`Enter`), edit one
+/// in the color picker (`e`), or remove the color (`Clearing::On` only).
 enum Choice {
     Pick(Color),
     Edit(Color),
-    EditOriginal,
     Clear,
 }
 
@@ -165,7 +161,6 @@ pub enum Start {
 enum SwatchExit {
     Pick(Color),
     Edit(Color),
-    EditOriginal,
     Clear,
     Cancel,
     Quit,
@@ -227,8 +222,8 @@ pub fn swatch_picker(
 /// A combined color chooser that alternates between the swatch view and the full
 /// [`color_picker`]. Swatch view: `↑`/`↓`/`←`/`→` (or `k`/`j`/`h`/`l`) move, `m`
 /// cycles the mode, `[`/`]` shift the grid lightness, `/` filters the named list,
-/// `y` copies the hex, `Space` returns the color directly, `Enter` opens it in the
-/// picker, `Esc` cancels. Picker view: `Enter` confirms, `s` switches to the
+/// `y` copies the hex, `Enter` returns the color, `e` opens it in the picker,
+/// `Esc` cancels. Picker view: `Enter` confirms, `s` switches to the
 /// swatch view, `Esc` steps back to it (or cancels if the picker was opened
 /// first and no swatch view has been shown). The focused color carries across
 /// both ways, and the swatch view keeps its mode/lightness across a round trip.
@@ -290,8 +285,8 @@ pub fn color_chooser_with(
     run_chooser(tui, skin, &session, start, render_bg)
 }
 
-/// What one chooser run is about: its title, the color it opened with (the
-/// one `e` returns to) and whether the color can be removed.
+/// What one chooser run is about: its title, the color it opened with and
+/// whether the color can be removed.
 struct Session<'a> {
     title: &'a str,
     initial: Option<Color>,
@@ -329,15 +324,6 @@ fn run_chooser(
                     }
                     SwatchExit::Edit(chosen) => {
                         color = Some(chosen);
-                        view = Start::Picker;
-                    }
-                    // The color the chooser opened with, else the one the
-                    // list last showed.
-                    SwatchExit::EditOriginal => {
-                        color = session
-                            .initial
-                            .filter(|original| *original != Color::Default)
-                            .or(color);
                         view = Start::Picker;
                     }
                     SwatchExit::Clear => {
@@ -439,7 +425,6 @@ fn run_swatch(
     let exit = match signal {
         ModalSignal::Value(Choice::Pick(color)) => SwatchExit::Pick(color),
         ModalSignal::Value(Choice::Edit(color)) => SwatchExit::Edit(color),
-        ModalSignal::Value(Choice::EditOriginal) => SwatchExit::EditOriginal,
         ModalSignal::Value(Choice::Clear) => SwatchExit::Clear,
         ModalSignal::Cancelled => SwatchExit::Cancel,
         ModalSignal::Quit => SwatchExit::Quit,
@@ -452,7 +437,7 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use super::{
-        interaction::{done, move_horizontal, move_vertical},
+        interaction::{edit, move_horizontal, move_vertical, pick},
         *,
     };
     use crate::overlay::PopupFlow;
@@ -572,20 +557,46 @@ mod tests {
     }
 
     #[test]
-    fn space_picks_and_enter_edits() {
+    fn enter_picks_and_e_edits_the_focused_color() {
         let mut state = state();
         state.cursor = 3;
-        match done(&state, true) {
+        match handle(&mut state, key(KeyCode::Enter)) {
             PopupFlow::Done(Choice::Pick(color)) => {
                 assert_eq!(color, NAMED_COLORS[3].1);
             }
             _ => panic!("expected a direct pick"),
         }
-        match done(&state, false) {
+        match handle(&mut state, key(KeyCode::Char('e'))) {
             PopupFlow::Done(Choice::Edit(color)) => {
                 assert_eq!(color, NAMED_COLORS[3].1);
             }
             _ => panic!("expected an edit hand-off"),
+        }
+        assert!(matches!(pick(&state), PopupFlow::Done(Choice::Pick(_))));
+        assert!(matches!(edit(&state), PopupFlow::Done(Choice::Edit(_))));
+    }
+
+    #[test]
+    fn space_does_nothing() {
+        let mut state = state();
+        assert!(matches!(
+            handle(&mut state, key(KeyCode::Char(' '))),
+            PopupFlow::Continue
+        ));
+    }
+
+    #[test]
+    fn enter_while_filtering_picks_the_first_match() {
+        let mut state = state();
+        handle(&mut state, key(KeyCode::Char('/')));
+        for ch in "crim".chars() {
+            handle(&mut state, key(KeyCode::Char(ch)));
+        }
+        match handle(&mut state, key(KeyCode::Enter)) {
+            PopupFlow::Done(Choice::Pick(color)) => {
+                assert_eq!(color, Color::hex("#dc143c"));
+            }
+            _ => panic!("expected a direct pick"),
         }
     }
 
@@ -593,9 +604,9 @@ mod tests {
     fn ctrl_chords_do_not_pick_move_or_switch_mode() {
         let mut state = state();
         state.cursor = 3;
-        // Ctrl+Space would otherwise pick the focused color and close.
+        // Ctrl+E would otherwise open the picker.
         assert!(matches!(
-            handle(&mut state, ctrl(KeyCode::Char(' '))),
+            handle(&mut state, ctrl(KeyCode::Char('e'))),
             PopupFlow::Continue,
         ));
         // Crossterm reports Ctrl+J/Ctrl+H as plain characters, so a bare match
@@ -660,7 +671,7 @@ mod tests {
     }
 
     #[test]
-    fn enter_and_space_on_the_none_entry_remove_the_color() {
+    fn enter_on_the_none_entry_removes_the_color_and_e_does_nothing() {
         let mut state = clearable();
         state.cursor = 0;
         assert!(matches!(
@@ -668,8 +679,8 @@ mod tests {
             PopupFlow::Done(Choice::Clear)
         ));
         assert!(matches!(
-            handle(&mut state, key(KeyCode::Char(' '))),
-            PopupFlow::Done(Choice::Clear)
+            handle(&mut state, key(KeyCode::Char('e'))),
+            PopupFlow::Continue
         ));
     }
 
@@ -695,14 +706,6 @@ mod tests {
         handle(&mut state, key(KeyCode::Backspace));
         assert_eq!(state.filter, "");
         assert!(state.filtering, "still filtering, nothing removed");
-    }
-
-    #[test]
-    fn e_edits_the_color_the_chooser_opened_with() {
-        assert!(matches!(
-            handle(&mut state(), key(KeyCode::Char('e'))),
-            PopupFlow::Done(Choice::EditOriginal)
-        ));
     }
 
     #[test]

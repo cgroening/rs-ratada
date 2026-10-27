@@ -20,10 +20,9 @@ pub(super) fn handle(state: &mut State, key: KeyEvent) -> PopupFlow<Choice> {
     }
     let len = state.cells.len();
     match key.code {
-        KeyCode::Enter => return done(state, false),
-        KeyCode::Char(' ') => return done(state, true),
+        KeyCode::Enter => return pick(state),
         KeyCode::Esc => return PopupFlow::Cancelled,
-        KeyCode::Char('e') => return PopupFlow::Done(Choice::EditOriginal),
+        KeyCode::Char('e') => return edit(state),
         KeyCode::Backspace | KeyCode::Delete
             if state.clearing == Clearing::On =>
         {
@@ -73,7 +72,7 @@ pub(super) fn handle_filter(
             state.rebuild();
             state.cursor = 0;
         }
-        KeyCode::Enter => return done(state, false),
+        KeyCode::Enter => return pick(state),
         KeyCode::Up => {
             state.cursor = nav::cycle(state.cursor, state.cells.len(), -1);
         }
@@ -100,14 +99,24 @@ pub(super) fn handle_filter(
     PopupFlow::Continue
 }
 
-/// Finishes with the focused color, either taken directly or sent to the
-/// editor; the `(none)` entry removes the color either way.
-pub(super) fn done(state: &State, pick: bool) -> PopupFlow<Choice> {
+/// `Enter`: finishes with the focused color as it is; the `(none)` entry
+/// removes the color.
+pub(super) fn pick(state: &State) -> PopupFlow<Choice> {
     match state.cells.get(state.cursor) {
         Some(cell) if cell.is_none_entry() => PopupFlow::Done(Choice::Clear),
-        Some(cell) if pick => PopupFlow::Done(Choice::Pick(cell.color)),
-        Some(cell) => PopupFlow::Done(Choice::Edit(cell.color)),
+        Some(cell) => PopupFlow::Done(Choice::Pick(cell.color)),
         None => PopupFlow::Continue,
+    }
+}
+
+/// `e`: hands the focused color to the picker for fine-tuning. The `(none)`
+/// entry has no color to tune, so `e` does nothing there.
+pub(super) fn edit(state: &State) -> PopupFlow<Choice> {
+    match state.cells.get(state.cursor) {
+        Some(cell) if !cell.is_none_entry() => {
+            PopupFlow::Done(Choice::Edit(cell.color))
+        }
+        _ => PopupFlow::Continue,
     }
 }
 

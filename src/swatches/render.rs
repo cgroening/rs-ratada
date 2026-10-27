@@ -310,7 +310,7 @@ fn hints(state: &State) -> Vec<(&'static str, &'static str)> {
         return vec![
             ("type", "filter"),
             ("\u{2191}/\u{2193}", "move"),
-            ("enter", "edit"),
+            ("enter", "pick"),
             ("esc", "clear"),
         ];
     }
@@ -321,11 +321,10 @@ fn hints(state: &State) -> Vec<(&'static str, &'static str)> {
     if state.mode == Mode::Names {
         hints.push(("/", "filter"));
     }
-    hints.extend_from_slice(&[("space", "pick"), ("y", "copy")]);
-    hints.push(("e", "current"));
+    hints.extend_from_slice(&[("enter", "pick"), ("e", "edit"), ("y", "copy")]);
     if state.clearing == Clearing::On {
         hints.push((CLEAR_KEYS, "none"));
     }
-    hints.extend_from_slice(&[("enter", "edit"), ("esc", "cancel")]);
+    hints.push(("esc", "cancel"));
     hints
 }
