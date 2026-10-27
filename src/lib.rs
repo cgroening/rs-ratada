@@ -80,6 +80,8 @@ mod date_entry;
 
 pub mod date_picker;
 pub mod date_range_picker;
+mod date_text;
+
 pub mod double_press;
 pub mod driver;
 pub mod editor;

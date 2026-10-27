@@ -7,10 +7,12 @@
 //! cancels.
 //!
 //! `e` turns the header into a text field prefilled with the current date and
-//! fully selected, for a date too far away to walk to. The calendar follows the
-//! typed `%Y-%m-%d` value as soon as it parses; while it does not, the field is
-//! coloured as an error and `Enter` does nothing. `Enter` returns the typed
-//! date, `Esc` leaves the field and puts the cursor back.
+//! fully selected, for a date too far away to walk to. It takes `YYYY-MM-DD`,
+//! `DD.MM.YYYY`, a two-digit year as `20YY`, and `DD.MM.` without a year, which
+//! falls in the year the field opened over. The calendar follows the typed
+//! value as soon as it parses; while it does not, the field is coloured as an
+//! error and `Enter` does nothing. `Enter` returns the typed date, `Esc` leaves
+//! the field and puts the cursor back.
 //!
 //! A column left of the grid shows the ISO calendar week of each row, the
 //! cursor's week in the accent and today's a step brighter than the rest. It is
@@ -29,7 +31,7 @@ use ratatui::{
 
 use super::{
     date_entry::{self, DateEntry, EntryAction, OPEN_KEY, Validity},
-    input,
+    date_text, input,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup_with_paste},
@@ -45,10 +47,11 @@ pub use crate::week_column::{WeekColumn, set_week_column, week_column};
 
 const BOX_WIDTH: u16 = 24;
 const INNER_WIDTH: usize = 22;
-/// The one format the header prints and the typed entry accepts, shared with
+/// The format the header prints and the typed entry opens with, shared with
 /// the range picker so both spell a day the same way.
 pub(super) const ISO_FORMAT: &str = "%Y-%m-%d";
-/// The characters an ISO date takes, and with it the entry field's limit.
+/// The characters the longest typed date takes (`YYYY-MM-DD`, `DD.MM.YYYY`),
+/// and with it the entry field's limit.
 const ENTRY_MAX_LEN: usize = 10;
 /// The Monday-first weekday headers, shared by the calendar pickers.
 const WEEKDAY_NAMES: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
@@ -128,7 +131,7 @@ fn handle_entry_key(
         return PopupFlow::Continue;
     };
     match entry.handle_key(key) {
-        EntryAction::Committed => match parse_entry(entry.text()) {
+        EntryAction::Committed => match parse_entry(entry) {
             Some(date) => PopupFlow::Done(Some(date)),
             None => PopupFlow::Continue,
         },
@@ -226,18 +229,17 @@ fn preview(state: &mut Picker) {
     let Some(entry) = state.entry.as_ref() else {
         return;
     };
-    if let Some(date) = parse_entry(entry.text()) {
+    if let Some(date) = parse_entry(entry) {
         state.cursor = date;
     }
 }
 
-/// The [`ISO_FORMAT`] parse behind the typed entry, yielding `None` while the
-/// text is not a real date - an empty field included.
-///
-/// Unpadded components (`2026-6-5`) are accepted, as chrono parses them; the
-/// format is what is strict here, not the digit count.
-fn parse_entry(text: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(text, ISO_FORMAT).ok()
+/// The parse behind the typed entry, yielding `None` while the text is not a
+/// real date - an empty field included. The forms are those of
+/// [`date_text`]; a day typed without a year falls in the year the field
+/// opened over, not the one the live preview has moved to.
+fn parse_entry(entry: &DateEntry<NaiveDate>) -> Option<NaiveDate> {
+    date_text::parse_date(entry.text(), entry.snapshot().year())
 }
 
 /// The local date today.
@@ -326,7 +328,7 @@ fn header_line(
             style::fg(palette.accent).add_modifier(Modifier::BOLD),
         ));
     };
-    let validity = Validity::of(parse_entry(entry.text()).is_some());
+    let validity = Validity::of(parse_entry(entry).is_some());
     entry.header_line(palette, width, validity)
 }
 
@@ -567,7 +569,7 @@ mod tests {
     }
 
     #[test]
-    fn i_opens_the_entry_field_prefilled_with_the_cursor() {
+    fn e_opens_the_entry_field_prefilled_with_the_cursor() {
         let mut state = picker();
         handle_key(&mut state, press(KeyCode::Char('e')), true);
         let entry = state.entry.as_ref().expect("the field is open");
@@ -585,6 +587,33 @@ mod tests {
         assert_eq!(
             state.cursor,
             NaiveDate::from_ymd_opt(2026, 1, 2).expect("a real date"),
+        );
+    }
+
+    #[test]
+    fn a_typed_german_date_moves_the_cursor_live() {
+        let mut state = picker();
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
+        type_text(&mut state, "2.1.27");
+        assert_eq!(
+            state.cursor,
+            NaiveDate::from_ymd_opt(2027, 1, 2).expect("a real date"),
+        );
+    }
+
+    /// The live preview moves the cursor into the year being typed; a date
+    /// left without one must still fall in the year the field opened over.
+    #[test]
+    fn a_date_without_a_year_takes_the_year_the_field_opened_over() {
+        let mut state = picker();
+        handle_key(&mut state, press(KeyCode::Char('e')), true);
+        type_text(&mut state, "1.2.2030");
+        for _ in 0.."2030".len() {
+            handle_key(&mut state, press(KeyCode::Backspace), true);
+        }
+        assert_eq!(
+            state.cursor,
+            NaiveDate::from_ymd_opt(2026, 2, 1).expect("a real date"),
         );
     }
 

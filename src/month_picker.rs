@@ -5,7 +5,8 @@
 //! clears (when allowed) and `Esc` cancels.
 //!
 //! `e` turns the header into a text field prefilled with the current
-//! `YYYY-MM` and fully selected, for a year too far away to page to. The grid
+//! `YYYY-MM` and fully selected, for a year too far away to page to. It also
+//! takes `MM/YYYY` and `MM.YYYY`, and a two-digit year as `20YY`. The grid
 //! follows the typed value as soon as it parses; while it does not, the field
 //! is coloured as an error and `Enter` does nothing. `Enter` returns the typed
 //! month, `Esc` leaves the field and puts the grid back.
@@ -24,7 +25,7 @@ use ratatui::{
 use super::{
     date_entry::{self, DateEntry, EntryAction, OPEN_KEY, Validity},
     date_picker::{cursor_cell_style, today_cell_style},
-    input,
+    date_text, input,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup_with_paste},
@@ -42,9 +43,10 @@ const INNER_WIDTH: usize = 16;
 /// The month grid is laid out as `MONTH_GRID_ROWS` x `MONTH_GRID_COLS` (12).
 const MONTH_GRID_ROWS: u32 = 4;
 const MONTH_GRID_COLS: u32 = 3;
-/// The separator between the year and the month in the typed entry.
+/// The separator between the year and the month in the header and prefill.
 const MONTH_SEPARATOR: char = '-';
-/// The characters `YYYY-MM` takes, and with it the entry field's limit.
+/// The characters the longest typed month takes (`YYYY-MM`, `MM/YYYY`), and
+/// with it the entry field's limit.
 const ENTRY_MAX_LEN: usize = 7;
 
 /// The picked year and month (1-12).
@@ -227,16 +229,15 @@ fn entry_text(month: Month) -> String {
     format!("{:04}{MONTH_SEPARATOR}{:02}", month.year, month.month)
 }
 
-/// The `YYYY-MM` parse behind the typed entry, yielding `None` while the text
-/// is not a real month - an empty field included.
+/// The parse behind the typed entry, yielding `None` while the text is not a
+/// real month - an empty field included. The forms are those of
+/// [`date_text`].
 ///
 /// The month must be 1-12, so `2026-13` stays invalid instead of silently
 /// clamping the way the grid keys do.
 fn parse_entry(text: &str) -> Option<Month> {
-    let (year, month) = text.split_once(MONTH_SEPARATOR)?;
-    let year = year.parse().ok()?;
-    let month = month.parse().ok()?;
-    (1..=12).contains(&month).then_some(Month { year, month })
+    let (year, month) = date_text::parse_month(text)?;
+    Some(Month { year, month })
 }
 
 /// Moves the grid onto the typed month as soon as the text parses, so year and
@@ -447,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn i_prefills_the_year_and_month() {
+    fn e_prefills_the_year_and_month() {
         let mut state = picker();
         handle_key(&mut state, press(KeyCode::Char('e')), true);
         let entry = state.entry.as_ref().expect("the field is open");
@@ -463,6 +464,20 @@ mod tests {
         retype(&mut state, "2025-01");
         assert_eq!(state.month.year, 2025);
         assert_eq!(state.month.month, 1);
+    }
+
+    #[test]
+    fn a_typed_german_month_moves_the_grid_live() {
+        for text in ["01/2025", "1.25"] {
+            let mut state = picker();
+            handle_key(&mut state, press(KeyCode::Char('e')), true);
+            retype(&mut state, text);
+            assert_eq!(
+                (state.month.year, state.month.month),
+                (2025, 1),
+                "{text}"
+            );
+        }
     }
 
     /// The grid keys clamp into the year; the typed entry must not, or a

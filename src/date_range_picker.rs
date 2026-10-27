@@ -5,9 +5,11 @@
 //! second `Enter` returns the ordered `(start, end)` pair.
 //!
 //! `e` turns the header into a text field holding the whole range as
-//! `YYYY-MM-DD..YYYY-MM-DD`, prefilled and fully selected. Both ends light up
-//! as soon as the text parses; while it does not, the field is coloured as an
-//! error and `Enter` does nothing. A reversed pair is normalised, exactly as
+//! `YYYY-MM-DD..YYYY-MM-DD`, prefilled and fully selected. Each end may also be
+//! typed as `DD.MM.YYYY`, `DD.MM.YY` or `DD.MM.` without a year, which borrows
+//! the other end's year (`20.12..5.1` runs into the next one). Both ends light
+//! up as soon as the text parses; while it does not, the field is coloured as
+//! an error and `Enter` does nothing. A reversed pair is normalised, exactly as
 //! the calendar's second `Enter` does. `Enter` returns the range, `Esc` leaves
 //! the field and puts the calendar back.
 //!
@@ -17,7 +19,7 @@
 
 use std::io;
 
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
@@ -33,7 +35,7 @@ use super::{
         first_of_month, is_weekend, last_of_month, shift, today,
         today_cell_style, week_column, weekday_header,
     },
-    input,
+    date_text, input,
     layout::centered_rect,
     modal::ModalSignal,
     overlay::{self, PopupFlow, popup_with_paste},
@@ -47,10 +49,8 @@ use crate::theme::Skin;
 // cell of its own.
 const BOX_WIDTH: u16 = 25;
 const INNER_WIDTH: usize = 23;
-/// The separator between the two ends of a typed range.
-const RANGE_SEPARATOR: &str = "..";
-/// The characters `YYYY-MM-DD..YYYY-MM-DD` takes, and with it the field's
-/// limit.
+/// The characters the longest typed range takes (`YYYY-MM-DD..YYYY-MM-DD`, or
+/// the same with `DD.MM.YYYY` ends), and with it the field's limit.
 const ENTRY_MAX_LEN: usize = 22;
 
 /// The two-phase calendar state: the cursor day plus the fixed start once the
@@ -141,7 +141,7 @@ fn handle_entry_key(
         return PopupFlow::Continue;
     };
     match entry.handle_key(key) {
-        EntryAction::Committed => match parse_entry(entry.text()) {
+        EntryAction::Committed => match parse_entry(entry) {
             Some(pair) => PopupFlow::Done(pair),
             None => PopupFlow::Continue,
         },
@@ -240,22 +240,22 @@ fn handle_paste(
 fn entry_text(range: Range) -> String {
     let begin = range.start.unwrap_or(range.cursor);
     format!(
-        "{}{RANGE_SEPARATOR}{}",
+        "{}{}{}",
         begin.format(ISO_FORMAT),
+        date_text::RANGE_SEPARATOR,
         range.cursor.format(ISO_FORMAT),
     )
 }
 
-/// The `YYYY-MM-DD..YYYY-MM-DD` parse behind the typed entry, yielding `None`
-/// while either end is not a real date.
+/// The parse behind the typed entry, yielding `None` while either end is not a
+/// real date. The forms are those of [`date_text`]; an end typed without a year
+/// borrows the other end's, or else the cursor year the field opened over.
 ///
 /// A reversed pair is accepted and normalised through [`ordered`], exactly as
-/// the calendar's second `Enter` does. Unpadded components (`2026-6-5`) are
-/// accepted, as chrono parses them.
-fn parse_entry(text: &str) -> Option<(NaiveDate, NaiveDate)> {
-    let (begin, end) = text.split_once(RANGE_SEPARATOR)?;
-    let begin = NaiveDate::parse_from_str(begin, ISO_FORMAT).ok()?;
-    let end = NaiveDate::parse_from_str(end, ISO_FORMAT).ok()?;
+/// the calendar's second `Enter` does.
+fn parse_entry(entry: &DateEntry<Range>) -> Option<(NaiveDate, NaiveDate)> {
+    let default_year = entry.snapshot().cursor.year();
+    let (begin, end) = date_text::parse_range(entry.text(), default_year)?;
     Some(ordered(begin, end))
 }
 
@@ -266,7 +266,7 @@ fn preview(state: &mut Picker) {
     let Some(entry) = state.entry.as_ref() else {
         return;
     };
-    if let Some((begin, end)) = parse_entry(entry.text()) {
+    if let Some((begin, end)) = parse_entry(entry) {
         state.range = Range {
             cursor: end,
             start: Some(begin),
@@ -322,7 +322,7 @@ fn header_line(skin: &Skin, state: &Picker, width: usize) -> Line<'static> {
             style::fg(palette.accent).add_modifier(Modifier::BOLD),
         ));
     };
-    let validity = Validity::of(parse_entry(entry.text()).is_some());
+    let validity = Validity::of(parse_entry(entry).is_some());
     entry.header_line(palette, width, validity)
 }
 
@@ -483,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    fn i_prefills_the_cursor_twice_without_a_fixed_start() {
+    fn e_prefills_the_cursor_twice_without_a_fixed_start() {
         let mut state = picker();
         handle_key(&mut state, press(KeyCode::Char('e')));
         let entry = state.entry.as_ref().expect("the field is open");
@@ -491,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn i_prefills_the_fixed_start_through_the_cursor() {
+    fn e_prefills_the_fixed_start_through_the_cursor() {
         let mut state = picker();
         handle_key(&mut state, press(KeyCode::Enter));
         handle_key(&mut state, press(KeyCode::Char('l')));
@@ -507,6 +507,16 @@ mod tests {
         let mut state = picker();
         handle_key(&mut state, press(KeyCode::Char('e')));
         retype(&mut state, "2026-06-10..2026-06-20");
+        assert_eq!(state.range.start, Some(day(10)));
+        assert_eq!(state.range.cursor, day(20));
+    }
+
+    /// Both ends lack a year, so both fall in the cursor's year (2026).
+    #[test]
+    fn a_typed_german_range_highlights_both_ends_live() {
+        let mut state = picker();
+        handle_key(&mut state, press(KeyCode::Char('e')));
+        retype(&mut state, "10.6...20.6.");
         assert_eq!(state.range.start, Some(day(10)));
         assert_eq!(state.range.cursor, day(20));
     }
