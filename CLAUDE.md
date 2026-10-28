@@ -36,6 +36,30 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
+### Consumers
+
+These crates depend on `ratada` as a path dependency (`path = "../../libs/ratada"`) with a `version` requirement, so a change here reaches all of them:
+
+- `apps/calcli`
+- `apps/hop`
+- `apps/mdeck`
+- `apps/mdtask`
+- `apps/numcli`
+- `templates/clibase` (the template new apps are created from – a change that is missing here is inherited by every future app)
+
+`apps/pdfc` does not use `ratada`. Re-check the list before relying on it – it goes stale when an app is added:
+
+```shell
+cd ~/Developer/Rust && grep -rln --include=Cargo.toml ratada apps libs templates tools samples
+```
+
+When a change here affects consumers:
+
+- **Version bump:** raising the minor version (`0.6` → `0.7`) breaks every consumer whose requirement still names the old one – cargo no longer resolves it and the crate stops building. Raise the `version` in each consumer's `ratada` line in the same go.
+- **Breaking API or key changes:** check each consumer for uses of the changed items (`grep` for the module or function) – not only compile errors, also hint texts, help rows and README tables that spell out the old keys (as with the swatch picker's `Enter`/`e` in the `clibase` gallery).
+- **Verify each consumer in its own directory** (`cd apps/<name> && cargo build && cargo test && cargo clippy --all-targets -- -D warnings`), never via `--manifest-path`, so its `.cargo/config.toml` target dir applies.
+- **Changelog:** a consumer whose visible behaviour changes gets its own entry; a pure requirement bump needs none.
+
 This crate is the **SSOT** of the TUI conventions described below in §7.10. New widgets and consuming TUIs build on top of it instead of reimplementing them.
 
 ---
