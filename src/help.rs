@@ -15,7 +15,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::Modifier,
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Clear, Paragraph},
 };
 
 use super::{
@@ -57,67 +57,150 @@ struct RowLayout<'a> {
     section_starts: Vec<usize>,
 }
 
+/// The help overlay's state: the typed query, the cursor and the scroll offset.
+///
+/// [`show`] owns one for the length of its blocking loop. A host with its own
+/// non-blocking event loop keeps one itself and drives it through
+/// [`handle_key`], [`HelpState::paste`] and [`render`], so its background work
+/// keeps running while the help is open.
+pub struct HelpState {
+    list: FilterList,
+}
+
+impl HelpState {
+    /// An empty query with the cursor on the first binding.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            list: FilterList::new(),
+        }
+    }
+
+    /// The filter text typed so far.
+    #[must_use]
+    pub fn query(&self) -> &str {
+        &self.list.query
+    }
+
+    /// Appends pasted `text` to the query, dropping control characters, and
+    /// moves the cursor back to the first match.
+    pub fn paste(&mut self, text: &str) {
+        self.list.paste(text);
+    }
+}
+
+impl Default for HelpState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// What a key did to the help overlay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelpFlow {
+    /// The overlay stays open.
+    Continue,
+    /// The user closed the overlay (`Esc` or `?`).
+    Close,
+}
+
 /// Shows the help overlay until the user closes it.
 ///
 /// A query filters the bindings fuzzily (keeping the header of every section
 /// that still matches); the arrows (plus `PageUp`/`PageDown` and `Home`/`End`)
 /// move the selection, `Tab`/`BackTab` jump
 /// to the next/previous section, and `Esc` or `?` close the overlay.
+///
+/// # Errors
+///
+/// Returns an I/O error when the terminal cannot be drawn or read.
 pub fn show<B: AsRef<str>>(
     tui: &mut Tui,
     skin: &Skin,
     sections: &[HelpSection<'_, B>],
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<()>> {
-    let mut state = FilterList::new();
+    let mut state = HelpState::new();
     popup_with_paste(
         tui,
         &mut state,
-        |area, _| centered_fraction(area, 2, 3, 40, 8),
+        |area, _| box_area(area),
         |frame, _| render_bg(frame),
-        |frame, rect, state: &FilterList| {
-            let inner = overlay::framed(frame, rect, skin, "Help");
-            render_body(frame, inner, skin, sections, state);
-            // Section headers are rows but not positions: the badge counts the
-            // selectable bindings.
-            let count = layout_rows(sections, &state.query).selectable.len();
-            let cursor = state.cursor.min(count.saturating_sub(1));
-            let badge = chrome::position_badge(cursor, count);
-            chrome::render_badge(frame, rect, skin, &badge);
+        |frame, rect, state: &HelpState| {
+            render_box(frame, rect, skin, sections, state);
         },
-        |state, key| handle_key(state, key, sections),
+        |state, key| match handle_key(state, key, sections) {
+            HelpFlow::Continue => PopupFlow::Continue,
+            HelpFlow::Close => PopupFlow::Done(()),
+        },
         |state, text| {
-            state
-                .query
-                .extend(text.chars().filter(|ch| !ch.is_control()));
-            state.cursor = 0;
+            state.paste(&text);
             PopupFlow::Continue
         },
     )
 }
 
-/// Applies one key to the overlay `state`, or reports that the help is done.
+/// Draws the help overlay centred in `area`, for a host that runs its own
+/// event loop (see [`HelpState`]).
 ///
-/// A named function rather than a closure inside [`popup`], so the guard below
-/// is reachable from a test: everything in `popup` needs a live terminal.
-/// Applies one key to the help overlay.
+/// The box is cleared before it is drawn; dimming the view behind it is the
+/// host's job, as it is for every other overlay it draws.
+pub fn render<B: AsRef<str>>(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    sections: &[HelpSection<'_, B>],
+    state: &HelpState,
+) {
+    let rect = box_area(area);
+    frame.render_widget(Clear, rect);
+    render_box(frame, rect, skin, sections, state);
+}
+
+/// Applies one key to the help overlay `state`.
 ///
 /// `Esc` and `?` close it; everything else is list navigation or filter text,
-/// handled by the shared [`FilterList`] core the filtered overlays share.
-fn handle_key<B: AsRef<str>>(
-    state: &mut FilterList,
+/// handled by the shared [`FilterList`] core the filtered overlays share. A
+/// command chord is ignored, so the host keeps it.
+pub fn handle_key<B: AsRef<str>>(
+    state: &mut HelpState,
     key: KeyEvent,
     sections: &[HelpSection<'_, B>],
-) -> PopupFlow<()> {
+) -> HelpFlow {
     if input::is_command(key) {
-        return PopupFlow::Continue;
+        return HelpFlow::Continue;
     }
     if matches!(key.code, KeyCode::Esc | KeyCode::Char('?')) {
-        return PopupFlow::Done(());
+        return HelpFlow::Close;
     }
-    let layout = layout_rows(sections, &state.query);
-    state.handle_key(key, layout.selectable.len(), &layout.section_starts);
-    PopupFlow::Continue
+    let layout = layout_rows(sections, &state.list.query);
+    state
+        .list
+        .handle_key(key, layout.selectable.len(), &layout.section_starts);
+    HelpFlow::Continue
+}
+
+/// The overlay's box within the screen `area`.
+fn box_area(area: Rect) -> Rect {
+    centered_fraction(area, 2, 3, 40, 8)
+}
+
+/// Draws the frame, the body and the position badge into `rect`.
+fn render_box<B: AsRef<str>>(
+    frame: &mut Frame,
+    rect: Rect,
+    skin: &Skin,
+    sections: &[HelpSection<'_, B>],
+    state: &HelpState,
+) {
+    let inner = overlay::framed(frame, rect, skin, "Help");
+    render_body(frame, inner, skin, sections, &state.list);
+    // Section headers are rows but not positions: the badge counts the
+    // selectable bindings.
+    let count = layout_rows(sections, &state.list.query).selectable.len();
+    let cursor = state.list.cursor.min(count.saturating_sub(1));
+    let badge = chrome::position_badge(cursor, count);
+    chrome::render_badge(frame, rect, skin, &badge);
 }
 
 /// Builds the rows and navigation index maps for `sections` filtered by `query`.
@@ -269,14 +352,14 @@ mod tests {
 
     use super::*;
 
-    fn state() -> FilterList {
-        FilterList::new()
+    fn state() -> HelpState {
+        HelpState::new()
     }
 
     /// Drives a section jump the way `handle_key` does, through the shared
     /// core, so the test exercises the real path rather than a helper.
     fn jump_section<B: AsRef<str>>(
-        state: &mut FilterList,
+        state: &mut HelpState,
         sections: &[HelpSection<'_, B>],
         direction: isize,
     ) {
@@ -328,13 +411,13 @@ mod tests {
         // From the first section, Tab moves to the Tasks section start (index 2
         // in the selectable list).
         jump_section(&mut state, &secs, 1);
-        assert_eq!(state.cursor, 2);
+        assert_eq!(state.list.cursor, 2);
         // Wraps back to the first section.
         jump_section(&mut state, &secs, 1);
-        assert_eq!(state.cursor, 0);
+        assert_eq!(state.list.cursor, 0);
         // BackTab from the first section wraps to the last.
         jump_section(&mut state, &secs, -1);
-        assert_eq!(state.cursor, 2);
+        assert_eq!(state.list.cursor, 2);
     }
 
     /// A Ctrl chord belongs to the host: without the guard `Ctrl+U` would type
@@ -354,12 +437,12 @@ mod tests {
         ] {
             let mut state = state();
             let key = KeyEvent::new(code, KeyModifiers::CONTROL);
-            assert!(matches!(
-                handle_key(&mut state, key, &secs),
-                PopupFlow::Continue
-            ));
-            assert_eq!(state.cursor, 0, "Ctrl+{code:?} moved the cursor");
-            assert!(state.query.is_empty(), "Ctrl+{code:?} typed a character");
+            assert_eq!(handle_key(&mut state, key, &secs), HelpFlow::Continue);
+            assert_eq!(state.list.cursor, 0, "Ctrl+{code:?} moved the cursor");
+            assert!(
+                state.list.query.is_empty(),
+                "Ctrl+{code:?} typed a character"
+            );
         }
     }
 
@@ -369,16 +452,16 @@ mod tests {
         let mut state = state();
         let press = |code| KeyEvent::new(code, KeyModifiers::NONE);
         handle_key(&mut state, press(KeyCode::Down), &secs);
-        assert_eq!(state.cursor, 1);
+        assert_eq!(state.list.cursor, 1);
         handle_key(&mut state, press(KeyCode::End), &secs);
-        assert_eq!(state.cursor, 3);
+        assert_eq!(state.list.cursor, 3);
         handle_key(&mut state, press(KeyCode::Char('u')), &secs);
-        assert_eq!(state.query, "u");
-        assert_eq!(state.cursor, 0, "typing restarts the selection");
-        assert!(matches!(
+        assert_eq!(state.list.query, "u");
+        assert_eq!(state.list.cursor, 0, "typing restarts the selection");
+        assert_eq!(
             handle_key(&mut state, press(KeyCode::Esc), &secs),
-            PopupFlow::Done(())
-        ));
+            HelpFlow::Close
+        );
     }
 
     /// The other half of the rule: `AltGr` is reported as `Ctrl+Alt` yet types
@@ -399,6 +482,51 @@ mod tests {
                 &secs,
             );
         }
-        assert_eq!(state.query, "@\\[");
+        assert_eq!(state.list.query, "@\\[");
+    }
+
+    #[test]
+    fn paste_drops_control_characters_and_restarts_the_selection() {
+        let secs = sections();
+        let mut state = state();
+        handle_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+            &secs,
+        );
+        state.paste("ad\nd\t");
+        assert_eq!(state.query(), "add");
+        assert_eq!(state.list.cursor, 0);
+    }
+
+    /// The non-blocking entry point draws at any size a host may hand it,
+    /// including areas smaller than the box's minimum.
+    #[test]
+    fn render_draws_at_any_terminal_size() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        use crate::theme::{
+            ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+        };
+
+        let base = ThemeRegistry::builtin().resolve("default");
+        let skin = Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        );
+        let secs = sections();
+        let mut state = state();
+        state.paste("add");
+        for (width, height) in [(1, 1), (10, 3), (40, 8), (80, 24), (300, 90)] {
+            let mut terminal = Terminal::new(TestBackend::new(width, height))
+                .expect("the test backend never fails");
+            terminal
+                .draw(|frame| {
+                    render(frame, frame.area(), &skin, &secs, &state);
+                })
+                .unwrap_or_else(|error| {
+                    panic!("{width}x{height} failed: {error}")
+                });
+        }
     }
 }
