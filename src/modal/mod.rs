@@ -13,6 +13,7 @@
 
 mod confirm;
 mod message;
+mod multi_select_with;
 mod number;
 mod picker;
 mod render;
@@ -23,6 +24,9 @@ pub use confirm::{
     Question, StyledQuestion, confirm, confirm_default, confirm_styled,
 };
 pub use message::message;
+pub use multi_select_with::{
+    MultiChoice, MultiSelectOptions, multi_select_with,
+};
 pub use number::{number_input, number_input_bounded};
 pub use picker::{
     ListAction, multi_select, multi_select_styled, select, select_reorderable,

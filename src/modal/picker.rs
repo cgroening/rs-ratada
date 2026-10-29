@@ -286,14 +286,14 @@ pub fn multi_select_styled(
 
 /// The state shared by the multi-select modals: the cursor, the toggled set and
 /// the list viewport height captured at render (for page-wise navigation).
-struct MultiSelect {
-    cursor: usize,
-    checked: HashSet<usize>,
-    viewport: Cell<usize>,
+pub(super) struct MultiSelect {
+    pub(super) cursor: usize,
+    pub(super) checked: HashSet<usize>,
+    pub(super) viewport: Cell<usize>,
 }
 
 impl MultiSelect {
-    fn new(initial: &[usize]) -> Self {
+    pub(super) fn new(initial: &[usize]) -> Self {
         Self {
             cursor: 0,
             checked: initial.iter().copied().collect(),
@@ -301,7 +301,7 @@ impl MultiSelect {
         }
     }
 
-    fn handle_key(
+    pub(super) fn handle_key(
         &mut self,
         key: KeyEvent,
         len: usize,
