@@ -16,6 +16,7 @@ mod message;
 mod number;
 mod picker;
 mod render;
+mod select_with;
 mod text_input;
 
 pub use confirm::{
@@ -27,6 +28,7 @@ pub use picker::{
     ListAction, multi_select, multi_select_styled, select, select_reorderable,
     select_styled,
 };
+pub use select_with::{SelectItem, SelectOptions, select_with};
 pub use text_input::{input, input_wide};
 
 /// Outcome of a modal interaction.

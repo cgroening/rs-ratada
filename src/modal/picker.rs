@@ -31,17 +31,24 @@ pub(super) fn navigate_list(
     len: usize,
     page: usize,
 ) -> bool {
+    navigate_list_without_vim(cursor, vim_as_arrow(key), len, page)
+}
+
+/// Like [`navigate_list`] but without `j`/`k`, which stay free for the caller
+/// (a list whose items answer to letters).
+pub(super) fn navigate_list_without_vim(
+    cursor: &mut usize,
+    key: KeyEvent,
+    len: usize,
+    page: usize,
+) -> bool {
     if input::is_command(key) {
         return false;
     }
     let page = page.max(1) as isize;
     match key.code {
-        KeyCode::Up | KeyCode::Char('k') => {
-            *cursor = nav::cycle(*cursor, len, -1);
-        }
-        KeyCode::Down | KeyCode::Char('j') => {
-            *cursor = nav::cycle(*cursor, len, 1);
-        }
+        KeyCode::Up => *cursor = nav::cycle(*cursor, len, -1),
+        KeyCode::Down => *cursor = nav::cycle(*cursor, len, 1),
         KeyCode::PageUp => *cursor = nav::step_clamped(*cursor, len, -page),
         KeyCode::PageDown => *cursor = nav::step_clamped(*cursor, len, page),
         KeyCode::Home => *cursor = 0,
@@ -49,6 +56,17 @@ pub(super) fn navigate_list(
         _ => return false,
     }
     true
+}
+
+/// Maps `k`/`j` onto `Up`/`Down`, keeping the modifiers, so a Ctrl chord
+/// stays a chord.
+fn vim_as_arrow(key: KeyEvent) -> KeyEvent {
+    let code = match key.code {
+        KeyCode::Char('k') => KeyCode::Up,
+        KeyCode::Char('j') => KeyCode::Down,
+        other => other,
+    };
+    KeyEvent { code, ..key }
 }
 
 /// Lets the user pick one entry from a list. `Esc` cancels.
