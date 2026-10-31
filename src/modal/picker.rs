@@ -290,6 +290,10 @@ pub(super) struct MultiSelect {
     pub(super) cursor: usize,
     pub(super) checked: HashSet<usize>,
     pub(super) viewport: Cell<usize>,
+    /// Whether `Enter` adds the cursor row to the checks. Cleared by the
+    /// first `Space`: from then on the user ticks, and `Enter` confirms
+    /// exactly the ticks (so an unticked row is not added back).
+    enter_picks_cursor: bool,
 }
 
 impl MultiSelect {
@@ -298,6 +302,18 @@ impl MultiSelect {
             cursor: 0,
             checked: initial.iter().copied().collect(),
             viewport: Cell::new(1),
+            enter_picks_cursor: false,
+        }
+    }
+
+    /// Like [`Self::new`], but `Enter` also picks the cursor row until the
+    /// first `Space`. The cursor opens on the first checked row, so an
+    /// immediate `Enter` keeps the checks as they are.
+    pub(super) fn picking_cursor(initial: &[usize]) -> Self {
+        Self {
+            cursor: initial.iter().copied().min().unwrap_or(0),
+            enter_picks_cursor: true,
+            ..Self::new(initial)
         }
     }
 
@@ -319,9 +335,13 @@ impl MultiSelect {
                 if !self.checked.insert(self.cursor) {
                     self.checked.remove(&self.cursor);
                 }
+                self.enter_picks_cursor = false;
                 PopupFlow::Continue
             }
             KeyCode::Enter => {
+                if self.enter_picks_cursor {
+                    self.checked.insert(self.cursor);
+                }
                 let mut chosen: Vec<usize> =
                     self.checked.iter().copied().collect();
                 chosen.sort_unstable();

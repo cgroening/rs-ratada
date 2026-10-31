@@ -31,6 +31,11 @@ pub struct MultiSelectOptions {
     pub modes: Option<[String; 2]>,
     /// The mode the modal opens in (`0` or `1`; anything else reads as `1`).
     pub initial_mode: usize,
+    /// Quick pick: until the first `Space`, `Enter` confirms the checks plus
+    /// the highlighted row, so one item is taken without ticking it. After a
+    /// `Space`, `Enter` confirms exactly the checks. The cursor opens on the
+    /// first checked row, so an immediate `Enter` changes nothing.
+    pub enter_picks_cursor: bool,
 }
 
 /// What [`multi_select_with`] returns: the checked indices (ascending) and the
@@ -48,6 +53,8 @@ pub struct MultiChoice {
 ///
 /// With [`MultiSelectOptions::modes`], `Tab` switches to the other mode and
 /// inverts every check, and the frame title reads `title: mode (Tab: other)`.
+/// With [`MultiSelectOptions::enter_picks_cursor`], `Enter` also takes the
+/// highlighted row until the first `Space`.
 /// The items' keys ([`SelectItem::hotkey`]) are not used here.
 ///
 /// # Errors
@@ -69,8 +76,13 @@ pub fn multi_select_with(
         .iter()
         .map(|item| (item.label.clone(), item.style))
         .collect();
+    let list = if options.enter_picks_cursor {
+        MultiSelect::picking_cursor(checked)
+    } else {
+        MultiSelect::new(checked)
+    };
     let mut state = Moded {
-        list: MultiSelect::new(checked),
+        list,
         mode: options.initial_mode.min(1),
     };
     let modes = options.modes.as_ref();
@@ -178,7 +190,14 @@ mod tests {
     fn hide_show() -> MultiSelectOptions {
         MultiSelectOptions {
             modes: Some(["hide".to_string(), "show".to_string()]),
-            initial_mode: 0,
+            ..MultiSelectOptions::default()
+        }
+    }
+
+    fn quick_pick() -> MultiSelectOptions {
+        MultiSelectOptions {
+            enter_picks_cursor: true,
+            ..MultiSelectOptions::default()
         }
     }
 
@@ -260,6 +279,44 @@ mod tests {
         let choice = run(&options, &[3], keys).expect("confirmed");
         assert_eq!(choice.checked, [3]);
         assert_eq!(choice.mode, 0);
+    }
+
+    #[test]
+    fn by_default_enter_confirms_only_the_checks() {
+        let keys = vec![bare(KeyCode::Down), bare(KeyCode::Enter)];
+        let options = MultiSelectOptions::default();
+        let choice = run(&options, &[], keys).expect("confirmed");
+        assert!(choice.checked.is_empty());
+    }
+
+    #[test]
+    fn quick_pick_takes_the_highlighted_row_on_enter() {
+        let keys = vec![bare(KeyCode::Down), bare(KeyCode::Enter)];
+        let choice = run(&quick_pick(), &[], keys).expect("confirmed");
+        assert_eq!(choice.checked, [1]);
+    }
+
+    #[test]
+    fn quick_pick_adds_the_highlighted_row_to_the_checks() {
+        let keys = vec![bare(KeyCode::Down), bare(KeyCode::Enter)];
+        let choice = run(&quick_pick(), &[0], keys).expect("confirmed");
+        assert_eq!(choice.checked, [0, 1]);
+    }
+
+    #[test]
+    fn quick_pick_opens_on_the_first_check_so_enter_keeps_them() {
+        let keys = vec![bare(KeyCode::Enter)];
+        let choice = run(&quick_pick(), &[3, 2], keys).expect("confirmed");
+        assert_eq!(choice.checked, [2, 3]);
+    }
+
+    /// Unticking the only check and confirming must clear it, not add the
+    /// highlighted row straight back.
+    #[test]
+    fn after_space_enter_confirms_exactly_the_checks() {
+        let keys = vec![bare(KeyCode::Char(' ')), bare(KeyCode::Enter)];
+        let choice = run(&quick_pick(), &[2], keys).expect("confirmed");
+        assert!(choice.checked.is_empty());
     }
 
     #[test]
