@@ -30,6 +30,8 @@ pub(super) struct MultiSelect {
     /// Whether the user changed the checks (`Space`, or a mode switch that
     /// inverts them).
     has_edited: bool,
+    /// Whether `Space` moves the cursor to the next row after toggling.
+    advances_on_tick: bool,
 }
 
 impl MultiSelect {
@@ -39,6 +41,17 @@ impl MultiSelect {
             checked: initial.iter().copied().collect(),
             viewport: Cell::new(1),
             has_edited: false,
+            advances_on_tick: false,
+        }
+    }
+
+    /// Lets `Space` move to the next row after toggling, so several rows are
+    /// ticked one after another; on the last row the cursor stays.
+    #[must_use]
+    pub(super) fn advancing_on_tick(self) -> Self {
+        Self {
+            advances_on_tick: true,
+            ..self
         }
     }
 
@@ -74,6 +87,9 @@ impl MultiSelect {
         match key.code {
             KeyCode::Char(' ') => {
                 self.toggle_cursor_row();
+                if self.advances_on_tick {
+                    self.cursor = (self.cursor + 1).min(len.saturating_sub(1));
+                }
                 PopupFlow::Continue
             }
             KeyCode::Enter => PopupFlow::Done(self.chosen()),
@@ -120,7 +136,13 @@ mod tests {
     /// Feeds `keys` to a state checked at `initial` and returns what the last
     /// key confirmed (`None` when it did not finish the modal).
     fn confirmed(initial: &[usize], keys: &[KeyCode]) -> Option<Vec<usize>> {
-        let mut state = MultiSelect::new(initial);
+        run_keys(MultiSelect::new(initial), keys)
+    }
+
+    fn run_keys(
+        mut state: MultiSelect,
+        keys: &[KeyCode],
+    ) -> Option<Vec<usize>> {
         let mut last = PopupFlow::Continue;
         for &code in keys {
             last = state.handle_key(bare(code), LEN);
@@ -135,6 +157,29 @@ mod tests {
     fn enter_with_nothing_checked_takes_the_cursor_row() {
         let chosen = confirmed(&[], &[KeyCode::Down, KeyCode::Enter]);
         assert_eq!(chosen, Some(vec![1]));
+    }
+
+    #[test]
+    fn space_keeps_the_cursor_by_default() {
+        let keys = [KeyCode::Char(' '), KeyCode::Char(' '), KeyCode::Enter];
+        // The second space unticks the same row again.
+        assert_eq!(confirmed(&[], &keys), Some(vec![]));
+    }
+
+    #[test]
+    fn space_moves_on_when_advancing() {
+        let state = MultiSelect::new(&[]).advancing_on_tick();
+        let keys = [KeyCode::Char(' '), KeyCode::Char(' '), KeyCode::Enter];
+        assert_eq!(run_keys(state, &keys), Some(vec![0, 1]));
+    }
+
+    #[test]
+    fn advancing_stops_on_the_last_row() {
+        let state = MultiSelect::new(&[]).advancing_on_tick();
+        let mut keys = vec![KeyCode::End, KeyCode::Char(' ')];
+        // A second space on the last row unticks it instead of wrapping.
+        keys.extend([KeyCode::Char(' '), KeyCode::Enter]);
+        assert_eq!(run_keys(state, &keys), Some(vec![]));
     }
 
     #[test]

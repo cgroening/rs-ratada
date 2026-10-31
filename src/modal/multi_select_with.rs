@@ -31,6 +31,10 @@ pub struct MultiSelectOptions {
     pub modes: Option<[String; 2]>,
     /// The mode the modal opens in (`0` or `1`; anything else reads as `1`).
     pub initial_mode: usize,
+    /// `Space` ticks the row and moves to the next one, so several rows are
+    /// ticked one after another; on the last row the cursor stays. `false`
+    /// keeps the cursor where it is.
+    pub advance_on_tick: bool,
 }
 
 /// What [`multi_select_with`] returns: the checked indices (ascending) and the
@@ -50,7 +54,8 @@ pub struct MultiChoice {
 /// With [`MultiSelectOptions::modes`], `Tab` switches to the other mode and
 /// inverts every check, and the frame title reads `title: mode (Tab: other)`.
 /// The inversion counts as an edit, so an empty set it leaves is confirmed as
-/// such. The items' keys ([`SelectItem::hotkey`]) are not used here.
+/// such. With [`MultiSelectOptions::advance_on_tick`], `Space` also moves to
+/// the next row. The items' keys ([`SelectItem::hotkey`]) are not used here.
 ///
 /// # Errors
 ///
@@ -71,8 +76,14 @@ pub fn multi_select_with(
         .iter()
         .map(|item| (item.label.clone(), item.style))
         .collect();
+    let list = MultiSelect::new(checked);
+    let list = if options.advance_on_tick {
+        list.advancing_on_tick()
+    } else {
+        list
+    };
     let mut state = Moded {
-        list: MultiSelect::new(checked),
+        list,
         mode: options.initial_mode.min(1),
     };
     let modes = options.modes.as_ref();
@@ -179,7 +190,7 @@ mod tests {
     fn hide_show() -> MultiSelectOptions {
         MultiSelectOptions {
             modes: Some(["hide".to_string(), "show".to_string()]),
-            initial_mode: 0,
+            ..MultiSelectOptions::default()
         }
     }
 
