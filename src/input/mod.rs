@@ -260,6 +260,27 @@ impl InputField {
         &self.text
     }
 
+    /// The char range a paste or typed text would replace: the selection, or
+    /// an empty range at the caret. Lets a caller look at the characters
+    /// around the insertion point before pasting.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ratada::input::InputField;
+    ///
+    /// let field = InputField::new("huk");
+    /// assert_eq!(field.insertion_range(), (3, 3));
+    /// ```
+    #[must_use]
+    pub fn insertion_range(&self) -> (usize, usize) {
+        let len = self.text.chars().count();
+        let pos = self.cursor.pos.min(len);
+        self.cursor
+            .selection()
+            .map_or((pos, pos), |(start, end)| (start.min(len), end.min(len)))
+    }
+
     /// Renders the field as a single horizontally scrolling, background-filled
     /// line for embedding into a larger layout. `focused` picks the active
     /// background and shows the block caret.
@@ -383,6 +404,17 @@ mod tests {
         let mut cursor = cursor;
         apply_edit_key(&mut text, &mut cursor, key, mode, None);
         (text, cursor)
+    }
+
+    #[test]
+    fn insertion_range_is_the_caret_or_the_selection() {
+        let mut field = InputField::new("abcdef");
+        assert_eq!(field.insertion_range(), (6, 6));
+        field.handle_key(press(KeyCode::Left));
+        field.handle_key(press(KeyCode::Left));
+        assert_eq!(field.insertion_range(), (4, 4));
+        field.handle_key(shift(KeyCode::Left));
+        assert_eq!(field.insertion_range(), (3, 4));
     }
 
     #[test]
