@@ -45,6 +45,15 @@ impl MultiSelect {
         }
     }
 
+    /// Opens the cursor on `row` of `len` rows (clamped to the last row).
+    #[must_use]
+    pub(super) fn starting_at(self, row: usize, len: usize) -> Self {
+        Self {
+            cursor: row.min(len.saturating_sub(1)),
+            ..self
+        }
+    }
+
     /// Lets `Space` move to the next row after toggling, so several rows are
     /// ticked one after another; on the last row the cursor stays.
     #[must_use]

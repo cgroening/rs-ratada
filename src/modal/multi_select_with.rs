@@ -35,6 +35,8 @@ pub struct MultiSelectOptions {
     /// ticked one after another; on the last row the cursor stays. `false`
     /// keeps the cursor where it is.
     pub advance_on_tick: bool,
+    /// The row the cursor opens on (clamped to the last row).
+    pub initial_cursor: usize,
 }
 
 /// What [`multi_select_with`] returns: the checked indices (ascending) and the
@@ -76,7 +78,8 @@ pub fn multi_select_with(
         .iter()
         .map(|item| (item.label.clone(), item.style))
         .collect();
-    let list = MultiSelect::new(checked);
+    let list = MultiSelect::new(checked)
+        .starting_at(options.initial_cursor, items.len());
     let list = if options.advance_on_tick {
         list.advancing_on_tick()
     } else {
@@ -290,6 +293,23 @@ mod tests {
         let choice = run(&hide_show(), &[0, 1, 2, 3], keys).expect("confirmed");
         assert!(choice.checked.is_empty());
         assert_eq!(choice.mode, 1);
+    }
+
+    #[test]
+    fn the_cursor_opens_on_the_initial_row() {
+        let options = MultiSelectOptions {
+            initial_cursor: 2,
+            ..MultiSelectOptions::default()
+        };
+        let choice = run(&options, &[], vec![bare(KeyCode::Enter)]);
+        assert_eq!(choice.expect("confirmed").checked, [2]);
+        // Past the last row it opens on the last row.
+        let options = MultiSelectOptions {
+            initial_cursor: 99,
+            ..MultiSelectOptions::default()
+        };
+        let choice = run(&options, &[], vec![bare(KeyCode::Enter)]);
+        assert_eq!(choice.expect("confirmed").checked, [3]);
     }
 
     #[test]
