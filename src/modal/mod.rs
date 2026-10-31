@@ -7,7 +7,9 @@
 //! [`Question::declining`] instead, so a stray `Enter` cannot confirm the
 //! deletion. [`confirm_styled`] asks the same question with a frame title and
 //! a body the caller styles line by line, for a dialog that shows what is
-//! about to be affected rather than one plain sentence.
+//! about to be affected rather than one plain sentence; its body scrolls when
+//! it does not fit, and [`confirm_styled_views`] adds a second view of the
+//! body that `←`/`→` switch to.
 //!
 //! Every modal takes a [`crate::theme::Skin`], whose palette drives the colors.
 
@@ -18,11 +20,10 @@ mod number;
 mod picker;
 mod render;
 mod select_with;
+mod styled;
 mod text_input;
 
-pub use confirm::{
-    Question, StyledQuestion, confirm, confirm_default, confirm_styled,
-};
+pub use confirm::{Question, confirm, confirm_default};
 pub use message::message;
 pub use multi_select_with::{
     MultiChoice, MultiSelectOptions, multi_select_with,
@@ -33,6 +34,9 @@ pub use picker::{
     select_styled,
 };
 pub use select_with::{SelectItem, SelectOptions, select_with};
+pub use styled::{
+    StyledQuestion, StyledViews, confirm_styled, confirm_styled_views,
+};
 pub use text_input::{input, input_wide};
 
 /// Outcome of a modal interaction.
@@ -57,14 +61,15 @@ mod tests {
 
     use super::{
         ModalSignal,
-        confirm::{
-            Question, StyledQuestion, confirm_area, confirm_key,
-            confirm_styled, render_confirm, render_styled, styled_area,
-        },
+        confirm::{Question, confirm_area, confirm_key, render_confirm},
         message::message_area,
         picker::navigate_list,
         render::{
             HINT_BLOCK_ROWS, hinted_box_height, picker_area, text_extent,
+        },
+        styled::{
+            Dialog, DialogState, Drawn, StyledQuestion, StyledViews,
+            confirm_styled, confirm_styled_views, dialog_area, render_dialog,
         },
         text_input::{input_area, input_area_wide},
     };
@@ -307,21 +312,39 @@ mod tests {
         assert_eq!(hints, Some(total + 3), "the hint block stays in view");
     }
 
+    /// The dialog of `question` without a second view.
+    fn single<'q, 'a>(question: &'q StyledQuestion<'a>) -> Dialog<'q, 'a> {
+        Dialog {
+            question,
+            alternate: None,
+        }
+    }
+
     /// Draws a styled confirm dialog on a real frame and returns the text of
     /// every screen row.
     fn rendered_styled(question: &StyledQuestion<'_>) -> Vec<String> {
-        let backend = TestBackend::new(SCREEN.width, SCREEN.height);
+        rendered_dialog(&single(question), &DialogState::default(), SCREEN)
+    }
+
+    /// Draws `dialog` in `state` on a `screen` sized frame and returns the
+    /// text of every screen row.
+    fn rendered_dialog(
+        dialog: &Dialog<'_, '_>,
+        state: &DialogState,
+        screen: Rect,
+    ) -> Vec<String> {
+        let backend = TestBackend::new(screen.width, screen.height);
         let mut terminal = Terminal::new(backend).expect("a test terminal");
         terminal
             .draw(|frame| {
-                let rect = styled_area(question, frame.area());
-                render_styled(frame, &skin(), question, rect);
+                let rect = dialog_area(dialog, frame.area());
+                render_dialog(frame, &skin(), &Drawn { dialog, state }, rect);
             })
             .expect("the frame draws");
         let buffer = terminal.backend().buffer();
-        (0..SCREEN.height)
+        (0..screen.height)
             .map(|y| {
-                (0..SCREEN.width).map(|x| buffer[(x, y)].symbol()).collect()
+                (0..screen.width).map(|x| buffer[(x, y)].symbol()).collect()
             })
             .collect()
     }
@@ -356,7 +379,7 @@ mod tests {
             default_yes: true,
         };
         assert_eq!(
-            styled_area(&question, SCREEN).height,
+            dialog_area(&single(&question), SCREEN).height,
             hinted_box_height() + 1
         );
     }
@@ -413,6 +436,141 @@ mod tests {
             );
         }
         clear_scripted_input();
+    }
+
+    fn numbered_rows(_width: u16) -> Vec<Line<'static>> {
+        (1..=30)
+            .map(|row| Line::from(format!("row {row}")))
+            .collect()
+    }
+
+    fn compact_row(_width: u16) -> Vec<Line<'static>> {
+        vec![Line::from("all in one row")]
+    }
+
+    /// A 12-row screen: the box keeps its frame and hints, the body scrolls.
+    const SMALL_SCREEN: Rect = Rect::new(0, 0, 60, 12);
+
+    #[test]
+    fn a_tall_styled_body_is_cut_to_the_screen_and_offers_scrolling() {
+        let question = StyledQuestion {
+            title: " Rename? ",
+            lines: &numbered_rows,
+            default_yes: true,
+        };
+        let dialog = single(&question);
+        assert!(
+            dialog_area(&dialog, SMALL_SCREEN).height <= SMALL_SCREEN.height
+        );
+        let rows =
+            rendered_dialog(&dialog, &DialogState::default(), SMALL_SCREEN);
+        assert!(rows.iter().any(|row| row.contains("row 1 ")));
+        assert!(!rows.iter().any(|row| row.contains("row 30")));
+        assert!(rows.iter().any(|row| row.contains("scroll")));
+        assert!(rows.iter().any(|row| row.contains("enter/y")));
+    }
+
+    #[test]
+    fn a_styled_body_that_fits_offers_no_scrolling() {
+        let question = StyledQuestion {
+            title: " Delete? ",
+            lines: &two_rows,
+            default_yes: true,
+        };
+        assert!(
+            !rendered_styled(&question)
+                .iter()
+                .any(|row| row.contains("scroll"))
+        );
+    }
+
+    #[test]
+    fn scrolling_keys_clamp_at_both_ends_and_still_answer() {
+        let mut tui = Tui::for_test(SMALL_SCREEN.width, SMALL_SCREEN.height)
+            .expect("an in-memory terminal");
+        let question = StyledQuestion {
+            title: " Rename? ",
+            lines: &numbered_rows,
+            default_yes: false,
+        };
+        script_keys([
+            key(KeyCode::Up),
+            key(KeyCode::End),
+            key(KeyCode::PageDown),
+            key(KeyCode::Down),
+            key(KeyCode::Home),
+            key(KeyCode::Char('y')),
+        ]);
+        let answer = confirm_styled(&mut tui, &skin(), &question, |_| {})
+            .expect("the scripted modal runs");
+        clear_scripted_input();
+        assert!(matches!(answer, ModalSignal::Value(true)));
+    }
+
+    #[test]
+    fn the_scroll_offset_is_drawn_clamped() {
+        let question = StyledQuestion {
+            title: " Rename? ",
+            lines: &numbered_rows,
+            default_yes: true,
+        };
+        let dialog = single(&question);
+        let mut state = DialogState::default();
+        state.offset = 1_000;
+        let rows = rendered_dialog(&dialog, &state, SMALL_SCREEN);
+        assert!(rows.iter().any(|row| row.contains("row 30")));
+    }
+
+    #[test]
+    fn the_second_view_is_drawn_in_a_box_sized_for_both() {
+        let question = StyledQuestion {
+            title: " Rename? ",
+            lines: &two_rows,
+            default_yes: true,
+        };
+        let dialog = Dialog {
+            question: &question,
+            alternate: Some(&compact_row),
+        };
+        let first = rendered_dialog(&dialog, &DialogState::default(), SCREEN);
+        let mut alternate = DialogState::default();
+        alternate.is_alternate = true;
+        let second = rendered_dialog(&dialog, &alternate, SCREEN);
+        assert!(first.iter().any(|row| row.contains("Date:    today")));
+        assert!(second.iter().any(|row| row.contains("all in one row")));
+        assert!(!second.iter().any(|row| row.contains("Date:")));
+        let hint_row = |rows: &[String]| {
+            rows.iter().position(|row| row.contains("enter/y"))
+        };
+        assert_eq!(
+            hint_row(&first),
+            hint_row(&second),
+            "the box keeps its size"
+        );
+        assert!(first.iter().any(|row| row.contains("view")));
+    }
+
+    #[test]
+    fn arrows_switch_the_view_and_answers_still_work() {
+        let mut tui = Tui::for_test(SCREEN.width, SCREEN.height)
+            .expect("an in-memory terminal");
+        let views = StyledViews {
+            question: StyledQuestion {
+                title: " Rename? ",
+                lines: &two_rows,
+                default_yes: true,
+            },
+            alternate: &compact_row,
+        };
+        script_keys([
+            key(KeyCode::Right),
+            key(KeyCode::Left),
+            key(KeyCode::Char('n')),
+        ]);
+        let answer = confirm_styled_views(&mut tui, &skin(), &views, |_| {})
+            .expect("the scripted modal runs");
+        clear_scripted_input();
+        assert!(matches!(answer, ModalSignal::Value(false)));
     }
 
     #[test]
