@@ -11,7 +11,7 @@ Ordering principle: first establish a baseline, then layer by layer from the dep
 
 ## Generic checkpoints (apply to EVERY module)
 
-While going through each file, check the following each time (CLAUDE.md §1, §2, §7):
+While going through each file, check the following each time:
 - **Names:** predicates `is_/has_/can_/should_`; methods = verbs, types = nouns; no `Manager/Helper/Data` catch-all names; no negative booleans; acronyms like normal words (`UserId`, not `UserID`).
 - **Functions:** SLAP (one level of abstraction), at most 2 levels of nesting with early return, ≤ 3 parameters (otherwise a struct), command-query separation.
 - **Visibility:** as private as possible; `pub` only where truly needed for the public API – internals to `pub(crate)`; keep prelude re-exports lean (`lib.rs`).
@@ -19,7 +19,7 @@ While going through each file, check the following each time (CLAUDE.md §1, §2
 - **Magic numbers/strings:** replaced by named constants/`enum`s (glyphs, colors, keyboard shortcuts, layout dimensions).
 - **Hygiene:** no dead/commented-out code; comments explain the *why*; doc comments per public item, first line a one-sentence summary, prose instead of `# Arguments`; 80 columns; straight quotation marks; no em dash.
 - **Tests:** logic-bearing code has tests; test names describe behavior; doctests in `# Examples` must run.
-- **TUI conventions (§7.10):** cyclic navigation via `nav::cycle`/`rem_euclid` (not `saturating_add/sub`); scrollbar on overflow via `scroll::render_scrollbar`; overflow truncation via `text::truncate`; rounded borders; glyphs in both variants; colors held centrally in the `theme` submodule.
+- **TUI conventions (CLAUDE.md):** cyclic navigation via `nav::cycle`/`rem_euclid` (not `saturating_add/sub`); scrollbar on overflow via `scroll::render_scrollbar`; overflow truncation via `text::truncate`; rounded borders; glyphs in both variants; colors held centrally in the `theme` submodule.
 
 ---
 
@@ -55,7 +55,7 @@ The dependency-free foundation (only `serde` for the persistable enums).
 
 ## Phase 3 – Primitives & Utilities (`nav`, `scroll`, `layout`, `text`, `fuzzy`, `double_press`)
 
-Stateless helpers on which the widgets build – free functions (CLAUDE.md §2.6).
+Stateless helpers on which the widgets build – free functions.
 
 - [x] `nav.rs` (`cycle`/`rem_euclid`): cyclic navigation as SSOT; an empty list yields index 0; edge clamping for pages/jumps correct.
 - [x] `scroll.rs` (`render_scrollbar`): visible style without arrows (thumb `foreground_dim`, track `border`), takes `skin`; position number `total - viewport + 1`; only on overflow.
@@ -80,7 +80,7 @@ The app frame: RAII guard and event loop.
 - [x] `input.rs` (**shared editing core**: `apply_edit_key`, `TextCursor`, `render_line`): SSOT/DRY of the editing shortcuts (one caret + optional selection anchor). The core handles only editing keys, control keys belong to the caller; horizontal scrolling with `…` clipping; `unicode-width`-correct caret position. `apply_edit_key` is now `pub` (mode-aware via `EditMode`), so that a host with its own layout uses the same caret logic instead of reimplementing it.
 - [x] `textarea.rs`: multiline, shares `input::TextCursor` – check that the editing logic is not duplicated; word-wise wrapping; block cursor; `Up/Down` only multiline.
 - [x] `autocomplete.rs`: inline dropdown for suggestions; navigation cyclic via `nav`; scrollbar via `scroll`.
-- [x] `clipboard.rs`: external tools via `Command` with `.arg()`/`.args()` – **no `sh -c` with composed strings** (§7.9 command injection); error paths controlled.
+- [x] `clipboard.rs`: external tools via `Command` with `.arg()`/`.args()` – **no `sh -c` with composed strings** (command injection); error paths controlled.
 - [x] `editor.rs`: `$EDITOR` via a temp file, terminal suspended/restored around the process via `Tui::suspend`; command-injection discipline; temp-file handling robust.
 
 ## Phase 7 – Display widgets (`table`, `tree`, `list`, `sidebar`, `tabs`, `pager`, `gauge`, `spinner`, `toast`, `header`, `statusbar`, `shortcut_hints`, `theme_preview`)
@@ -101,7 +101,7 @@ All should be thin wrappers over `overlay::popup` – shared look/shortcuts.
 - [x] `date_picker.rs`, `date_range_picker.rs`, `month_picker.rs`: shared calendar modal pattern; `chrono` usage (no `unwrap` outside tests); uniform shortcuts; edge/month-change logic.
 - [x] `color_picker.rs`, `slider.rs`: value ranges/clamping; step sizes as named constants. `color_picker.rs`: RGB/HSL/OKLCH models (toggle via `m`), gradient slider with marker, editable hex field, palette presets, light/dark preview; returns `ColorExit` (`Enter`=Done, `Esc`=Back, `s`=Swatches, Ctrl+Q=Quit); model conversions as SSOT in `theme::color` (`to_hsl`/`from_hsl`/`to_oklch`/`from_oklch`).
 - [x] `swatches.rs`: multi-mode color picker (`m` cycles Names/Grid/Grays/Palette; color carried over via `Color::distance`); Names/Palette as a list via `list::render`, Grid (hue×saturation, `[`/`]` = brightness) and Grays as a color raster; `/`-filter in Names, focus preview. `color_chooser` connects the swatch and picker views (switching loop): `Enter` swatch→picker, `Esc`/`s` picker→swatch (mode/brightness are preserved), `Space` = direct, `y` = copy; `swatch_picker` is the wrapper starting in the swatch view.
-- [x] `path_picker.rs`: **secure path traversal** – check paths from outside with `canonicalize()` + `starts_with()` (§7.9); directory navigation robust; scrollbar on overflow.
+- [x] `path_picker.rs`: **secure path traversal** – check paths from outside with `canonicalize()` + `starts_with()`; directory navigation robust; scrollbar on overflow.
 
 ## Phase 9 – Composed widgets (`modal`, `form`, `finder`, `help`)
 
@@ -123,12 +123,12 @@ Last, because everything comes together here:
 - [x] **Docs sync:** `README.md` / `DEVELOPMENT.md` / `API.md` and the rustdoc comments against the cleaned-up state; footer/help/shortcut references consistent; `prelude` description correct.
 - [x] **Tests:** paths touched by refactors tested; all green (incl. doctests).
 - [x] **Final gates:** `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` – all green.
-- [x] Propose commit message(s) in Conventional-Commits style (no auto-commit per CLAUDE.md §11).
+- [x] Propose commit message(s) in Conventional-Commits style (no auto-commit).
 
 Concrete candidates:
 - [x] **`table.rs` (~1170 lines):** by far the largest file. Check the render/navigation responsibilities for SLAP and, if appropriate, decompose into coherent units (sticky header, column layout, body render, navigation). Pure refactoring, behavior identical – the render tests must pass without regeneration.
-- [x] **`list.rs:39` `#[allow(clippy::too_many_arguments)]` (on `render_boxed`):** the fanned-out signature is an indicator of too many parameters (§2.5). Check whether related parameters can be grouped into a struct so that the `#[allow]` becomes unnecessary.
-- [x] **Editing-core duplication:** double-check that `textarea.rs` really draws the editing logic from `input.rs` and doesn't reimplement anything in parallel (SSOT/DRY of the text-field shortcuts, §7.10).
+- [x] **`list.rs:39` `#[allow(clippy::too_many_arguments)]` (on `render_boxed`):** the fanned-out signature is an indicator of too many parameters. Check whether related parameters can be grouped into a struct so that the `#[allow]` becomes unnecessary.
+- [x] **Editing-core duplication:** double-check that `textarea.rs` really draws the editing logic from `input.rs` and doesn't reimplement anything in parallel (SSOT/DRY of the text-field shortcuts, see the TUI conventions in CLAUDE.md).
 
 ## Verification
 
@@ -138,5 +138,5 @@ After each layer and at the end: `cargo fmt --check` + `cargo clippy --all-targe
 
 - **`ratada` is the library:** changes to `pub` signatures are breaking changes for consuming apps – make them deliberately and documented; keep the public API small.
 - **No binary/no domain:** there is deliberately no `main`, no CLI, no persistence – only the generic TUI building blocks. Don't "retrofit" any of it (YAGNI).
-- Known, separate: CI workflow (`cargo audit`, §7.9) – deliberately left outside this cleanup pass (unless already present).
-- KISS/YAGNI over "my style": respect local style, only touch what the task requires, separate refactoring from behavior (CLAUDE.md §3).
+- Known, separate: CI workflow (`cargo audit`) – deliberately left outside this cleanup pass (unless already present).
+- KISS/YAGNI over "my style": respect local style, only touch what the task requires, separate refactoring from behavior.

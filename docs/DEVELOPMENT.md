@@ -90,7 +90,7 @@ tests/
 
 ## Conventions (SSOT)
 
-This crate is the single source of truth for the TUI conventions in CLAUDE.md §7.10. When building a widget, reuse the shared building blocks rather than reinventing them:
+This crate is the single source of truth for the TUI conventions in CLAUDE.md. When building a widget, reuse the shared building blocks rather than reinventing them:
 
 - **Navigation:** `nav::cycle` (wrapping), `nav::keep_visible` (scroll offset). Never open-code `(i + 1) % len`.
 - **Filtered overlays:** `finder`, `help` and `command_palette` share `filter_list::FilterList` - the query buffer, the cursor and the whole navigation/typing dispatch (including the `Ctrl` guard and the `Tab` section jump). A new overlay of that shape delegates to it and keeps only its own keys (`Esc`, a confirming `Enter`).

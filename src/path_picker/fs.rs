@@ -2,7 +2,7 @@
 //! checks that keep a selection inside its root.
 //!
 //! Separated from the widget because this is the part with the security
-//! obligation (§2.4.9): every path that crosses the widget boundary is
+//! obligation: every path that crosses the widget boundary is
 //! canonicalized and checked here, and nowhere else.
 
 use std::path::{Path, PathBuf};

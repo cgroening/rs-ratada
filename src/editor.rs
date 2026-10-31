@@ -113,7 +113,7 @@ fn edited_text(raw: &str) -> String {
 /// `$EDITOR` is conventionally a command line, not a bare program name -
 /// `code --wait`, `subl -w`, `emacs -nw` are all common. Splitting on
 /// whitespace here rather than handing the string to a shell keeps the file
-/// name out of any shell's reach, so no injection is possible (§2.4.9). A
+/// name out of any shell's reach, so no injection is possible. A
 /// program path containing a space is not supported; that is the accepted
 /// trade for not spawning `sh -c`.
 fn split_editor(editor: &str) -> (&str, Vec<&str>) {

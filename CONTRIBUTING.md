@@ -2,9 +2,9 @@
 
 Thanks for your interest in improving `ratada`.
 
-## Style guide
+## Conventions
 
-The binding coding conventions live in [`CLAUDE.md`](CLAUDE.md) (the single source of truth) and its referenced global style guide. Match the surrounding code; the documented rules take precedence over rustfmt/clippy where they differ.
+The project conventions live in [`CLAUDE.md`](CLAUDE.md). Match the surrounding code; the documented rules take precedence over rustfmt/clippy where they differ.
 
 ## Gates
 

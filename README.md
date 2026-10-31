@@ -74,7 +74,7 @@ Widgets that support the opt-in boxed style take a `BoxDecor` (caption in the to
 - [API reference on docs.rs](https://docs.rs/ratada) – the authoritative, complete rustdoc (or `cargo doc --open` locally).
 - [`CHANGELOG.md`](https://github.com/cgroening/rs-ratada/blob/main/CHANGELOG.md) – release history (Keep a Changelog + SemVer).
 - [`DEVELOPMENT.md`](https://github.com/cgroening/rs-ratada/blob/main/docs/DEVELOPMENT.md) – module layout, conventions and how to add a widget.
-- [`CLAUDE.md`](https://github.com/cgroening/rs-ratada/blob/main/CLAUDE.md) – the binding style guide.
+- [`CLAUDE.md`](https://github.com/cgroening/rs-ratada/blob/main/CLAUDE.md) – project conventions and TUI rules.
 
 ## License
 
