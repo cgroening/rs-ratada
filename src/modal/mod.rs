@@ -16,6 +16,7 @@
 mod confirm;
 mod message;
 mod multi_select_with;
+mod multi_state;
 mod number;
 mod picker;
 mod render;
@@ -65,7 +66,8 @@ mod tests {
         message::message_area,
         picker::navigate_list,
         render::{
-            HINT_BLOCK_ROWS, hinted_box_height, picker_area, text_extent,
+            HINT_BLOCK_ROWS, PickerChrome, hinted_box_height, picker_area,
+            render_picker, text_extent,
         },
         styled::{
             Dialog, DialogState, Drawn, StyledQuestion, StyledViews,
@@ -103,6 +105,34 @@ mod tests {
             .draw(|frame| {
                 let rect = confirm_area(prompt, frame.area());
                 render_confirm(frame, &skin(), &question, rect);
+            })
+            .expect("the frame draws");
+        let buffer = terminal.backend().buffer();
+        (0..SCREEN.height)
+            .map(|y| {
+                (0..SCREEN.width).map(|x| buffer[(x, y)].symbol()).collect()
+            })
+            .collect()
+    }
+
+    /// Draws a list picker over `items` with `hints` and returns the text of
+    /// every screen row.
+    fn rendered_picker(
+        items: &[String],
+        hints: &[(&str, &str)],
+    ) -> Vec<String> {
+        let backend = TestBackend::new(SCREEN.width, SCREEN.height);
+        let mut terminal = Terminal::new(backend).expect("a test terminal");
+        let chrome = PickerChrome {
+            title: "Pick",
+            cursor: 0,
+            checked: None,
+            hints,
+        };
+        terminal
+            .draw(|frame| {
+                let rect = picker_area(frame.area(), items.len(), hints);
+                render_picker(frame, &skin(), items, &chrome, rect);
             })
             .expect("the frame draws");
         let buffer = terminal.backend().buffer();
@@ -241,7 +271,7 @@ mod tests {
         for (width, height) in [(1, 1), (4, 2), (20, 6), (27, 10)] {
             let area = Rect::new(0, 0, width, height);
             for rect in [
-                picker_area(area, 40),
+                picker_area(area, 40, &[("enter", "pick")]),
                 input_area(area),
                 input_area_wide(area),
             ] {
@@ -254,9 +284,36 @@ mod tests {
     #[test]
     fn a_roomy_terminal_still_gets_the_preferred_size() {
         let area = Rect::new(0, 0, 100, 40);
-        let picker = picker_area(area, 4);
+        let picker = picker_area(area, 4, &[("enter", "pick")]);
         assert_eq!(picker.width, 50); // half the width
-        assert_eq!(picker.height, 6); // one row per item, plus borders
+        // One row per item, plus borders and the hint block.
+        assert_eq!(picker.height, 6 + HINT_BLOCK_ROWS);
+    }
+
+    /// The keys sit below the last row, not over it.
+    #[test]
+    fn a_list_picker_shows_its_keys_below_the_rows() {
+        let items = vec!["alpha".to_string(), "beta".to_string()];
+        let hints =
+            [("space", "tick"), ("enter", "confirm"), ("esc", "cancel")];
+        let rows = rendered_picker(&items, &hints);
+        let row_of = |text: &str| {
+            rows.iter().position(|row| row.contains(text)).expect(text)
+        };
+        let hint_row = row_of("space tick");
+        assert!(rows[hint_row].contains("enter confirm"));
+        assert!(rows[hint_row].contains("esc cancel"));
+        assert!(hint_row > row_of("beta"));
+    }
+
+    #[test]
+    fn a_picker_is_wide_enough_for_its_hints() {
+        let area = Rect::new(0, 0, 60, 20);
+        let hints =
+            [("space", "tick"), ("enter", "confirm"), ("esc", "cancel")];
+        let picker = picker_area(area, 2, &hints);
+        let hint_width = super::render::hints_width(&hints);
+        assert!(usize::from(picker.width) >= hint_width + 2);
     }
 
     #[test]

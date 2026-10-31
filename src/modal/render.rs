@@ -8,7 +8,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState},
+    widgets::{List, ListItem, ListState, Paragraph},
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -18,37 +18,53 @@ use crate::{
     nav,
     overlay::{self},
     scroll, shortcut_hints, style,
-    theme::{Palette, Skin},
+    theme::{Color, Palette, Skin},
 };
 
 /// Rows a modal's hint block occupies while the hints are shown: a blank
 /// spacer and the hint line itself.
 pub(super) const HINT_BLOCK_ROWS: u16 = 2;
 
+/// The border cells a modal box spends per axis: two rows, two columns.
+const BORDER_CELLS: u16 = 2;
+
+/// The narrowest list picker, however short its labels and hints.
+const MIN_PICKER_WIDTH: u16 = 30;
+
+/// The shortest list picker: borders, three rows and the hint block.
+const MIN_PICKER_HEIGHT: u16 = 5 + HINT_BLOCK_ROWS;
+
+/// The keys of a single-choice list picker.
+pub(super) const SELECT_HINTS: [(&str, &str); 2] =
+    [("enter", "pick"), ("esc", "cancel")];
+
+/// What a list picker shows around its rows: the frame title, the cursor, the
+/// checks of a multi-select (with their glyph) and the key hints.
+pub(super) struct PickerChrome<'a> {
+    pub(super) title: &'a str,
+    pub(super) cursor: usize,
+    pub(super) checked: Option<(&'a HashSet<usize>, &'a str)>,
+    pub(super) hints: &'a [(&'a str, &'a str)],
+}
+
 /// Renders a single-column picker and returns its viewport height (visible
 /// rows), for page-wise navigation.
 pub(super) fn render_picker(
     frame: &mut Frame,
     skin: &Skin,
-    title: &str,
     items: &[String],
-    cursor: usize,
-    checked: Option<(&HashSet<usize>, &str)>,
+    chrome: &PickerChrome<'_>,
     rect: Rect,
 ) -> usize {
-    let inner = overlay::framed(frame, rect, skin, title);
     let entries: Vec<ListItem> = items
         .iter()
         .enumerate()
         .map(|(index, label)| {
-            let prefix = check_prefix(checked, index);
+            let prefix = check_prefix(chrome.checked, index);
             ListItem::new(Line::from(format!("{prefix}{label}")))
         })
         .collect();
-    let viewport =
-        render_picker_list(frame, inner, entries, items.len(), cursor, skin);
-    render_picker_badge(frame, rect, skin, items.len(), cursor);
-    viewport
+    render_framed_picker(frame, skin, entries, chrome, rect)
 }
 
 /// Renders a styled-label picker and returns its viewport height (visible
@@ -56,28 +72,66 @@ pub(super) fn render_picker(
 pub(super) fn render_styled_picker(
     frame: &mut Frame,
     skin: &Skin,
-    title: &str,
     items: &[(String, Style)],
-    cursor: usize,
-    checked: Option<(&HashSet<usize>, &str)>,
+    chrome: &PickerChrome<'_>,
     rect: Rect,
 ) -> usize {
-    let inner = overlay::framed(frame, rect, skin, title);
     let entries: Vec<ListItem> = items
         .iter()
         .enumerate()
         .map(|(index, (label, item_style))| {
-            let prefix = check_prefix(checked, index);
+            let prefix = check_prefix(chrome.checked, index);
             ListItem::new(Line::from(vec![
                 Span::raw(prefix),
                 Span::styled(label.clone(), *item_style),
             ]))
         })
         .collect();
+    render_framed_picker(frame, skin, entries, chrome, rect)
+}
+
+/// Draws the frame, the hints, the rows and the position badge; returns the
+/// viewport height.
+fn render_framed_picker(
+    frame: &mut Frame,
+    skin: &Skin,
+    entries: Vec<ListItem<'_>>,
+    chrome: &PickerChrome<'_>,
+    rect: Rect,
+) -> usize {
+    let total = entries.len();
+    let inner = overlay::framed(frame, rect, skin, chrome.title);
+    let list = render_picker_hints(frame, inner, skin, chrome.hints);
     let viewport =
-        render_picker_list(frame, inner, entries, items.len(), cursor, skin);
-    render_picker_badge(frame, rect, skin, items.len(), cursor);
+        render_picker_list(frame, list, entries, total, chrome.cursor, skin);
+    render_picker_badge(frame, rect, skin, total, chrome.cursor);
     viewport
+}
+
+/// Draws the [`hint_block`] at the bottom of a picker's `inner` area and
+/// returns the rows above it for the list. A box too low for both keeps every
+/// row for the list and drops the hints.
+pub(super) fn render_picker_hints(
+    frame: &mut Frame,
+    inner: Rect,
+    skin: &Skin,
+    hints: &[(&str, &str)],
+) -> Rect {
+    if inner.height <= HINT_BLOCK_ROWS {
+        return inner;
+    }
+    let list_height = inner.height - HINT_BLOCK_ROWS;
+    let hint_area = Rect {
+        y: inner.y + list_height,
+        height: HINT_BLOCK_ROWS,
+        ..inner
+    };
+    let lines = hint_block(hints, &skin.palette, usize::from(inner.width));
+    frame.render_widget(Paragraph::new(lines), hint_area);
+    Rect {
+        height: list_height,
+        ..inner
+    }
 }
 
 /// Draws the `position/total` badge into the picker frame's bottom border.
@@ -146,11 +200,32 @@ pub(super) fn picker_state(cursor: usize) -> ListState {
     state
 }
 
-/// The popup rect for the list pickers: half the width, one row per item.
-pub(super) fn picker_area(area: Rect, item_count: usize) -> Rect {
-    let height = fit(item_count as u16 + 2, 5, area.height.saturating_sub(2));
-    let width = fit(area.width / 2, 30, area.width.saturating_sub(4));
+/// The popup rect for the list pickers: half the width but at least as wide
+/// as `hints`, one row per item plus the hint block.
+pub(super) fn picker_area(
+    area: Rect,
+    item_count: usize,
+    hints: &[(&str, &str)],
+) -> Rect {
+    let rows = u16::try_from(item_count).unwrap_or(u16::MAX);
+    let wanted_height = rows.saturating_add(BORDER_CELLS + HINT_BLOCK_ROWS);
+    let height = fit(
+        wanted_height,
+        MIN_PICKER_HEIGHT,
+        area.height.saturating_sub(2),
+    );
+    let hint_width = u16::try_from(hints_width(hints)).unwrap_or(u16::MAX);
+    let wanted_width = (area.width / 2).max(hint_width + BORDER_CELLS);
+    let width =
+        fit(wanted_width, MIN_PICKER_WIDTH, area.width.saturating_sub(4));
     centered_rect(width, height, area)
+}
+
+/// The columns `hints` take on one row, so a box never cuts them off.
+pub(super) fn hints_width(hints: &[(&str, &str)]) -> usize {
+    shortcut_hints::lines(hints, Color::Default, usize::MAX)
+        .first()
+        .map_or(0, Line::width)
 }
 
 /// The blank spacer and the hint line closing a modal body. A modal's key

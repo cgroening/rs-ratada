@@ -17,7 +17,10 @@ use ratatui::{
 
 use super::ModalSignal;
 use super::picker::{navigate_list, navigate_list_without_vim};
-use super::render::{picker_area, render_picker_badge, render_picker_list};
+use super::render::{
+    SELECT_HINTS, picker_area, render_picker_badge, render_picker_hints,
+    render_picker_list,
+};
 use crate::{
     input,
     overlay::{self, PopupFlow, popup},
@@ -138,7 +141,7 @@ pub fn select_with(
     popup(
         tui,
         &mut cursor,
-        |area, _| picker_area(area, items.len()),
+        |area, _| picker_area(area, items.len(), &SELECT_HINTS),
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
             let list = KeyedList { title, items };
@@ -247,7 +250,8 @@ impl KeyedList<'_> {
         cursor: usize,
         rect: Rect,
     ) -> usize {
-        let inner = overlay::framed(frame, rect, skin, self.title);
+        let framed = overlay::framed(frame, rect, skin, self.title);
+        let inner = render_picker_hints(frame, framed, skin, &SELECT_HINTS);
         let has_keys =
             self.items.iter().any(|item| item.usable_hotkey().is_some());
         let key_style = style::fg(skin.palette.foreground_dim);
@@ -433,6 +437,13 @@ mod tests {
     }
 
     #[test]
+    fn the_list_shows_its_keys_at_the_bottom() {
+        let rows = rendered(&categories());
+        assert!(rows.iter().any(|row| row.contains("enter pick")));
+        assert!(rows.iter().any(|row| row.contains("esc cancel")));
+    }
+
+    #[test]
     fn the_rows_carry_the_key_column_only_when_an_entry_has_a_key() {
         let keyed = rendered(&categories());
         assert!(keyed.iter().any(|row| row.contains("[K] Kinder")));
@@ -447,7 +458,8 @@ mod tests {
         let mut terminal = Terminal::new(backend).expect("a test terminal");
         terminal
             .draw(|frame| {
-                let rect = picker_area(frame.area(), items.len());
+                let rect =
+                    picker_area(frame.area(), items.len(), &SELECT_HINTS);
                 let list = KeyedList {
                     title: "Pick",
                     items,

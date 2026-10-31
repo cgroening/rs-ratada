@@ -13,15 +13,15 @@ use super::{
     confirm::{
         BOX_CHROME, MIN_BOX_WIDTH, TITLE_CHROME, answer_hints, confirm_key,
     },
-    render::{HINT_BLOCK_ROWS, hint_block, hinted_box_height},
+    render::{HINT_BLOCK_ROWS, hint_block, hinted_box_height, hints_width},
 };
 use crate::{
     layout::{centered_rect, fit},
     nav::{ScrollView, step_clamped},
     overlay::{self, PopupFlow, popup},
-    scroll, shortcut_hints,
+    scroll,
     terminal::Tui,
-    theme::{Color, Skin},
+    theme::Skin,
 };
 
 /// The hint shown while the body overflows the box.
@@ -208,13 +208,6 @@ pub(super) fn dialog_area(dialog: &Dialog<'_, '_>, area: Rect) -> Rect {
         .max(title.saturating_add(TITLE_CHROME));
     let width = fit(wanted, MIN_BOX_WIDTH, area.width);
     centered_rect(width, height, area)
-}
-
-/// The columns `hints` take on one row, so the box never cuts them off.
-fn hints_width(hints: &[(&str, &str)]) -> usize {
-    shortcut_hints::lines(hints, Color::Default, usize::MAX)
-        .first()
-        .map_or(0, Line::width)
 }
 
 /// Draws the visible part of the body, the hints and, while the body

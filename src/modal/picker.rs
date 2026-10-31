@@ -1,14 +1,16 @@
 //! Selection modals: single, multi, styled and reorderable pickers.
 
-use std::io;
+use std::{cell::Cell, io};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Frame, style::Style};
 
-use std::{cell::Cell, collections::HashSet};
-
 use super::ModalSignal;
-use super::render::{picker_area, render_picker, render_styled_picker};
+use super::multi_state::{CONFIRM_HINTS, MultiSelect};
+use super::render::{
+    PickerChrome, SELECT_HINTS, picker_area, render_picker,
+    render_styled_picker,
+};
 use crate::{
     input::{self},
     nav,
@@ -16,6 +18,13 @@ use crate::{
     terminal::Tui,
     theme::Skin,
 };
+
+/// The keys of [`select_reorderable`].
+const REORDER_HINTS: [(&str, &str); 3] = [
+    ("alt+\u{2191}\u{2193}", "move"),
+    ("enter", "pick"),
+    ("esc", "cancel"),
+];
 
 /// Applies the shared list-navigation keys to `cursor` over `len` items,
 /// returning whether the key was one of them. `Up`/`Down` (and `k`/`j`) wrap
@@ -69,7 +78,8 @@ fn vim_as_arrow(key: KeyEvent) -> KeyEvent {
     KeyEvent { code, ..key }
 }
 
-/// Lets the user pick one entry from a list. `Esc` cancels.
+/// Lets the user pick one entry from a list. `Enter` picks, `Esc` cancels;
+/// both keys are shown in a hint line at the bottom.
 pub fn select(
     tui: &mut Tui,
     skin: &Skin,
@@ -86,28 +96,26 @@ pub fn select(
     popup(
         tui,
         &mut cursor,
-        |area, _| picker_area(area, items.len()),
+        |area, _| picker_area(area, items.len(), &SELECT_HINTS),
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
-            let viewport =
-                render_picker(frame, skin, title, items, *cursor, None, rect);
-            page_rows.set(viewport);
+            let chrome = PickerChrome {
+                title,
+                cursor: *cursor,
+                checked: None,
+                hints: &SELECT_HINTS,
+            };
+            page_rows.set(render_picker(frame, skin, items, &chrome, rect));
         },
-        |cursor, key| {
-            if navigate_list(cursor, key, items.len(), page_rows.get()) {
-                return PopupFlow::Continue;
-            }
-            match key.code {
-                KeyCode::Enter => PopupFlow::Done(*cursor),
-                KeyCode::Esc => PopupFlow::Cancelled,
-                _ => PopupFlow::Continue,
-            }
-        },
+        |cursor, key| pick_key(cursor, key, items.len(), page_rows.get()),
     )
 }
 
-/// Lets the user toggle several entries. `Space` toggles, `Enter` confirms the
-/// selected set, `Esc` cancels.
+/// Lets the user tick several entries. `Space` toggles the cursor row and
+/// `Esc` cancels. `Enter` confirms the ticks; with nothing ticked it takes the
+/// cursor row instead, so one entry is picked without ticking it - unless the
+/// user unticked everything, then the empty set is confirmed. The keys are
+/// shown in a hint line at the bottom.
 pub fn multi_select(
     tui: &mut Tui,
     skin: &Skin,
@@ -124,20 +132,19 @@ pub fn multi_select(
     popup(
         tui,
         &mut state,
-        |area, _| picker_area(area, items.len()),
+        |area, _| picker_area(area, items.len(), &CONFIRM_HINTS),
         |frame, _| render_bg(frame),
         |frame, rect, state: &MultiSelect| {
-            let checked = Some((&state.checked, check));
-            let viewport = render_picker(
-                frame,
-                skin,
+            let hints = state.hints();
+            let chrome = PickerChrome {
                 title,
-                items,
-                state.cursor,
-                checked,
-                rect,
-            );
-            state.viewport.set(viewport);
+                cursor: state.cursor,
+                checked: Some((&state.checked, check)),
+                hints: &hints,
+            };
+            state
+                .viewport
+                .set(render_picker(frame, skin, items, &chrome, rect));
         },
         |state, key| state.handle_key(key, items.len()),
     )
@@ -175,12 +182,16 @@ pub fn select_reorderable(
     popup(
         tui,
         &mut cursor,
-        |area, _| picker_area(area, items.len()),
+        |area, _| picker_area(area, items.len(), &REORDER_HINTS),
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
-            let viewport =
-                render_picker(frame, skin, title, items, *cursor, None, rect);
-            page_rows.set(viewport);
+            let chrome = PickerChrome {
+                title,
+                cursor: *cursor,
+                checked: None,
+                hints: &REORDER_HINTS,
+            };
+            page_rows.set(render_picker(frame, skin, items, &chrome, rect));
         },
         |cursor, key| {
             // Alt+Up/Down reorder; the plain motions fall to the shared nav.
@@ -203,13 +214,12 @@ pub fn select_reorderable(
                 }
                 _ => {}
             }
-            if navigate_list(cursor, key, items.len(), page_rows.get()) {
-                return PopupFlow::Continue;
-            }
-            match key.code {
-                KeyCode::Enter => PopupFlow::Done(ListAction::Pick(*cursor)),
-                KeyCode::Esc => PopupFlow::Cancelled,
-                _ => PopupFlow::Continue,
+            match pick_key(cursor, key, items.len(), page_rows.get()) {
+                PopupFlow::Done(index) => {
+                    PopupFlow::Done(ListAction::Pick(index))
+                }
+                PopupFlow::Cancelled => PopupFlow::Cancelled,
+                PopupFlow::Continue => PopupFlow::Continue,
             }
         },
     )
@@ -232,24 +242,20 @@ pub fn select_styled(
     popup(
         tui,
         &mut cursor,
-        |area, _| picker_area(area, items.len()),
+        |area, _| picker_area(area, items.len(), &SELECT_HINTS),
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
-            let viewport = render_styled_picker(
-                frame, skin, title, items, *cursor, None, rect,
-            );
+            let chrome = PickerChrome {
+                title,
+                cursor: *cursor,
+                checked: None,
+                hints: &SELECT_HINTS,
+            };
+            let viewport =
+                render_styled_picker(frame, skin, items, &chrome, rect);
             page_rows.set(viewport);
         },
-        |cursor, key| {
-            if navigate_list(cursor, key, items.len(), page_rows.get()) {
-                return PopupFlow::Continue;
-            }
-            match key.code {
-                KeyCode::Enter => PopupFlow::Done(*cursor),
-                KeyCode::Esc => PopupFlow::Cancelled,
-                _ => PopupFlow::Continue,
-            }
-        },
+        |cursor, key| pick_key(cursor, key, items.len(), page_rows.get()),
     )
 }
 
@@ -270,85 +276,38 @@ pub fn multi_select_styled(
     popup(
         tui,
         &mut state,
-        |area, _| picker_area(area, items.len()),
+        |area, _| picker_area(area, items.len(), &CONFIRM_HINTS),
         |frame, _| render_bg(frame),
         |frame, rect, state: &MultiSelect| {
-            let checked = Some((&state.checked, check));
-            let cursor = state.cursor;
-            let viewport = render_styled_picker(
-                frame, skin, title, items, cursor, checked, rect,
-            );
+            let hints = state.hints();
+            let chrome = PickerChrome {
+                title,
+                cursor: state.cursor,
+                checked: Some((&state.checked, check)),
+                hints: &hints,
+            };
+            let viewport =
+                render_styled_picker(frame, skin, items, &chrome, rect);
             state.viewport.set(viewport);
         },
         |state, key| state.handle_key(key, items.len()),
     )
 }
 
-/// The state shared by the multi-select modals: the cursor, the toggled set and
-/// the list viewport height captured at render (for page-wise navigation).
-pub(super) struct MultiSelect {
-    pub(super) cursor: usize,
-    pub(super) checked: HashSet<usize>,
-    pub(super) viewport: Cell<usize>,
-    /// Whether `Enter` adds the cursor row to the checks. Cleared by the
-    /// first `Space`: from then on the user ticks, and `Enter` confirms
-    /// exactly the ticks (so an unticked row is not added back).
-    enter_picks_cursor: bool,
-}
-
-impl MultiSelect {
-    pub(super) fn new(initial: &[usize]) -> Self {
-        Self {
-            cursor: 0,
-            checked: initial.iter().copied().collect(),
-            viewport: Cell::new(1),
-            enter_picks_cursor: false,
-        }
+/// The keys of a single-choice list: navigation, `Enter` picks the cursor
+/// row, `Esc` cancels.
+fn pick_key(
+    cursor: &mut usize,
+    key: KeyEvent,
+    len: usize,
+    page: usize,
+) -> PopupFlow<usize> {
+    if navigate_list(cursor, key, len, page) {
+        return PopupFlow::Continue;
     }
-
-    /// Like [`Self::new`], but `Enter` also picks the cursor row until the
-    /// first `Space`. The cursor opens on the first checked row, so an
-    /// immediate `Enter` keeps the checks as they are.
-    pub(super) fn picking_cursor(initial: &[usize]) -> Self {
-        Self {
-            cursor: initial.iter().copied().min().unwrap_or(0),
-            enter_picks_cursor: true,
-            ..Self::new(initial)
-        }
-    }
-
-    pub(super) fn handle_key(
-        &mut self,
-        key: KeyEvent,
-        len: usize,
-    ) -> PopupFlow<Vec<usize>> {
-        if navigate_list(&mut self.cursor, key, len, self.viewport.get()) {
-            return PopupFlow::Continue;
-        }
-        // This picker binds no Ctrl chord of its own, so one must not reach the
-        // bare keys below (Ctrl+Space would toggle the checked row).
-        if input::is_command(key) {
-            return PopupFlow::Continue;
-        }
-        match key.code {
-            KeyCode::Char(' ') => {
-                if !self.checked.insert(self.cursor) {
-                    self.checked.remove(&self.cursor);
-                }
-                self.enter_picks_cursor = false;
-                PopupFlow::Continue
-            }
-            KeyCode::Enter => {
-                if self.enter_picks_cursor {
-                    self.checked.insert(self.cursor);
-                }
-                let mut chosen: Vec<usize> =
-                    self.checked.iter().copied().collect();
-                chosen.sort_unstable();
-                PopupFlow::Done(chosen)
-            }
-            KeyCode::Esc => PopupFlow::Cancelled,
-            _ => PopupFlow::Continue,
-        }
+    match key.code {
+        KeyCode::Enter => PopupFlow::Done(*cursor),
+        KeyCode::Esc => PopupFlow::Cancelled,
+        _ => PopupFlow::Continue,
     }
 }

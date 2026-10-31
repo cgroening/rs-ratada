@@ -13,8 +13,8 @@ use ratatui::{Frame, style::Style};
 
 use super::ModalSignal;
 use super::SelectItem;
-use super::picker::MultiSelect;
-use super::render::{picker_area, render_styled_picker};
+use super::multi_state::{CONFIRM_HINTS, MultiSelect};
+use super::render::{PickerChrome, picker_area, render_styled_picker};
 use crate::{
     input,
     overlay::{PopupFlow, popup},
@@ -31,11 +31,6 @@ pub struct MultiSelectOptions {
     pub modes: Option<[String; 2]>,
     /// The mode the modal opens in (`0` or `1`; anything else reads as `1`).
     pub initial_mode: usize,
-    /// Quick pick: until the first `Space`, `Enter` confirms the checks plus
-    /// the highlighted row, so one item is taken without ticking it. After a
-    /// `Space`, `Enter` confirms exactly the checks. The cursor opens on the
-    /// first checked row, so an immediate `Enter` changes nothing.
-    pub enter_picks_cursor: bool,
 }
 
 /// What [`multi_select_with`] returns: the checked indices (ascending) and the
@@ -49,13 +44,13 @@ pub struct MultiChoice {
 }
 
 /// Lets the user check several of `items`, each drawn in its own style.
-/// `Space` toggles, `Enter` confirms, `Esc` cancels.
+/// `Space` toggles, `Enter` confirms, `Esc` cancels; with nothing checked,
+/// `Enter` takes the cursor row as in [`super::multi_select`].
 ///
 /// With [`MultiSelectOptions::modes`], `Tab` switches to the other mode and
 /// inverts every check, and the frame title reads `title: mode (Tab: other)`.
-/// With [`MultiSelectOptions::enter_picks_cursor`], `Enter` also takes the
-/// highlighted row until the first `Space`.
-/// The items' keys ([`SelectItem::hotkey`]) are not used here.
+/// The inversion counts as an edit, so an empty set it leaves is confirmed as
+/// such. The items' keys ([`SelectItem::hotkey`]) are not used here.
 ///
 /// # Errors
 ///
@@ -76,33 +71,27 @@ pub fn multi_select_with(
         .iter()
         .map(|item| (item.label.clone(), item.style))
         .collect();
-    let list = if options.enter_picks_cursor {
-        MultiSelect::picking_cursor(checked)
-    } else {
-        MultiSelect::new(checked)
-    };
     let mut state = Moded {
-        list,
+        list: MultiSelect::new(checked),
         mode: options.initial_mode.min(1),
     };
     let modes = options.modes.as_ref();
     popup(
         tui,
         &mut state,
-        |area, _| picker_area(area, items.len()),
+        |area, _| picker_area(area, items.len(), &CONFIRM_HINTS),
         |frame, _| render_bg(frame),
         |frame, rect, state: &Moded| {
-            let checked = Some((&state.list.checked, skin.glyphs.check));
             let shown = moded_title(title, modes, state.mode);
-            let viewport = render_styled_picker(
-                frame,
-                skin,
-                &shown,
-                &rows,
-                state.list.cursor,
-                checked,
-                rect,
-            );
+            let hints = state.list.hints();
+            let chrome = PickerChrome {
+                title: &shown,
+                cursor: state.list.cursor,
+                checked: Some((&state.list.checked, skin.glyphs.check)),
+                hints: &hints,
+            };
+            let viewport =
+                render_styled_picker(frame, skin, &rows, &chrome, rect);
             state.list.viewport.set(viewport);
         },
         |state, key| state.handle_key(key, items.len(), modes.is_some()),
@@ -126,7 +115,7 @@ impl Moded {
     ) -> PopupFlow<MultiChoice> {
         if has_modes && key.code == KeyCode::Tab && !input::is_command(key) {
             self.mode = 1 - self.mode;
-            self.list.checked = inverted(&self.list.checked, len);
+            self.list.replace_checks(inverted(&self.list.checked, len));
             return PopupFlow::Continue;
         }
         match self.list.handle_key(key, len) {
@@ -190,14 +179,7 @@ mod tests {
     fn hide_show() -> MultiSelectOptions {
         MultiSelectOptions {
             modes: Some(["hide".to_string(), "show".to_string()]),
-            ..MultiSelectOptions::default()
-        }
-    }
-
-    fn quick_pick() -> MultiSelectOptions {
-        MultiSelectOptions {
-            enter_picks_cursor: true,
-            ..MultiSelectOptions::default()
+            initial_mode: 0,
         }
     }
 
@@ -282,41 +264,21 @@ mod tests {
     }
 
     #[test]
-    fn by_default_enter_confirms_only_the_checks() {
+    fn enter_with_nothing_checked_takes_the_cursor_row() {
         let keys = vec![bare(KeyCode::Down), bare(KeyCode::Enter)];
         let options = MultiSelectOptions::default();
         let choice = run(&options, &[], keys).expect("confirmed");
-        assert!(choice.checked.is_empty());
-    }
-
-    #[test]
-    fn quick_pick_takes_the_highlighted_row_on_enter() {
-        let keys = vec![bare(KeyCode::Down), bare(KeyCode::Enter)];
-        let choice = run(&quick_pick(), &[], keys).expect("confirmed");
         assert_eq!(choice.checked, [1]);
     }
 
+    /// Showing every status leaves nothing checked; that is the user's choice,
+    /// not an empty pick, so the cursor row is not taken.
     #[test]
-    fn quick_pick_adds_the_highlighted_row_to_the_checks() {
-        let keys = vec![bare(KeyCode::Down), bare(KeyCode::Enter)];
-        let choice = run(&quick_pick(), &[0], keys).expect("confirmed");
-        assert_eq!(choice.checked, [0, 1]);
-    }
-
-    #[test]
-    fn quick_pick_opens_on_the_first_check_so_enter_keeps_them() {
-        let keys = vec![bare(KeyCode::Enter)];
-        let choice = run(&quick_pick(), &[3, 2], keys).expect("confirmed");
-        assert_eq!(choice.checked, [2, 3]);
-    }
-
-    /// Unticking the only check and confirming must clear it, not add the
-    /// highlighted row straight back.
-    #[test]
-    fn after_space_enter_confirms_exactly_the_checks() {
-        let keys = vec![bare(KeyCode::Char(' ')), bare(KeyCode::Enter)];
-        let choice = run(&quick_pick(), &[2], keys).expect("confirmed");
+    fn a_tab_that_unchecks_everything_confirms_nothing() {
+        let keys = vec![bare(KeyCode::Tab), bare(KeyCode::Enter)];
+        let choice = run(&hide_show(), &[0, 1, 2, 3], keys).expect("confirmed");
         assert!(choice.checked.is_empty());
+        assert_eq!(choice.mode, 1);
     }
 
     #[test]
