@@ -6,6 +6,7 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ### Added
 
+- **`modal::choose` – a choice between a few answers shown side by side as buttons.** A `Choice` carries the frame `title`, the button `options` and the `default` button. `←`/`→`, `h`/`l` and `Tab`/`⇧Tab` move the mark and stop at either end, `Enter` returns the marked index and `Esc` cancels.
 - **`modal::ToggleView` – a further view of a `confirm_styled_views` body, shown and hidden with its own key.** `StyledViews::toggle` takes a `ToggleView` with a bare `key` (e.g. `'t'`), a footer `hint` (`("t", "table")`) and a `lines` builder like the other views. The key shows the view over either of the other two and hides it again, resetting the scroll; while it shows, `←`/`→` do nothing and the `←→ view` hint is left out. The box is sized for the largest of the three views, so toggling never resizes it. `y`/`n`/`Enter`/`Esc` and scrolling work in every view.
 
 ### Changed

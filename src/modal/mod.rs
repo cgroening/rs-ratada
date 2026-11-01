@@ -10,10 +10,12 @@
 //! about to be affected rather than one plain sentence; its body scrolls when
 //! it does not fit, and [`confirm_styled_views`] adds a second view of the
 //! body that `←`/`→` switch to, plus an optional [`ToggleView`] that its own
-//! key shows and hides.
+//! key shows and hides. A choice between a few answers shown side by side
+//! as buttons goes through [`choose`].
 //!
 //! Every modal takes a [`crate::theme::Skin`], whose palette drives the colors.
 
+mod choice;
 mod confirm;
 mod message;
 mod multi_select_with;
@@ -25,6 +27,7 @@ mod select_with;
 mod styled;
 mod text_input;
 
+pub use choice::{Choice, choose};
 pub use confirm::{Question, confirm, confirm_default};
 pub use message::message;
 pub use multi_select_with::{
