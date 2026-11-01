@@ -1,6 +1,7 @@
 //! The yes/no dialog whose frame title and body the caller styles. The body
-//! scrolls when it is taller than the screen allows, and a second view of it
-//! can be switched to with `←`/`→`.
+//! scrolls when it is taller than the screen allows, a second view of it can
+//! be switched to with `←`/`→`, and a further view can be toggled with a key
+//! of the caller's choice.
 
 use std::{cell::Cell, io};
 
@@ -16,6 +17,7 @@ use super::{
     render::{HINT_BLOCK_ROWS, hint_block, hinted_box_height, hints_width},
 };
 use crate::{
+    input::is_bare_character,
     layout::{centered_rect, fit},
     nav::{ScrollView, step_clamped},
     overlay::{self, PopupFlow, popup},
@@ -51,12 +53,27 @@ pub struct StyledQuestion<'a> {
 }
 
 /// A [`StyledQuestion`] with a second view of its body, switched with `←`/`→`
-/// (for example a detailed and a compact list of the same items).
+/// (for example a detailed and a compact list of the same items), and
+/// optionally a further view toggled with its own key.
 pub struct StyledViews<'a> {
     /// The question; its `lines` are the view the dialog opens with.
     pub question: StyledQuestion<'a>,
     /// The other view of the body, built like `question.lines`.
     pub alternate: &'a dyn Fn(u16) -> Vec<Line<'static>>,
+    /// A further view that its key shows and hides again, or `None`.
+    pub toggle: Option<ToggleView<'a>>,
+}
+
+/// A view of a styled dialog's body that a bare key shows over the others
+/// and hides again (for example a table of the same items). While it shows,
+/// `←`/`→` do nothing.
+pub struct ToggleView<'a> {
+    /// The key that shows and hides the view, without modifiers.
+    pub key: char,
+    /// The footer hint, `(key, description)`, e.g. `("t", "table")`.
+    pub hint: (&'static str, &'static str),
+    /// Builds the view, like [`StyledQuestion::lines`].
+    pub lines: &'a dyn Fn(u16) -> Vec<Line<'static>>,
 }
 
 /// Asks a yes/no question with a caller-styled body under its own title.
@@ -75,13 +92,15 @@ pub fn confirm_styled(
     let dialog = Dialog {
         question,
         alternate: None,
+        toggle: None,
     };
     run(tui, skin, &dialog, render_bg)
 }
 
 /// Asks a yes/no question like [`confirm_styled`], whose body has two views
-/// that `←`/`→` switch between. It opens on `views.question.lines`; the box is
-/// sized for the larger of both views, so switching never resizes it.
+/// that `←`/`→` switch between, plus the optional [`ToggleView`] its key
+/// shows and hides. It opens on `views.question.lines`; the box is sized for
+/// the largest view, so switching never resizes it.
 pub fn confirm_styled_views(
     tui: &mut Tui,
     skin: &Skin,
@@ -91,6 +110,7 @@ pub fn confirm_styled_views(
     let dialog = Dialog {
         question: &views.question,
         alternate: Some(views.alternate),
+        toggle: views.toggle.as_ref(),
     };
     run(tui, skin, &dialog, render_bg)
 }
@@ -101,6 +121,8 @@ pub(super) struct Dialog<'q, 'a> {
     pub question: &'q StyledQuestion<'a>,
     /// The second view, if the body has one.
     pub alternate: Option<BodyFn<'a>>,
+    /// The view its key toggles, if the body has one.
+    pub toggle: Option<&'q ToggleView<'a>>,
 }
 
 /// The scroll position and the shown view of an open styled dialog.
@@ -110,6 +132,8 @@ pub(super) struct DialogState {
     pub offset: usize,
     /// Whether the second view is shown.
     pub is_alternate: bool,
+    /// Whether the toggled view is shown (over either of the other two).
+    pub is_toggled: bool,
     /// Body rows on screen at the last draw; paging and clamping need it.
     viewport: Cell<usize>,
     /// Body rows in total at the last draw.
@@ -126,6 +150,9 @@ impl DialogState {
 impl Dialog<'_, '_> {
     /// The body of the view `state` shows, for `width` columns.
     fn body(&self, state: &DialogState, width: u16) -> Vec<Line<'static>> {
+        if let Some(toggle) = self.toggle.filter(|_| state.is_toggled) {
+            return (toggle.lines)(width);
+        }
         match self.alternate {
             Some(alternate) if state.is_alternate => alternate(width),
             _ => (self.question.lines)(width),
@@ -138,18 +165,29 @@ impl Dialog<'_, '_> {
         if let Some(alternate) = self.alternate {
             bodies.push(alternate(width));
         }
+        if let Some(toggle) = self.toggle {
+            bodies.push((toggle.lines)(width));
+        }
         bodies
     }
 
-    /// The footer hints: the answers, plus scrolling while the body overflows
-    /// and switching when there is a second view.
-    fn hints(&self, is_overflowing: bool) -> Vec<(&'static str, &'static str)> {
+    /// The footer hints for `state`: the answers, plus scrolling while the
+    /// body overflows, switching while a second view can be switched to and
+    /// the toggle key when there is a toggled view.
+    fn hints(
+        &self,
+        state: &DialogState,
+        is_overflowing: bool,
+    ) -> Vec<(&'static str, &'static str)> {
         let mut hints = answer_hints(self.question.default_yes).to_vec();
         if is_overflowing {
             hints.push(SCROLL_HINT);
         }
-        if self.alternate.is_some() {
+        if self.alternate.is_some() && !state.is_toggled {
             hints.push(VIEW_HINT);
+        }
+        if let Some(toggle) = self.toggle {
+            hints.push(toggle.hint);
         }
         hints
     }
@@ -197,7 +235,10 @@ pub(super) fn dialog_area(dialog: &Dialog<'_, '_>, area: Rect) -> Rect {
         .iter()
         .flatten()
         .map(Line::width)
-        .chain([hints_width(&dialog.hints(is_overflowing))])
+        // The closed state shows every hint, so it is the widest line.
+        .chain([hints_width(
+            &dialog.hints(&DialogState::default(), is_overflowing),
+        )])
         .max()
         .unwrap_or(0);
     let widest = u16::try_from(widest).unwrap_or(u16::MAX);
@@ -233,7 +274,7 @@ pub(super) fn render_dialog(
         body.into_iter().skip(offset).take(viewport).collect();
     // A shorter view keeps the hints where the taller one puts them.
     lines.resize(viewport, Line::default());
-    let hints = dialog.hints(is_overflowing);
+    let hints = dialog.hints(state, is_overflowing);
     lines.extend(hint_block(&hints, &skin.palette, usize::from(inner.width)));
     frame.render_widget(Paragraph::new(lines), inner);
 
@@ -252,7 +293,7 @@ pub(super) fn render_dialog(
 }
 
 /// Scrolls or switches the view, or answers the question.
-fn dialog_key(
+pub(super) fn dialog_key(
     dialog: &Dialog<'_, '_>,
     state: &mut DialogState,
     key: KeyEvent,
@@ -267,8 +308,17 @@ fn dialog_key(
         KeyCode::PageDown => step(page),
         KeyCode::Home => 0,
         KeyCode::End => state.max_offset(),
-        KeyCode::Left | KeyCode::Right if dialog.alternate.is_some() => {
+        KeyCode::Left | KeyCode::Right
+            if dialog.alternate.is_some() && !state.is_toggled =>
+        {
             state.is_alternate = !state.is_alternate;
+            0
+        }
+        KeyCode::Char(typed)
+            if is_bare_character(key)
+                && dialog.toggle.is_some_and(|toggle| toggle.key == typed) =>
+        {
+            state.is_toggled = !state.is_toggled;
             0
         }
         _ => return confirm_key(key, dialog.question.default_yes),

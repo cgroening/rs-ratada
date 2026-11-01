@@ -4,6 +4,14 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **`modal::ToggleView` – a further view of a `confirm_styled_views` body, shown and hidden with its own key.** `StyledViews::toggle` takes a `ToggleView` with a bare `key` (e.g. `'t'`), a footer `hint` (`("t", "table")`) and a `lines` builder like the other views. The key shows the view over either of the other two and hides it again, resetting the scroll; while it shows, `←`/`→` do nothing and the `←→ view` hint is left out. The box is sized for the largest of the three views, so toggling never resizes it. `y`/`n`/`Enter`/`Esc` and scrolling work in every view.
+
+### Changed
+
+- **`StyledViews` has the new field `toggle`.** A struct literal of `StyledViews` needs `toggle: None` to keep the previous behaviour.
+
 ## [0.6.0] - 2026-11-01
 
 ### Fixed

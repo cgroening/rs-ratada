@@ -9,7 +9,8 @@
 //! a body the caller styles line by line, for a dialog that shows what is
 //! about to be affected rather than one plain sentence; its body scrolls when
 //! it does not fit, and [`confirm_styled_views`] adds a second view of the
-//! body that `←`/`→` switch to.
+//! body that `←`/`→` switch to, plus an optional [`ToggleView`] that its own
+//! key shows and hides.
 //!
 //! Every modal takes a [`crate::theme::Skin`], whose palette drives the colors.
 
@@ -36,7 +37,8 @@ pub use picker::{
 };
 pub use select_with::{SelectItem, SelectOptions, select_with};
 pub use styled::{
-    StyledQuestion, StyledViews, confirm_styled, confirm_styled_views,
+    StyledQuestion, StyledViews, ToggleView, confirm_styled,
+    confirm_styled_views,
 };
 pub use text_input::{input, input_wide};
 
@@ -71,7 +73,8 @@ mod tests {
         },
         styled::{
             Dialog, DialogState, Drawn, StyledQuestion, StyledViews,
-            confirm_styled, confirm_styled_views, dialog_area, render_dialog,
+            ToggleView, confirm_styled, confirm_styled_views, dialog_area,
+            dialog_key, render_dialog,
         },
         text_input::{input_area, input_area_wide},
     };
@@ -374,6 +377,7 @@ mod tests {
         Dialog {
             question,
             alternate: None,
+            toggle: None,
         }
     }
 
@@ -588,6 +592,7 @@ mod tests {
         let dialog = Dialog {
             question: &question,
             alternate: Some(&compact_row),
+            toggle: None,
         };
         let first = rendered_dialog(&dialog, &DialogState::default(), SCREEN);
         let mut alternate = DialogState::default();
@@ -618,6 +623,7 @@ mod tests {
                 default_yes: true,
             },
             alternate: &compact_row,
+            toggle: None,
         };
         script_keys([
             key(KeyCode::Right),
@@ -628,6 +634,95 @@ mod tests {
             .expect("the scripted modal runs");
         clear_scripted_input();
         assert!(matches!(answer, ModalSignal::Value(false)));
+    }
+
+    fn table_rows(_width: u16) -> Vec<Line<'static>> {
+        vec![Line::from("Date │ Amount"), Line::from("today │ -4,20")]
+    }
+
+    /// The table toggle of the tests: `t`, hinted as `t table`.
+    fn table_toggle() -> ToggleView<'static> {
+        ToggleView {
+            key: 't',
+            hint: ("t", "table"),
+            lines: &table_rows,
+        }
+    }
+
+    #[test]
+    fn the_toggled_view_shows_over_both_others_without_the_view_hint() {
+        let question = StyledQuestion {
+            title: " Rename? ",
+            lines: &two_rows,
+            default_yes: true,
+        };
+        let toggle = table_toggle();
+        let dialog = Dialog {
+            question: &question,
+            alternate: Some(&compact_row),
+            toggle: Some(&toggle),
+        };
+        let closed = rendered_dialog(&dialog, &DialogState::default(), SCREEN);
+        assert!(closed.iter().any(|row| row.contains("view")));
+        assert!(closed.iter().any(|row| row.contains("table")));
+        for is_alternate in [false, true] {
+            let mut state = DialogState::default();
+            state.is_alternate = is_alternate;
+            state.is_toggled = true;
+            let shown = rendered_dialog(&dialog, &state, SCREEN);
+            assert!(shown.iter().any(|row| row.contains("today │ -4,20")));
+            assert!(!shown.iter().any(|row| row.contains("view")));
+        }
+    }
+
+    #[test]
+    fn the_toggle_key_shows_and_hides_its_view_and_blocks_the_arrows() {
+        let question = StyledQuestion {
+            title: " Rename? ",
+            lines: &two_rows,
+            default_yes: true,
+        };
+        let toggle = table_toggle();
+        let dialog = Dialog {
+            question: &question,
+            alternate: Some(&compact_row),
+            toggle: Some(&toggle),
+        };
+        let mut state = DialogState::default();
+        assert!(matches!(
+            dialog_key(&dialog, &mut state, key(KeyCode::Char('t'))),
+            PopupFlow::Continue
+        ));
+        assert!(state.is_toggled);
+        dialog_key(&dialog, &mut state, key(KeyCode::Right));
+        assert!(
+            !state.is_alternate,
+            "the arrows wait for the table to close"
+        );
+        dialog_key(&dialog, &mut state, key(KeyCode::Char('t')));
+        assert!(!state.is_toggled);
+        dialog_key(&dialog, &mut state, key(KeyCode::Right));
+        assert!(state.is_alternate);
+    }
+
+    #[test]
+    fn a_toggled_view_still_answers_the_question() {
+        let mut tui = Tui::for_test(SCREEN.width, SCREEN.height)
+            .expect("an in-memory terminal");
+        let views = StyledViews {
+            question: StyledQuestion {
+                title: " Rename? ",
+                lines: &two_rows,
+                default_yes: true,
+            },
+            alternate: &compact_row,
+            toggle: Some(table_toggle()),
+        };
+        script_keys([key(KeyCode::Char('t')), key(KeyCode::Enter)]);
+        let answer = confirm_styled_views(&mut tui, &skin(), &views, |_| {})
+            .expect("the scripted modal runs");
+        clear_scripted_input();
+        assert!(matches!(answer, ModalSignal::Value(true)));
     }
 
     #[test]
