@@ -243,8 +243,14 @@ impl Tui {
     }
 
     /// Renders one frame.
+    ///
+    /// A [`crate::dim::DimRender`] set on this thread is applied to the
+    /// finished frame, so the terminal `DIM` attribute takes its colour.
     pub fn draw<F: FnOnce(&mut Frame)>(&mut self, render: F) -> io::Result<()> {
-        self.terminal.draw(render)?;
+        self.terminal.draw(|frame| {
+            render(frame);
+            crate::dim::apply(frame.buffer_mut());
+        })?;
         Ok(())
     }
 
@@ -487,6 +493,38 @@ mod tests {
         let rendered: String =
             (0..12).map(|x| backend.buffer()[(x, 0)].symbol()).collect();
         assert_eq!(rendered.trim_end(), "hello");
+    }
+
+    /// The dim rendering reaches every frame drawn through the guard, and
+    /// only while it is set. One test owns the thread-local.
+    #[test]
+    fn a_draw_resolves_dim_only_while_a_render_is_set() {
+        use ratatui::style::{Color as RatColor, Modifier};
+
+        use crate::dim::{DimRender, set_dim_render};
+
+        let draw = || {
+            let mut tui = Tui::for_test(1, 1).expect("in-memory terminal");
+            tui.draw(|frame| {
+                frame.buffer_mut().content[0].modifier = Modifier::DIM;
+            })
+            .expect("draw");
+            let Backend::Test(backend) = tui.terminal.backend() else {
+                panic!("for_test must build a test backend");
+            };
+            backend.buffer()[(0, 0)].clone()
+        };
+
+        assert!(draw().modifier.contains(Modifier::DIM));
+        set_dim_render(Some(DimRender {
+            foreground: crate::theme::Color::Rgb(1, 2, 3),
+            amount: 0.5,
+        }));
+        let cell = draw();
+        set_dim_render(None);
+
+        assert_eq!(cell.fg, RatColor::Rgb(1, 2, 3));
+        assert!(!cell.modifier.contains(Modifier::DIM));
     }
 
     /// A test guard must not run the real restore on drop: that would disable
