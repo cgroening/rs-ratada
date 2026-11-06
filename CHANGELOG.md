@@ -4,6 +4,8 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-06
+
 ### Changed (breaking)
 
 - **`theme::Color` has the new variant `Ansi(AnsiColor)`.** A `match` over `Color` needs an `Ansi` arm. The variant names one of the sixteen terminal colours (`AnsiColor::Green`, …); `style::to_ratatui` maps it to the ratatui named colour, so it follows the terminal's palette. It has no RGB value: `rgb()` returns `None` and the OKLCH helpers (`darken`, `mix`, …) return it unchanged, like `Default` (`adjust` now returns `self` for any colour without an RGB base). `parse_color` reads `ansi:<name>` (`black`, `red`, …, `gray`, `dark_gray`, `light_red`, …, `white`; `grey` is accepted), and `to_hex` writes the same token back.
@@ -229,7 +231,8 @@ Crate-wide cleanup and API consolidation. This release contains breaking changes
 - `textarea` now reuses the shared single-line edit core from `input` (SSOT).
 - Documentation synced with the code and the public API surface tightened.
 
-[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/cgroening/rs-ratada/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/cgroening/rs-ratada/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/cgroening/rs-ratada/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/cgroening/rs-ratada/compare/v0.3.1...v0.4.0
