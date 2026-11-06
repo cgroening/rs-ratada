@@ -10,7 +10,7 @@ pub mod palette;
 pub mod skin;
 pub mod theme_set;
 
-pub use color::{Color, parse_color};
+pub use color::{AnsiColor, Color, parse_color};
 pub use glyphs::{GlyphVariant, Glyphs};
 pub use palette::{ColorOverrides, Palette};
 pub use skin::Skin;

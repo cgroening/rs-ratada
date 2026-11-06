@@ -17,7 +17,10 @@ use ratatui::{
     style::{Color as RatColor, Modifier},
 };
 
-use crate::{style, theme::Color};
+use crate::{
+    style,
+    theme::{Color, Palette},
+};
 
 /// How dimmed cells are drawn instead of with the terminal `DIM` attribute.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -49,6 +52,29 @@ thread_local! {
 /// ```
 pub fn set_dim_render(render: Option<DimRender>) {
     DIM_RENDER.with(|setting| setting.set(render));
+}
+
+/// Sets this thread's dim rendering from `palette`: its `dim` colour, with
+/// coloured dimmed text darkened by `amount` (`0.0`-`1.0`). A `dim` of
+/// [`Color::Default`] leaves the attribute to the terminal.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::dim::{apply_palette, dim_render};
+/// use ratada::theme::{ColorOverrides, Palette, ThemeRegistry};
+///
+/// let base = ThemeRegistry::builtin().resolve("default");
+/// let palette = Palette::resolve(base, &ColorOverrides::default());
+/// apply_palette(&palette, 0.4);
+/// assert_eq!(dim_render(), None, "the default theme keeps the terminal DIM");
+/// ```
+pub fn apply_palette(palette: &Palette, amount: f32) {
+    let render = (palette.dim != Color::Default).then_some(DimRender {
+        foreground: palette.dim,
+        amount,
+    });
+    set_dim_render(render);
 }
 
 /// The dim rendering set on this thread, if any.

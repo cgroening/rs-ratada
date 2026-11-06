@@ -5,7 +5,7 @@
 
 use ratatui::style::{Color as RatColor, Modifier, Style};
 
-use crate::theme::{Color, Palette};
+use crate::theme::{AnsiColor, Color, Palette};
 
 /// Light backdrop for judging a color's contrast in the color pickers.
 pub(crate) const LIGHT_BG: Color = Color::hex("#e5e5e5");
@@ -18,6 +18,29 @@ pub fn to_ratatui(color: Color) -> RatColor {
     match color {
         Color::Default => RatColor::Reset,
         Color::Rgb(red, green, blue) => RatColor::Rgb(red, green, blue),
+        Color::Ansi(ansi) => ansi_to_ratatui(ansi),
+    }
+}
+
+/// The ratatui colour of a terminal palette colour.
+fn ansi_to_ratatui(ansi: AnsiColor) -> RatColor {
+    match ansi {
+        AnsiColor::Black => RatColor::Black,
+        AnsiColor::Red => RatColor::Red,
+        AnsiColor::Green => RatColor::Green,
+        AnsiColor::Yellow => RatColor::Yellow,
+        AnsiColor::Blue => RatColor::Blue,
+        AnsiColor::Magenta => RatColor::Magenta,
+        AnsiColor::Cyan => RatColor::Cyan,
+        AnsiColor::Gray => RatColor::Gray,
+        AnsiColor::DarkGray => RatColor::DarkGray,
+        AnsiColor::LightRed => RatColor::LightRed,
+        AnsiColor::LightGreen => RatColor::LightGreen,
+        AnsiColor::LightYellow => RatColor::LightYellow,
+        AnsiColor::LightBlue => RatColor::LightBlue,
+        AnsiColor::LightMagenta => RatColor::LightMagenta,
+        AnsiColor::LightCyan => RatColor::LightCyan,
+        AnsiColor::White => RatColor::White,
     }
 }
 

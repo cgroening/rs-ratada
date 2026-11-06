@@ -15,8 +15,11 @@
     clippy::doc_markdown
 )]
 
+mod ansi;
 mod parse;
 mod space;
+
+pub use ansi::AnsiColor;
 
 use parse::nibble;
 pub use parse::parse_color;
@@ -43,23 +46,30 @@ pub enum Color {
     Default,
     /// A 24-bit `(red, green, blue)` color.
     Rgb(u8, u8, u8),
+    /// A terminal palette colour (`ansi:<name>`). It has no RGB value, so the
+    /// OKLCH helpers leave it unchanged, like `Default`.
+    Ansi(AnsiColor),
 }
 
 impl Color {
-    /// The `(r, g, b)` channels, or `None` for [`Color::Default`].
+    /// The `(r, g, b)` channels, or `None` for [`Color::Default`] and an
+    /// [`Color::Ansi`] colour.
     pub fn rgb(self) -> Option<(u8, u8, u8)> {
         match self {
             Color::Rgb(red, green, blue) => Some((red, green, blue)),
-            Color::Default => None,
+            Color::Default | Color::Ansi(_) => None,
         }
     }
 
-    /// A `#rrggbb` hex string, or `"default"` for [`Color::Default`].
+    /// A `#rrggbb` hex string, `ansi:<name>` for a terminal colour, or
+    /// `"default"` for [`Color::Default`]. [`parse_color`] reads every form
+    /// back.
     pub fn to_hex(self) -> String {
         match self {
             Color::Rgb(red, green, blue) => {
                 format!("#{red:02x}{green:02x}{blue:02x}")
             }
+            Color::Ansi(ansi) => format!("{}{}", ansi::PREFIX, ansi.name()),
             Color::Default => "default".to_string(),
         }
     }
@@ -254,15 +264,15 @@ impl Color {
         .to_color()
     }
 
-    /// Applies `edit` to the OKLCH form and converts back. `Default` is returned
-    /// unchanged (there is no base to transform).
+    /// Applies `edit` to the OKLCH form and converts back. A colour without an
+    /// RGB base (`Default`, an ANSI colour) is returned unchanged.
     fn adjust(self, edit: impl Fn(&mut Oklch)) -> Color {
         match self.oklch() {
             Some(mut oklch) => {
                 edit(&mut oklch);
                 oklch.to_color()
             }
-            None => Color::Default,
+            None => self,
         }
     }
 

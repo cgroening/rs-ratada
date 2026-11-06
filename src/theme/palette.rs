@@ -70,6 +70,15 @@ macro_rules! define_palette {
                 vec![ $( (stringify!($field), self.$field), )+ ]
             }
 
+            /// The color named `name`, if the palette has one.
+            #[must_use]
+            pub fn get(&self, name: &str) -> Option<Color> {
+                match name {
+                    $( stringify!($field) => Some(self.$field), )+
+                    _ => None,
+                }
+            }
+
             /// All palette color names, in declaration order.
             pub const KEYS: &'static [&'static str] =
                 &[ $( stringify!($field), )+ ];
@@ -121,6 +130,9 @@ define_palette! {
     error,
     /// Semantic color for informational accents.
     info,
+    /// Text the terminal would dim (the `DIM` attribute); `Default` leaves the
+    /// dimming to the terminal. Applied by [`crate::dim::apply_palette`].
+    dim,
 }
 
 impl Palette {
@@ -193,6 +205,7 @@ impl Palette {
             warning: get(overrides.warning, base.warning),
             error: get(overrides.error, base.error),
             info: get(overrides.info, base.info),
+            dim: get(overrides.dim, base.dim),
         }
     }
 }

@@ -4,6 +4,20 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **`theme::Color` has the new variant `Ansi(AnsiColor)`.** A `match` over `Color` needs an `Ansi` arm. The variant names one of the sixteen terminal colours (`AnsiColor::Green`, …); `style::to_ratatui` maps it to the ratatui named colour, so it follows the terminal's palette. It has no RGB value: `rgb()` returns `None` and the OKLCH helpers (`darken`, `mix`, …) return it unchanged, like `Default` (`adjust` now returns `self` for any colour without an RGB base). `parse_color` reads `ansi:<name>` (`black`, `red`, …, `gray`, `dark_gray`, `light_red`, …, `white`; `grey` is accepted), and `to_hex` writes the same token back.
+- **`ThemeColors` and `Palette` have the new colour `dim`.** It is the colour of text carrying the terminal `DIM` attribute; `Color::Default` (the value of both built-in themes and of `ThemeColors::derived`) leaves the dimming to the terminal. A struct literal of `ThemeColors` needs `dim: Color::Default` to keep the previous look. `ThemeColors::KEYS`, `ThemeColors::from_lookup` and `ColorOverrides` know the key, so a host's `[themes.*]` and colour overrides accept `dim`.
+- **The Markdown default style sheet's colours** are written directly into `StyleSheet::default` instead of 33 module constants; the values are unchanged.
+- **The character under an input's block cursor** takes `foreground.readable_on(cursor)` instead of a fixed black, so a light or dark cursor colour keeps it legible.
+
+### Added
+
+- **`parse_color("default")`** returns `Color::Default`, so every value `Color::to_hex` writes (a `[themes.*]` dump included) reads back.
+- **`Palette::get(name)`** returns the colour a palette key names (`None` for an unknown name), for hosts that list or edit the palette by name.
+- **`dim::apply_palette(&palette, amount)`** sets this thread's `DimRender` from a palette's `dim` colour (none while it is `Default`), the one call a host makes wherever it rebuilds its palette.
+- **A test keeps colours in the theme** (`tests/theme_only_colours.rs`): no colour literal may appear in `src/` outside the built-in themes, the colour type, the ratatui adapter and the picker's data, each listed with its reason.
+
 ### Fixed
 
 - **`clipboard::copy` writes `\r\n` line endings on Windows.** A multi-line text went to the Win32 clipboard with bare `\n`, so Windows programs that split pasted rows at `\r\n` (SAP GUI, Excel) saw one cell and kept only the last line. Copy now turns every line ending into `\r\n` (an existing `\r\n` is not doubled), the counterpart of the normalising to `\n` that paste already does. macOS and Linux are unchanged.

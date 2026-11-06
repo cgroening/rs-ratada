@@ -1,10 +1,7 @@
 //! Painting a text line: the caret and selection spans, the per-character
 //! style overlay, and the horizontal scroll window with its ellipsis marks.
 
-use ratatui::{
-    style::{Color, Style},
-    text::Span,
-};
+use ratatui::{style::Style, text::Span};
 use unicode_width::UnicodeWidthChar;
 
 use super::{LineCaret, TextCursor};
@@ -145,7 +142,9 @@ pub fn line_spans(
     palette: &Palette,
 ) -> Vec<Span<'static>> {
     let chars: Vec<char> = visible.chars().collect();
-    let cursor_style = style::cursor(palette).fg(Color::Black);
+    // The character under the block cursor takes whichever ink reads on it.
+    let ink = palette.foreground.readable_on(palette.cursor);
+    let cursor_style = style::cursor(palette).fg(style::to_ratatui(ink));
     let selection_style = style::bg(palette.selection);
 
     let mut spans: Vec<Span<'static>> = Vec::new();

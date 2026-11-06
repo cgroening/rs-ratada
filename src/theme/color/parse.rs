@@ -19,14 +19,28 @@ pub(super) const fn nibble(byte: u8) -> u8 {
 }
 
 /// Parses a color from a hex string (`#rgb` or `#rrggbb`), an `rgb(r, g, b)`
-/// triple, or a named palette entry. Returns `None` for anything else.
+/// triple, an `ansi:<name>` terminal colour, `default` (the terminal's own
+/// colour, what [`Color::to_hex`] writes for [`Color::Default`]) or a named
+/// palette entry. Returns `None` for anything else.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::theme::{AnsiColor, Color, parse_color};
+/// assert_eq!(parse_color("ansi:green"), Some(Color::Ansi(AnsiColor::Green)));
+/// assert_eq!(parse_color("#000"), Some(Color::Rgb(0, 0, 0)));
+/// ```
 pub fn parse_color(value: &str) -> Option<Color> {
     let value = value.trim();
     if value.is_empty() {
         return None;
     }
+    if value.eq_ignore_ascii_case("default") {
+        return Some(Color::Default);
+    }
     parse_hex(value)
         .or_else(|| parse_rgb(value))
+        .or_else(|| super::ansi::parse(value).map(Color::Ansi))
         .or_else(|| parse_named(value))
 }
 
@@ -112,6 +126,19 @@ mod tests {
     fn rejects_malformed_hex() {
         assert_eq!(parse_color("#xyz"), None);
         assert_eq!(parse_color("#12345"), None);
+    }
+
+    #[test]
+    fn parses_ansi_tokens_and_writes_them_back() {
+        let green = parse_color("ansi:green");
+        assert_eq!(green, Some(Color::Ansi(super::super::AnsiColor::Green)));
+        assert_eq!(green.map(Color::to_hex).as_deref(), Some("ansi:green"));
+    }
+
+    #[test]
+    fn default_reads_back_what_to_hex_writes() {
+        assert_eq!(parse_color("default"), Some(Color::Default));
+        assert_eq!(Color::Default.to_hex(), "default");
     }
 
     #[test]

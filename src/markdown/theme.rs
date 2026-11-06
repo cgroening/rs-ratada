@@ -9,8 +9,8 @@
 //! kit - `style` stays the single seam. `StyleSheet` itself keeps ratatui types
 //! in its fields, since it is handed straight to the renderer.
 //!
-//! These constants are deliberately *not* taken from the active
-//! [`crate::theme::Palette`]: a Markdown document has its own semantic slots
+//! These colours are the built-in Markdown theme and are deliberately *not*
+//! taken from the active [`crate::theme::Palette`]: a Markdown document has its own semantic slots
 //! (six heading levels, five callout kinds) that a UI palette does not carry.
 //! A host that wants them themed builds its own [`StyleSheet`].
 
@@ -24,47 +24,6 @@ use crate::{
     style::to_ratatui,
     theme::{Color, GlyphVariant, Skin},
 };
-
-// Heading foregrounds H1..H6.
-const H1: Color = Color::hex("#6abeff");
-const H2: Color = Color::hex("#ebd58c");
-const H3: Color = Color::hex("#b9d5a2");
-const H4: Color = Color::hex("#d3accc");
-const H5: Color = Color::hex("#88c0d0");
-const H6: Color = Color::hex("#d08770");
-
-// Inline runs.
-const STRONG: Color = Color::hex("#01e030");
-const EMPHASIS: Color = Color::hex("#b27cde");
-const INLINE_CODE_FG: Color = Color::hex("#fb95ff");
-const INLINE_CODE_BG: Color = Color::hex("#342434");
-const HIGHLIGHT_FG: Color = Color::hex("#202020");
-const HIGHLIGHT_BG: Color = Color::hex("#f0f08b");
-const LINK: Color = Color::hex("#7ecbff");
-
-// Blocks.
-const CODE_FG: Color = Color::hex("#b3ffed");
-const CODE_BG: Color = Color::hex("#1f1f1f");
-const CODE_TITLE: Color = Color::hex("#f0f08b");
-const QUOTE: Color = Color::hex("#b9d6da");
-const QUOTE_BG: Color = Color::hex("#151c22");
-const RULE: Color = Color::hex("#d38f44");
-const BULLET: Color = Color::hex("#f0f08b");
-const CHECKED: Color = Color::hex("#9ef09b");
-const UNCHECKED: Color = Color::hex("#f0f08b");
-const TABLE_BORDER: Color = Color::hex("#d38f44");
-
-// Callout foreground/background pairs.
-const NOTE_FG: Color = Color::hex("#7fc6ff");
-const NOTE_BG: Color = Color::hex("#0b2131");
-const TIP_FG: Color = Color::hex("#74ea76");
-const TIP_BG: Color = Color::hex("#041a10");
-const IMPORTANT_FG: Color = Color::hex("#d4b1ff");
-const IMPORTANT_BG: Color = Color::hex("#1d1231");
-const WARNING_FG: Color = Color::hex("#ffb287");
-const WARNING_BG: Color = Color::hex("#261b0d");
-const CAUTION_FG: Color = Color::hex("#ff98a8");
-const CAUTION_BG: Color = Color::hex("#241114");
 
 // Glyphs: Unicode standard and ASCII fallbacks (nesting-cycled bullets).
 const UNICODE_BULLETS: [&str; 4] =
@@ -101,62 +60,65 @@ impl Default for StyleSheet {
         StyleSheet {
             base: Style::default(),
             headings: [
-                heading(H1),
-                heading(H2),
-                heading(H3),
-                heading(H4),
-                heading(H5),
-                heading(H6),
+                heading(Color::hex("#6abeff")),
+                heading(Color::hex("#ebd58c")),
+                heading(Color::hex("#b9d5a2")),
+                heading(Color::hex("#d3accc")),
+                heading(Color::hex("#88c0d0")),
+                heading(Color::hex("#d08770")),
             ],
             strong: Style::default()
-                .fg(to_ratatui(STRONG))
+                .fg(to_ratatui(Color::hex("#01e030")))
                 .add_modifier(Modifier::BOLD),
             emphasis: Style::default()
-                .fg(to_ratatui(EMPHASIS))
+                .fg(to_ratatui(Color::hex("#b27cde")))
                 .add_modifier(Modifier::ITALIC),
             strikethrough: Style::default().add_modifier(Modifier::CROSSED_OUT),
             inline_code: Style::default()
-                .fg(to_ratatui(INLINE_CODE_FG))
-                .bg(to_ratatui(INLINE_CODE_BG)),
+                .fg(to_ratatui(Color::hex("#fb95ff")))
+                .bg(to_ratatui(Color::hex("#342434"))),
             code_block: CodeBlockStyle {
-                fg: Some(to_ratatui(CODE_FG)),
-                bg: Some(to_ratatui(CODE_BG)),
-                title_fg: Some(to_ratatui(CODE_TITLE)),
+                fg: Some(to_ratatui(Color::hex("#b3ffed"))),
+                bg: Some(to_ratatui(Color::hex("#1f1f1f"))),
+                title_fg: Some(to_ratatui(Color::hex("#f0f08b"))),
             },
             quote: QuoteStyle {
-                fg: Some(to_ratatui(QUOTE)),
-                bg: Some(to_ratatui(QUOTE_BG)),
-                bar_fg: Some(to_ratatui(QUOTE)),
+                fg: Some(to_ratatui(Color::hex("#b9d6da"))),
+                bg: Some(to_ratatui(Color::hex("#151c22"))),
+                bar_fg: Some(to_ratatui(Color::hex("#b9d6da"))),
                 bar: QUOTE_BAR.to_string(),
             },
             highlight: Style::default()
-                .fg(to_ratatui(HIGHLIGHT_FG))
-                .bg(to_ratatui(HIGHLIGHT_BG)),
+                .fg(to_ratatui(Color::hex("#202020")))
+                .bg(to_ratatui(Color::hex("#f0f08b"))),
             link: Style::default()
-                .fg(to_ratatui(LINK))
+                .fg(to_ratatui(Color::hex("#7ecbff")))
                 .add_modifier(Modifier::UNDERLINED),
             rule: RuleStyle {
-                fg: Some(to_ratatui(RULE)),
+                fg: Some(to_ratatui(Color::hex("#d38f44"))),
                 glyph: RULE_GLYPH.to_string(),
             },
             bullet: BulletStyle {
-                fg: Some(to_ratatui(BULLET)),
+                fg: Some(to_ratatui(Color::hex("#f0f08b"))),
                 glyphs: glyphs(&UNICODE_BULLETS),
             },
             checkbox: CheckboxStyle {
                 checked: CHECKBOX_CHECKED.to_string(),
                 unchecked: CHECKBOX_UNCHECKED.to_string(),
-                checked_fg: Some(to_ratatui(CHECKED)),
-                unchecked_fg: Some(to_ratatui(UNCHECKED)),
+                checked_fg: Some(to_ratatui(Color::hex("#9ef09b"))),
+                unchecked_fg: Some(to_ratatui(Color::hex("#f0f08b"))),
             },
             callout: CalloutTheme {
-                note: callout(NOTE_FG, NOTE_BG),
-                tip: callout(TIP_FG, TIP_BG),
-                important: callout(IMPORTANT_FG, IMPORTANT_BG),
-                warning: callout(WARNING_FG, WARNING_BG),
-                caution: callout(CAUTION_FG, CAUTION_BG),
+                note: callout(Color::hex("#7fc6ff"), Color::hex("#0b2131")),
+                tip: callout(Color::hex("#74ea76"), Color::hex("#041a10")),
+                important: callout(
+                    Color::hex("#d4b1ff"),
+                    Color::hex("#1d1231"),
+                ),
+                warning: callout(Color::hex("#ffb287"), Color::hex("#261b0d")),
+                caution: callout(Color::hex("#ff98a8"), Color::hex("#241114")),
             },
-            table_border: Some(to_ratatui(TABLE_BORDER)),
+            table_border: Some(to_ratatui(Color::hex("#d38f44"))),
             smart_punctuation: false,
             preserve_line_breaks: false,
             html: Style::default().add_modifier(Modifier::DIM),
@@ -202,11 +164,17 @@ mod tests {
     #[test]
     fn default_carries_the_standard_colors_and_glyphs() {
         let sheet = StyleSheet::default();
-        assert_eq!(sheet.headings[0].fg, Some(to_ratatui(H1)));
+        assert_eq!(
+            sheet.headings[0].fg,
+            Some(to_ratatui(Color::hex("#6abeff")))
+        );
         assert!(sheet.headings[0].bold);
         assert_eq!(sheet.bullet.glyphs, glyphs(&UNICODE_BULLETS));
         assert_eq!(sheet.checkbox.checked, CHECKBOX_CHECKED);
-        assert_eq!(sheet.callout.warning.fg, Some(to_ratatui(WARNING_FG)));
+        assert_eq!(
+            sheet.callout.warning.fg,
+            Some(to_ratatui(Color::hex("#ffb287")))
+        );
     }
 
     #[test]
@@ -216,8 +184,11 @@ mod tests {
         assert_eq!(sheet.checkbox.unchecked, "[ ]");
         assert_eq!(sheet.rule.glyph, "-");
         // Colours stay the standard ones.
-        assert_eq!(sheet.headings[0].fg, Some(to_ratatui(H1)));
-        assert_eq!(sheet.bullet.fg, Some(to_ratatui(BULLET)));
+        assert_eq!(
+            sheet.headings[0].fg,
+            Some(to_ratatui(Color::hex("#6abeff")))
+        );
+        assert_eq!(sheet.bullet.fg, Some(to_ratatui(Color::hex("#f0f08b"))));
     }
 
     /// Pins the rendered colours to literal RGB rather than to the constants,

@@ -72,6 +72,9 @@ pub struct ThemeColors {
     pub error: Color,
     /// The semantic color for informational accents.
     pub info: Color,
+    /// The colour of text the terminal would dim (the `DIM` attribute);
+    /// [`Color::Default`] leaves the dimming to the terminal.
+    pub dim: Color,
 }
 
 impl ThemeColors {
@@ -99,6 +102,7 @@ impl ThemeColors {
             warning: DEFAULT_WARNING,
             error: DEFAULT_ERROR,
             info: DEFAULT_INFO,
+            dim: Color::Default,
         }
     }
 
@@ -139,6 +143,7 @@ impl ThemeColors {
         set("warning", &mut colors.warning);
         set("error", &mut colors.error);
         set("info", &mut colors.info);
+        set("dim", &mut colors.dim);
         colors
     }
 
@@ -163,6 +168,7 @@ impl ThemeColors {
         "warning",
         "error",
         "info",
+        "dim",
     ];
 }
 
@@ -183,6 +189,7 @@ const DEFAULT_COLORS: ThemeColors = ThemeColors {
     warning: Color::hex("#ded483"),
     error: Color::hex("#d57b76"),
     info: Color::hex("#7fb3d4"),
+    dim: Color::Default,
 };
 
 /// The built-in `monochrome` theme (grayscale).
@@ -200,6 +207,7 @@ const MONOCHROME_COLORS: ThemeColors = ThemeColors {
     warning: Color::hex("#d0d0d0"),
     error: Color::hex("#9a9a9a"),
     info: Color::hex("#a8a8a8"),
+    dim: Color::Default,
 };
 
 /// The built-in themes, in cycling order. The first entry is the default.
