@@ -4,6 +4,10 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **`clipboard::copy` writes `\r\n` line endings on Windows.** A multi-line text went to the Win32 clipboard with bare `\n`, so Windows programs that split pasted rows at `\r\n` (SAP GUI, Excel) saw one cell and kept only the last line. Copy now turns every line ending into `\r\n` (an existing `\r\n` is not doubled), the counterpart of the normalising to `\n` that paste already does. macOS and Linux are unchanged.
+
 ### Added
 
 - **`modal::choose` – a choice between a few answers shown side by side as buttons.** A `Choice` carries the frame `title`, the button `options` and the `default` button. `←`/`→`, `h`/`l` and `Tab`/`⇧Tab` move the mark and stop at either end, `Enter` returns the marked index and `Esc` cancels.

@@ -8,6 +8,10 @@
 //!
 //! Failures are reported as `false`/`None` and logged, never propagated, so a
 //! missing clipboard tool degrades gracefully instead of breaking the TUI.
+//!
+//! Line endings: a paste is normalised to `\n`; on Windows a copy writes
+//! `\r\n`, which Windows programs (SAP GUI, Excel) need to paste several
+//! lines as separate rows instead of one cell.
 
 /// Copies `text` to the system clipboard. Returns whether it succeeded.
 pub fn copy(text: &str) -> bool {
@@ -25,7 +29,7 @@ pub fn paste() -> Option<String> {
 
 #[cfg(windows)]
 fn copy_impl(text: &str) -> bool {
-    match clipboard_win::set_clipboard_string(text) {
+    match clipboard_win::set_clipboard_string(&to_crlf(text)) {
         Ok(()) => true,
         Err(error) => {
             log::warn!("clipboard copy failed: {error}");
@@ -43,6 +47,13 @@ fn paste_impl() -> Option<String> {
             None
         }
     }
+}
+
+/// `text` with every line ending as `\r\n` (an existing `\r\n` is not
+/// doubled, a lone `\r` or `\n` becomes `\r\n`).
+#[cfg(any(windows, test))]
+fn to_crlf(text: &str) -> String {
+    crate::terminal::normalize_newlines(text).replace('\n', "\r\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +168,20 @@ fn paste_candidates() -> &'static [(&'static str, &'static [&'static str])] {
 
 #[cfg(test)]
 mod tests {
+    use super::to_crlf;
     use crate::terminal::normalize_newlines;
+
+    #[test]
+    fn to_crlf_ends_every_line_with_crlf() {
+        assert_eq!(to_crlf("a\nb\nc"), "a\r\nb\r\nc");
+        assert_eq!(to_crlf("a\rb"), "a\r\nb");
+    }
+
+    #[test]
+    fn to_crlf_keeps_crlf_and_text_without_breaks() {
+        assert_eq!(to_crlf("a\r\nb"), "a\r\nb");
+        assert_eq!(to_crlf("no breaks here"), "no breaks here");
+    }
 
     #[test]
     fn normalize_newlines_collapses_crlf_and_lone_cr() {
