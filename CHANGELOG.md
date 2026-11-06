@@ -12,6 +12,7 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 - **`ThemeColors` and `Palette` have the new colour `dim`.** It is the colour of text carrying the terminal `DIM` attribute; `Color::Default` (the value of both built-in themes and of `ThemeColors::derived`) leaves the dimming to the terminal. A struct literal of `ThemeColors` needs `dim: Color::Default` to keep the previous look. `ThemeColors::KEYS`, `ThemeColors::from_lookup` and `ColorOverrides` know the key, so a host's `[themes.*]` and colour overrides accept `dim`.
 - **The Markdown default style sheet's colours** are written directly into `StyleSheet::default` instead of 33 module constants; the values are unchanged.
 - **The character under an input's block cursor** takes `foreground.readable_on(cursor)` instead of a fixed black, so a light or dark cursor colour keeps it legible.
+- **`StyledViews` has the new field `toggle`.** A struct literal of `StyledViews` needs `toggle: None` to keep the previous behaviour.
 
 ### Added
 
@@ -19,20 +20,13 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 - **`Palette::get(name)`** returns the colour a palette key names (`None` for an unknown name), for hosts that list or edit the palette by name.
 - **`dim::apply_palette(&palette, amount)`** sets this thread's `DimRender` from a palette's `dim` colour (none while it is `Default`), the one call a host makes wherever it rebuilds its palette.
 - **A test keeps colours in the theme** (`tests/theme_only_colours.rs`): no colour literal may appear in `src/` outside the built-in themes, the colour type, the ratatui adapter and the picker's data, each listed with its reason.
-
-### Fixed
-
-- **`clipboard::copy` writes `\r\n` line endings on Windows.** A multi-line text went to the Win32 clipboard with bare `\n`, so Windows programs that split pasted rows at `\r\n` (SAP GUI, Excel) saw one cell and kept only the last line. Copy now turns every line ending into `\r\n` (an existing `\r\n` is not doubled), the counterpart of the normalising to `\n` that paste already does. macOS and Linux are unchanged.
-
-### Added
-
 - **`dim::DimRender` and `dim::set_dim_render` – the terminal `DIM` attribute in a chosen colour.** How `DIM` looks is up to the terminal, so an app could not theme it. With a `DimRender { foreground, amount }` set (per thread, like `quit::set_confirm`), `Tui::draw` rewrites every dimmed cell of the finished frame: text in the default colour takes `foreground`, RGB text is darkened toward black by `amount` (`0.0`-`1.0`) and keeps its hue, and the attribute is removed. A named or indexed colour has no RGB base and keeps the attribute. It reaches every frame, including the modals this crate opens itself and the hint labels drawn with `style::dim()`. `None`, the default, leaves the attribute alone, so nothing changes until an app sets it.
 - **`modal::choose` – a choice between a few answers shown side by side as buttons.** A `Choice` carries the frame `title`, the button `options` and the `default` button. `←`/`→`, `h`/`l` and `Tab`/`⇧Tab` move the mark and stop at either end, `Enter` returns the marked index and `Esc` cancels.
 - **`modal::ToggleView` – a further view of a `confirm_styled_views` body, shown and hidden with its own key.** `StyledViews::toggle` takes a `ToggleView` with a bare `key` (e.g. `'t'`), a footer `hint` (`("t", "table")`) and a `lines` builder like the other views. The key shows the view over either of the other two and hides it again, resetting the scroll; while it shows, `←`/`→` do nothing and the `←→ view` hint is left out. The box is sized for the largest of the three views, so toggling never resizes it. `y`/`n`/`Enter`/`Esc` and scrolling work in every view.
 
-### Changed
+### Fixed
 
-- **`StyledViews` has the new field `toggle`.** A struct literal of `StyledViews` needs `toggle: None` to keep the previous behaviour.
+- **`clipboard::copy` writes `\r\n` line endings on Windows.** A multi-line text went to the Win32 clipboard with bare `\n`, so Windows programs that split pasted rows at `\r\n` (SAP GUI, Excel) saw one cell and kept only the last line. Copy now turns every line ending into `\r\n` (an existing `\r\n` is not doubled), the counterpart of the normalising to `\n` that paste already does. macOS and Linux are unchanged.
 
 ## [0.6.0] - 2026-11-01
 
