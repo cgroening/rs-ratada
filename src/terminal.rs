@@ -382,6 +382,14 @@ pub fn script_keys(keys: impl IntoIterator<Item = KeyEvent>) {
     SCRIPT.with(|script| *script.borrow_mut() = Some(queued));
 }
 
+/// Like [`script_keys`], but queues any terminal events - a bracketed
+/// [`Event::Paste`] between keys, say - so a test can drive a host's paste
+/// handling the way a terminal delivers it.
+pub fn script_events(events: impl IntoIterator<Item = Event>) {
+    let queued = events.into_iter().collect();
+    SCRIPT.with(|script| *script.borrow_mut() = Some(queued));
+}
+
 /// Removes this thread's scripted input, so reads go to the terminal again.
 pub fn clear_scripted_input() {
     SCRIPT.with(|script| *script.borrow_mut() = None);

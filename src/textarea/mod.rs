@@ -14,8 +14,10 @@
 
 mod wrap;
 
-pub use wrap::{cursor_to_display, display_to_cursor, wrap_offsets};
-use wrap::{locate, wrap_ranges};
+pub use wrap::{
+    CaretRows, cursor_to_display, display_to_cursor, row_caret, wrap_for_caret,
+    wrap_offsets,
+};
 
 use std::cell::Cell;
 
@@ -155,9 +157,11 @@ impl TextArea {
         let height = inner.height.max(1) as usize;
         self.width.set(width);
         self.height.set(height);
-        let chars: Vec<char> = self.text.chars().collect();
-        let rows = wrap_ranges(&chars, width);
-        let (caret_row, caret_col) = locate(&rows, self.cursor.pos);
+        // A focused caret at the end of a full row gets a row of its own,
+        // so its block cell stays inside the field.
+        let laid = wrap_for_caret(&self.text, width, Some(self.cursor.pos));
+        let (caret_row, _) = laid.caret.unwrap_or((0, 0));
+        let rows = laid.rows;
 
         let scroll = nav::keep_visible(
             nav::ScrollView {
@@ -170,26 +174,19 @@ impl TextArea {
         self.scroll.set(scroll);
 
         let selection = self.cursor.selection();
+        let caret = laid.caret.filter(|_| focused);
         let lines: Vec<Line> = rows
             .iter()
             .enumerate()
             .skip(scroll)
             .take(height)
-            .map(|(row_index, &(start, end))| {
-                let visible: String = chars[start..end].iter().collect();
+            .map(|(row_index, (visible, offset))| {
+                let len = visible.chars().count();
                 let paint = input::LinePaint {
-                    caret: input::LineCaret {
-                        cursor: (focused && row_index == caret_row)
-                            .then_some(caret_col),
-                        selection: selection
-                            .and_then(|(from, to)| {
-                                input::intersect(from, to, start, end)
-                            })
-                            .map(|(from, to)| (from - start, to - start)),
-                    },
+                    caret: row_caret(row_index, *offset, len, caret, selection),
                     ..input::LinePaint::default()
                 };
-                Line::from(input::line_spans(&visible, paint, palette))
+                Line::from(input::line_spans(visible, paint, palette))
             })
             .collect();
 
@@ -374,5 +371,35 @@ mod tests {
         assert_eq!(area.cursor.selection(), Some((0, 13)));
         area.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
         assert_eq!(area.text(), "");
+    }
+
+    /// The caret at the end of a text that fills its last row is drawn on a
+    /// row of its own, inside the field, not one cell past its right edge.
+    #[test]
+    fn a_caret_after_a_full_last_row_stays_inside_the_field() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        use crate::theme::{
+            ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+        };
+        let skin = Skin::new(
+            Palette::resolve(
+                ThemeRegistry::builtin().resolve("default"),
+                &ColorOverrides::default(),
+            ),
+            Glyphs::new(GlyphVariant::Unicode),
+        );
+        let area = TextArea::new("abcd");
+        let mut terminal =
+            Terminal::new(TestBackend::new(6, 2)).expect("a test terminal");
+        terminal
+            .draw(|frame| {
+                area.render(frame, Rect::new(0, 0, 4, 2), &skin, true);
+            })
+            .expect("the frame draws");
+        let buffer = terminal.backend().buffer();
+        let caret = style::to_ratatui(skin.palette.cursor);
+        assert_ne!(buffer[(4, 0)].bg, caret, "nothing past the field");
+        assert_eq!(buffer[(0, 1)].bg, caret, "the caret opens a row");
     }
 }

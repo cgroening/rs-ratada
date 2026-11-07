@@ -6,6 +6,7 @@
 //! own wrapped box gets the same geometry the widget uses.
 
 use unicode_width::UnicodeWidthChar;
+use unicode_width::UnicodeWidthStr;
 
 /// Splits `chars` into display rows of at most `width` columns (measured by
 /// [`UnicodeWidthChar`], so wide glyphs count as two), breaking on newlines
@@ -112,6 +113,90 @@ pub fn wrap_offsets(text: &str, width: usize) -> Vec<(String, usize)> {
         .collect()
 }
 
+/// A text wrapped for a box that may show a caret: the display rows and the
+/// caret's place among them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaretRows {
+    /// The wrapped rows as `(text, char offset of its first char)`, plus the
+    /// empty row the caret needed, if any (see [`wrap_for_caret`]).
+    pub rows: Vec<(String, usize)>,
+    /// The caret's `(row, column in chars)`; `None` without a caret.
+    pub caret: Option<(usize, usize)>,
+}
+
+impl CaretRows {
+    /// The caret's `(row, display column)`: where its block cell is drawn,
+    /// so a popup anchored at the caret opens in the right cell even after
+    /// wide glyphs. `None` without a caret.
+    #[must_use]
+    pub fn caret_cell(&self) -> Option<(usize, usize)> {
+        let (row, column) = self.caret?;
+        let text = self.rows.get(row).map_or("", |(text, _)| text.as_str());
+        let before: String = text.chars().take(column).collect();
+        Some((row, UnicodeWidthStr::width(before.as_str())))
+    }
+}
+
+/// Word-wraps `text` to `width` display columns for a box that shows a caret
+/// at char index `caret`, opening one more, empty row right below the
+/// caret's row when the caret stands at the end of a row that already fills
+/// the box. The block caret is drawn *after* its row's last character, so
+/// without that row it would land one cell past the box. Only a full row
+/// ending in the caret needs it: a soft break falls on a space, which leaves
+/// its row short, and a hard break moves the caret to the next row itself.
+#[must_use]
+pub fn wrap_for_caret(
+    text: &str,
+    width: usize,
+    caret: Option<usize>,
+) -> CaretRows {
+    let mut rows = wrap_offsets(text, width);
+    let Some(caret) = caret else {
+        return CaretRows { rows, caret: None };
+    };
+    let total = text.chars().count();
+    let (row, column) = cursor_to_display(&rows, total, caret);
+    let row_text = &rows[row].0;
+    let is_at_end = column == row_text.chars().count();
+    // Display columns, not chars: a row of wide glyphs fills the box while
+    // holding half as many chars.
+    if !is_at_end || UnicodeWidthStr::width(row_text.as_str()) < width.max(1) {
+        return CaretRows {
+            rows,
+            caret: Some((row, column)),
+        };
+    }
+    rows.insert(row + 1, (String::new(), caret.min(total)));
+    CaretRows {
+        rows,
+        caret: Some((row + 1, 0)),
+    }
+}
+
+/// The caret and the selection of the display row `index` (starting at char
+/// `offset`, `len` chars long), for [`crate::input::line_spans`]: the cursor
+/// column when the caret's `(row, column)` is on this row, and the part of
+/// the text's `selection` (char range) that falls in it, made row-relative.
+#[must_use]
+pub fn row_caret(
+    index: usize,
+    offset: usize,
+    len: usize,
+    caret: Option<(usize, usize)>,
+    selection: Option<(usize, usize)>,
+) -> crate::input::LineCaret {
+    crate::input::LineCaret {
+        cursor: caret
+            .filter(|(row, _)| *row == index)
+            .map(|(_, column)| column),
+        selection: selection
+            .and_then(|(from, to)| {
+                crate::input::intersect(from, to, offset, offset + len)
+            })
+            .map(|(from, to)| (from - offset, to - offset)),
+    }
+}
+
 /// Maps a caret char index into its `(display line, column)` within `lines`, as
 /// produced by [`wrap_offsets`]. `total` is the text's character count.
 #[must_use]
@@ -143,24 +228,6 @@ pub fn display_to_cursor(
 ) -> usize {
     let (text, start) = &lines[line];
     start + col.min(text.chars().count())
-}
-
-/// Maps a caret char index to its `(row, column)` in `rows`.
-pub(super) fn locate(rows: &[(usize, usize)], pos: usize) -> (usize, usize) {
-    for (index, &(start, end)) in rows.iter().enumerate() {
-        if pos < end {
-            return (index, pos - start);
-        }
-        if pos == end {
-            match rows.get(index + 1) {
-                // Soft-wrap boundary: caret belongs to the next row's start.
-                Some(&(next_start, _)) if next_start == pos => {}
-                _ => return (index, pos - start),
-            }
-        }
-    }
-    let last = rows.len() - 1;
-    (last, pos - rows[last].0)
 }
 
 #[cfg(test)]
@@ -227,5 +294,38 @@ mod tests {
     fn trailing_newline_adds_empty_row() {
         let chars: Vec<char> = "ab\n".chars().collect();
         assert_eq!(wrap_ranges(&chars, 4), vec![(0, 2), (3, 3)]);
+    }
+    /// The caret at the end of a row that fills the box gets a row of its
+    /// own right below it; anywhere else the layout is plain wrapping.
+    #[test]
+    fn a_caret_at_the_end_of_a_full_row_opens_a_row() {
+        let laid = wrap_for_caret("abcd", 4, Some(4));
+        assert_eq!(laid.rows, vec![("abcd".into(), 0), (String::new(), 4)]);
+        assert_eq!(laid.caret, Some((1, 0)));
+        let short = wrap_for_caret("abc", 4, Some(3));
+        assert_eq!(short.rows.len(), 1);
+        assert_eq!(short.caret, Some((0, 3)));
+        let none = wrap_for_caret("abcd", 4, None);
+        assert_eq!(none.rows.len(), 1);
+        assert_eq!(none.caret, None);
+    }
+
+    /// Wide glyphs fill a row in half the chars, and count by display width.
+    #[test]
+    fn wide_glyphs_fill_a_row_by_width() {
+        let laid = wrap_for_caret("日本", 4, Some(2));
+        assert_eq!(laid.caret, Some((1, 0)));
+        let cell = wrap_for_caret("日本", 6, Some(2)).caret_cell();
+        assert_eq!(cell, Some((0, 4)), "two wide glyphs before the caret");
+    }
+
+    #[test]
+    fn a_row_takes_its_part_of_the_caret_and_selection() {
+        let caret = row_caret(1, 4, 4, Some((1, 2)), Some((2, 6)));
+        assert_eq!(caret.cursor, Some(2));
+        assert_eq!(caret.selection, Some((0, 2)));
+        let other = row_caret(0, 0, 4, Some((1, 2)), None);
+        assert_eq!(other.cursor, None);
+        assert_eq!(other.selection, None);
     }
 }
