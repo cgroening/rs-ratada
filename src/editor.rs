@@ -115,8 +115,10 @@ fn edited_text(raw: &str) -> String {
 /// whitespace here rather than handing the string to a shell keeps the file
 /// name out of any shell's reach, so no injection is possible. A
 /// program path containing a space is not supported; that is the accepted
-/// trade for not spawning `sh -c`.
-fn split_editor(editor: &str) -> (&str, Vec<&str>) {
+/// trade for not spawning `sh -c`. Public so a host that opens an existing
+/// file in the editor (instead of a temp copy) splits it the same way.
+#[must_use]
+pub fn split_editor(editor: &str) -> (&str, Vec<&str>) {
     let mut words = editor.split_whitespace();
     let program = words.next().unwrap_or("vi");
     (program, words.collect())

@@ -5,6 +5,7 @@ use std::{
     collections::VecDeque,
     convert::Infallible,
     io::{self, Stdout},
+    sync::Once,
     time::Duration,
 };
 
@@ -172,7 +173,10 @@ pub enum TuiEvent {
 /// Owns the alternate screen and raw mode for the lifetime of the TUI.
 ///
 /// Enables raw mode and the alternate screen on creation and restores both on
-/// `Drop`, so the terminal is always left clean, even on panic. The `on_enter`
+/// `Drop`, so the terminal is always left clean, even on panic. A panic hook
+/// (installed with the first guard) gives the terminal back before the panic
+/// message is printed, so the message lands on the normal screen instead of
+/// vanishing with the alternate one. The `on_enter`
 /// and `on_leave` hooks fire whenever the TUI takes or releases the screen,
 /// letting the host mute side effects (e.g. stderr logging) without coupling
 /// this guard to the application.
@@ -202,9 +206,11 @@ impl Tui {
         on_enter: impl Fn() + 'static,
         on_leave: impl Fn() + 'static,
     ) -> io::Result<Self> {
+        install_panic_restore();
         enable_raw_mode()?;
         let mut out = io::stdout();
         enter_screen(&mut out)?;
+        set_holds_screen(true);
         let on_enter: Box<dyn Fn()> = Box::new(on_enter);
         let on_leave: Box<dyn Fn()> = Box::new(on_leave);
         on_enter();
@@ -282,10 +288,12 @@ impl Tui {
     /// re-enters the alternate screen and clears the canvas.
     pub fn suspend<T>(&mut self, action: impl FnOnce() -> T) -> io::Result<T> {
         restore()?;
+        set_holds_screen(false);
         (self.on_leave)();
         let result = action();
         enable_raw_mode()?;
         enter_screen(&mut io::stdout())?;
+        set_holds_screen(true);
         (self.on_enter)();
         self.terminal.clear()?;
         Ok(result)
@@ -306,8 +314,44 @@ impl Drop for Tui {
         if let Err(error) = restore() {
             log::error!("failed to restore the terminal on exit: {error}");
         }
+        set_holds_screen(false);
         (self.on_leave)();
     }
+}
+
+thread_local! {
+    /// Whether this thread holds the terminal (raw mode and the alternate
+    /// screen) through a live [`Tui`]. Only then does a panic here give the
+    /// terminal back: a panic on a worker thread leaves the running TUI alone.
+    static HOLDS_SCREEN: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+/// Notes whether this thread holds the terminal.
+fn set_holds_screen(holds: bool) {
+    HOLDS_SCREEN.with(|held| held.set(holds));
+}
+
+/// Installs, once per process, a panic hook that restores the terminal
+/// before the previous hook prints the message. Without it the message is
+/// written to the alternate screen, which the guard's `Drop` then leaves -
+/// the panic looks like a silent exit. The guard's later restore finds
+/// nothing left to do. A host that catches a panic and carries on must take
+/// the screen again (drop the guard and create a new one).
+fn install_panic_restore() {
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if HOLDS_SCREEN.with(std::cell::Cell::get) {
+                set_holds_screen(false);
+                // Best effort: a panic is already under way
+                let _ = restore();
+                let _ = execute!(io::stdout(), crossterm::cursor::Show);
+            }
+            previous(info);
+        }));
+    });
 }
 
 thread_local! {

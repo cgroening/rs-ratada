@@ -4,6 +4,16 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-07
+
+### Added
+
+- **`editor::split_editor` is public.** It splits an editor command line (`code --wait`) into program and arguments without a shell, so a host that opens an existing file in the editor launches it the way `edit_in_editor` does.
+
+### Fixed
+
+- **A panic is printed where it can be read.** The message went to the alternate screen, which the `Tui` guard's `Drop` then left - a crash looked like a silent exit. The first `Tui` installs a panic hook that gives the terminal back (raw mode off, alternate screen left, cursor shown) before the previous hook prints the message, the pattern of `ratatui::init`. Only a panic on the thread that holds the screen restores it; one on a worker thread leaves the running TUI alone. `Tui::for_test` installs nothing. A host that catches a panic and carries on must take the screen again with a new guard.
+
 ## [0.7.0] - 2026-11-06
 
 ### Changed (breaking)
@@ -225,7 +235,8 @@ Crate-wide cleanup and API consolidation. This release contains breaking changes
 - `textarea` now reuses the shared single-line edit core from `input` (SSOT).
 - Documentation synced with the code and the public API surface tightened.
 
-[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/cgroening/rs-ratada/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/cgroening/rs-ratada/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/cgroening/rs-ratada/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/cgroening/rs-ratada/compare/v0.4.0...v0.5.0
