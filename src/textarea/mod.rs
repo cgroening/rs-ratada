@@ -93,6 +93,15 @@ impl TextArea {
         self.text = text;
     }
 
+    /// The rows the text takes at `width` columns, the extra row a caret at
+    /// the end of a full row opens included (see [`wrap_for_caret`]).
+    #[must_use]
+    pub fn rows(&self, width: usize) -> usize {
+        wrap_for_caret(&self.text, width.max(1), Some(self.cursor.pos))
+            .rows
+            .len()
+    }
+
     /// Applies one editing key; returns whether it was consumed.
     ///
     /// The whole behaviour lives in [`input::apply_edit_key`], driven with the
