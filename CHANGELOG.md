@@ -4,18 +4,6 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
-## [0.8.1] - 2026-11-07
-
-### Added
-
-- **`list::CursorMark`, `list::render_marked` and `list::render_boxed_marked` – the pointer glyph as the list cursor.** `CursorMark::Pointer` puts the skin's pointer glyph in a leading column on the cursor row (in the accent) and blanks of the same width on every other row, so the labels stay aligned; the selection tint stays. `render_marked` draws a list inside a frame it does not own (a picker popup), `render_boxed_marked` the full list box: rounded box, `position/total` badge in the bottom border, cursor marked by the given mark. `CursorMark::width` returns the columns the mark takes, for hosts that align a header row with the list. `CursorMark::Tint` is what `render`, `render_counted` and `render_boxed` keep drawing, so existing callers are unchanged.
-
-- **`modal::hint_block`, `modal::hints_width` and `modal::HINT_BLOCK_ROWS` are public.** A host that draws its own modal ends its body with the same blank spacer and accent hint line as the toolkit modals (`hint_block`, two rows) and sizes its box so the hint line is never cut (`hints_width` plus `chrome::MODAL_CHROME_WIDTH`).
-
-### Changed
-
-- **The select modals mark the cursor row with the pointer glyph.** `select`, `select_styled`, `select_with`, `select_reorderable` and the multi-selects draw the pointer in a leading column on the cursor row in addition to the selection tint; every other row gets a blank column of the same width. The cursor opens on the entry that currently applies, so that entry carries both marks.
-
 ## [0.8.0] - 2026-11-07
 
 ### Changed (breaking)
@@ -27,12 +15,15 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 - **The toolkit modals are padded.** Confirm, message, choice, styled confirm, text and number input, the list pickers, the date, date-range and month pickers, the slider, the colour picker and the swatches grow by the padding, so their content keeps its size. The fractional overlays (finder, help, pager, Markdown viewer, table, path picker, command palette) raise their minimum size by it.
 - **The help overlay ends with the modal hint block**: a blank spacer row, then the keys in the accent like every other modal (it used the dimmed accent without a spacer).
 - **`form::Form` looks like the other modals.** It is drawn through `overlay::framed` (the modal fill instead of the plain background, the padding), tints the focused row from border to border with its label in the accent and bold, marks a date field with the pointer glyph, ends with the modal hint block and is at least 44 columns wide so its hint line fits.
+- **The select modals mark the cursor row with the pointer glyph.** `select`, `select_styled`, `select_with`, `select_reorderable` and the multi-selects draw the pointer in a leading column on the cursor row in addition to the selection tint; every other row gets a blank column of the same width. The cursor opens on the entry that currently applies, so that entry carries both marks.
 
 ### Added
 
 - **`chrome::modal_fill` returns the fill of every modal box.** `modal_block` paints it; a host box that draws its own border (in its own colour, say) takes the fill from here so it matches the toolkit modals.
 - **`chrome::modal_content`** and the constants `MODAL_PADDING_X`, `MODAL_PADDING_TOP`, `MODAL_PADDING_WIDTH`, `MODAL_CHROME_WIDTH` and `MODAL_CHROME_HEIGHT` give a host box the toolkit's modal spacing.
 - **`Form::set_error(index, message)`** reports a problem with a field: the next `run` shows the message in red under that field, turns its label red and focuses it; the next key clears it. The form still does not validate on its own.
+- **`list::CursorMark`, `list::render_marked` and `list::render_boxed_marked` – the pointer glyph as the list cursor.** `CursorMark::Pointer` puts the skin's pointer glyph in a leading column on the cursor row (in the accent) and blanks of the same width on every other row, so the labels stay aligned; the selection tint stays. `render_marked` draws a list inside a frame it does not own (a picker popup), `render_boxed_marked` the full list box: rounded box, `position/total` badge in the bottom border, cursor marked by the given mark. `CursorMark::width` returns the columns the mark takes, for hosts that align a header row with the list. `CursorMark::Tint` is what `render`, `render_counted` and `render_boxed` keep drawing, so existing callers are unchanged.
+- **`modal::hint_block`, `modal::hints_width` and `modal::HINT_BLOCK_ROWS` are public.** A host that draws its own modal ends its body with the same blank spacer and accent hint line as the toolkit modals (`hint_block`, two rows) and sizes its box so the hint line is never cut (`hints_width` plus `chrome::MODAL_CHROME_WIDTH`).
 
 - **`editor::split_editor` is public.** It splits an editor command line (`code --wait`) into program and arguments without a shell, so a host that opens an existing file in the editor launches it the way `edit_in_editor` does.
 
