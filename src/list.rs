@@ -5,10 +5,20 @@
 //! a list inside a popup gets it from the popup's frame (see
 //! [`crate::chrome::render_badge`]). Where there is none, [`render_counted`]
 //! keeps the bottom row free for it. Plain [`render`] draws no indicator at all.
+//!
+//! The cursor row is always tinted. [`CursorMark::Pointer`] adds the pointer
+//! glyph in a leading column (blank on every other row), the look of a list
+//! box; [`render_marked`] and [`render_boxed_marked`] take the mark.
 
 use std::cell::Cell;
 
-use ratatui::{Frame, layout::Rect, text::Line, widgets::Paragraph};
+use ratatui::{
+    Frame,
+    layout::Rect,
+    text::{Line, Span},
+    widgets::Paragraph,
+};
+use unicode_width::UnicodeWidthStr;
 
 use super::{chrome, nav, scroll, style};
 use crate::theme::Skin;
@@ -25,6 +35,28 @@ pub struct ListView<'a> {
     pub offset: &'a Cell<usize>,
 }
 
+/// How a list marks its cursor row.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CursorMark {
+    /// The selection tint alone (what [`render`] draws).
+    #[default]
+    Tint,
+    /// The selection tint plus the pointer glyph in a leading column. The
+    /// column is as wide as the glyph and one space, blank on every other
+    /// row, so the labels stay aligned.
+    Pointer,
+}
+
+impl CursorMark {
+    /// The columns the mark takes in front of every row's content.
+    pub fn width(self, skin: &Skin) -> usize {
+        match self {
+            Self::Tint => 0,
+            Self::Pointer => skin.glyphs.pointer.width() + 1,
+        }
+    }
+}
+
 /// Renders `view` in `area`, highlighting the selected row and scrolling to
 /// keep it visible. Returns the viewport height (the number of visible rows),
 /// so a stateful caller can drive page-wise navigation.
@@ -38,7 +70,19 @@ pub fn render(
     skin: &Skin,
     view: ListView,
 ) -> usize {
-    render_core(frame, area, skin, view)
+    render_core(frame, area, skin, view, CursorMark::Tint)
+}
+
+/// Like [`render`], but marks the cursor row with `mark`. A list inside a
+/// frame it does not own (a picker popup) takes [`CursorMark::Pointer`].
+pub fn render_marked(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    view: ListView,
+    mark: CursorMark,
+) -> usize {
+    render_core(frame, area, skin, view, mark)
 }
 
 /// Like [`render`], but keeps the bottom row free for a `position/total` badge
@@ -56,14 +100,14 @@ pub fn render_counted(
 ) -> usize {
     // A badge row would leave no room for a single entry.
     if area.height <= 1 {
-        return render_core(frame, area, skin, view);
+        return render_core(frame, area, skin, view, CursorMark::Tint);
     }
     let badge = chrome::position_badge(view.selected, view.rows.len());
     let rows = Rect {
         height: area.height - 1,
         ..area
     };
-    let viewport = render_core(frame, rows, skin, view);
+    let viewport = render_core(frame, rows, skin, view, CursorMark::Tint);
     chrome::render_corner_badge(frame, area, skin, &badge);
     viewport
 }
@@ -83,10 +127,27 @@ pub fn render_boxed(
     if force {
         let badge = chrome::position_badge(view.selected, view.rows.len());
         let inner = chrome::framed_decor(frame, area, skin, decor, &badge);
-        render_core(frame, inner, skin, view)
+        render_core(frame, inner, skin, view, CursorMark::Tint)
     } else {
         render(frame, area, skin, view)
     }
+}
+
+/// The list box: `view` in a rounded box (see [`chrome::BoxDecor`]) with the
+/// `position/total` badge in its bottom border and the cursor row marked by
+/// `mark` - [`CursorMark::Pointer`] for the full list-box look. Returns the
+/// inner viewport height (the visible row count).
+pub fn render_boxed_marked(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    view: ListView,
+    decor: &chrome::BoxDecor,
+    mark: CursorMark,
+) -> usize {
+    let badge = chrome::position_badge(view.selected, view.rows.len());
+    let inner = chrome::framed_decor(frame, area, skin, decor, &badge);
+    render_core(frame, inner, skin, view, mark)
 }
 
 /// Draws the list rows (with the selection highlight) and the scrollbar,
@@ -96,6 +157,7 @@ fn render_core(
     area: Rect,
     skin: &Skin,
     view: ListView,
+    mark: CursorMark,
 ) -> usize {
     let viewport = area.height as usize;
     let total = view.rows.len();
@@ -117,7 +179,9 @@ fn render_core(
         .skip(visible_offset)
         .take(viewport)
         .map(|(index, line)| {
-            if index == selected {
+            let is_cursor = index == selected;
+            let line = with_mark(line, mark, is_cursor, skin);
+            if is_cursor {
                 line.style(highlight)
             } else {
                 line
@@ -137,6 +201,36 @@ fn render_core(
         },
     );
     viewport
+}
+
+/// Puts the `mark` column in front of `line`: the pointer glyph on the cursor
+/// row, blanks of the same width elsewhere. [`CursorMark::Tint`] leaves the
+/// line as it is.
+fn with_mark(
+    line: Line<'static>,
+    mark: CursorMark,
+    is_cursor: bool,
+    skin: &Skin,
+) -> Line<'static> {
+    if mark == CursorMark::Tint {
+        return line;
+    }
+    let lead = if is_cursor {
+        Span::styled(
+            format!("{} ", skin.glyphs.pointer),
+            style::fg(skin.palette.accent),
+        )
+    } else {
+        Span::raw(" ".repeat(mark.width(skin)))
+    };
+    let mut spans = Vec::with_capacity(line.spans.len() + 1);
+    spans.push(lead);
+    spans.extend(line.spans);
+    Line {
+        spans,
+        style: line.style,
+        alignment: line.alignment,
+    }
 }
 
 #[cfg(test)]
@@ -274,5 +368,57 @@ mod tests {
             )
         });
         assert_eq!(viewport, 3);
+    }
+
+    /// Draws `rows` with `mark` and returns the text of every buffer row.
+    fn drawn_rows(selected: usize, mark: CursorMark) -> Vec<String> {
+        let offset = Cell::new(0);
+        let backend = TestBackend::new(12, 3);
+        let mut terminal = Terminal::new(backend).expect("a test terminal");
+        terminal
+            .draw(|frame| {
+                render_marked(
+                    frame,
+                    frame.area(),
+                    &skin(),
+                    ListView {
+                        rows: rows(3),
+                        selected,
+                        offset: &offset,
+                    },
+                    mark,
+                );
+            })
+            .expect("the frame draws");
+        let buffer = terminal.backend().buffer();
+        (0..3)
+            .map(|y| {
+                (0..12)
+                    .map(|x| buffer[(x, y)].symbol().to_string())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    /// The pointer marks only the cursor row; the others get blanks of the
+    /// same width, so every label starts in the same column.
+    #[test]
+    fn the_pointer_marks_only_the_cursor_row() {
+        let drawn = drawn_rows(1, CursorMark::Pointer);
+        assert!(drawn[0].starts_with("  row 0"), "{drawn:?}");
+        assert!(drawn[1].starts_with("\u{203a} row 1"), "{drawn:?}");
+        assert!(drawn[2].starts_with("  row 2"), "{drawn:?}");
+    }
+
+    #[test]
+    fn the_tint_mark_draws_no_lead_column() {
+        let drawn = drawn_rows(1, CursorMark::Tint);
+        assert!(drawn[1].starts_with("row 1"), "{drawn:?}");
+    }
+
+    #[test]
+    fn the_mark_width_counts_the_glyph_and_one_space() {
+        assert_eq!(CursorMark::Pointer.width(&skin()), 2);
+        assert_eq!(CursorMark::Tint.width(&skin()), 0);
     }
 }

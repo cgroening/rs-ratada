@@ -449,8 +449,9 @@ mod tests {
         assert!(keyed.iter().any(|row| row.contains("[K] Kinder")));
         assert!(keyed.iter().any(|row| row.contains("    Other")));
         let plain = rendered(&[SelectItem::new("Kinder")]);
-        // The label starts right after the frame's side padding.
-        assert!(plain.iter().any(|row| row.contains("│  Kinder")));
+        // The label starts right after the frame's side padding and the
+        // pointer column, which marks the cursor row.
+        assert!(plain.iter().any(|row| row.contains("│  \u{203a} Kinder")));
     }
 
     /// Draws the keyed list on a real frame and returns its rows as text.

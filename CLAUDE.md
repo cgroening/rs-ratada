@@ -91,13 +91,14 @@ Applies to ratatui-based terminal apps. **This crate implements the following co
 **Scrolling & Scrollbar**
 
 - **Scrollbar on overflow:** vertical scrollbar on the right as soon as the content overflows the viewport, otherwise omitted. Dim style without arrows, shared helper (`scroll::render_scrollbar`); the position number is `total - viewport + 1`.
+- **List box:** `list::render_boxed_marked` with `CursorMark::Pointer` draws a list the way the style guide wants it inside a view, a form or a popup frame the list does not own (`render_marked`): rounded box, pointer glyph as cursor, badge in the border. A main view that fills a borderless app frame keeps the tinted row and `render_counted`'s corner badge.
 - **Position indicator `XX/YY` never obscures content:** For a framed widget it sits in the lower border (`chrome::render_badge`), for a borderless one right-aligned in a reserved last line (`chrome::render_corner_badge`, for lists `list::render_counted`). If the area is too low to spare the line, content wins.
 - **Scroll offset follows the cursor:** the list scrolls only at the edge, not page-wise per step.
 - **Box with its own wrapping:** A widget that wraps its text itself has no column left for a `Scrollbar` over its own `Rect`. It fetches the thumb/track cell per visible row via `scroll::row_indicator` and appends it to the `Line` instead of overdrawing the content.
 
 **Modals & Widgets**
 
-- **Reusable modal widgets:** a shared set – `confirm`, `confirm_default`, `confirm_styled`, `select`, `multi_select`, `number_input`, `message` – not reimplemented per call site. `confirm_styled` is the yes/no dialog for a host that wants its own frame title and a styled body (`StyledQuestion::lines` builds the body for a given width on every draw, so a wrapped body follows a resize).
+- **Reusable modal widgets:** a shared set – `confirm`, `confirm_default`, `confirm_styled`, `select`, `multi_select`, `number_input`, `message` – not reimplemented per call site. The list pickers mark the cursor row with the pointer glyph and the selection tint and open on the entry that currently applies. `confirm_styled` is the yes/no dialog for a host that wants its own frame title and a styled body (`StyledQuestion::lines` builds the body for a given width on every draw, so a wrapped body follows a resize).
 - **Destructive actions are declined by default:** An ordinary yes/no question goes via `confirm`, where `Enter` confirms. Deletion and other irreversible actions go via `confirm_default` with `Question::declining` – there an accidental `Enter` answers "no". `y`/`n` always answer explicitly, `Esc` declines; the footer hint binds `enter` to the answer it actually gives.
 - **Calendar date picker (optional):** shared calendar modal with a uniform look/shortcuts. All three calendar pickers additionally take their value typed: `e` turns the header into a text field (prefilled and fully selected) whose value is validated live - the calendar follows it as soon as it parses, an unparseable one is drawn in the error color and cannot be confirmed with `Enter`, and `Esc` restores the state the field opened over. Besides ISO the field takes German dates (`DD.MM.YYYY`, `DD.MM.` without a year, `MM/YYYY`, `MM.YYYY`, two-digit years as `20YY`), defined once in `date_text`. The field itself lives once in `date_entry`. `date_picker` and `date_range_picker` show the ISO calendar week left of each row (label `Wk`, separator in the border color, cursor week accent bold, today's week between `foreground_dim` and `foreground`); it is on by default and `date_picker::set_week_column(WeekColumn::Hidden)` switches it off for both. The setting and the drawing live once in `week_column`. In all three pickers the cursor cell is filled with the accent (text via `Color::readable_on`, bold) and today is plain accent text – shared through `date_picker::cursor_cell_style` / `today_cell_style`.
 - **Fuzzy matching:** filter and selection pickers match fuzzy (`fuzzy`, backed by `nucleo-matcher`).
@@ -105,8 +106,8 @@ Applies to ratatui-based terminal apps. **This crate implements the following co
 
 **Forms**
 
-- **Structure & control:** all fields visible simultaneously; `Tab`/`BackTab` step (wrapping), `Ctrl+S` saves, `Esc` cancels; the focused row highlighted via background tint.
-- **Dirty marker & reset (optional):** changed fields carry `*`; `r` resets the focused field.
+- **Structure & control:** all fields visible simultaneously; `Tab`/`BackTab` step (wrapping); the focused row highlighted via background tint. A host form with a normal mode (letters are commands, `Enter` edits a field) saves with `s`/`Ctrl+S` and stays open, a second press within a second closes it (`double_press::DoublePress`), and `Esc` asks to save when something changed. `form::Form` itself has no normal mode: `Ctrl+S` saves, `Esc` cancels.
+- **Dirty marker & reset (optional):** changed fields carry `*`; `Ctrl+O` resets the focused field to its value when the form opened (a chord, so it works while a field is being edited).
 - **External editor (optional):** `Ctrl+G` hands the field to `$EDITOR`.
 - **Read/pan mode (optional):** `Ctrl`+arrows pan a multiline box.
 

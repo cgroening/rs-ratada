@@ -38,6 +38,7 @@ pub use picker::{
     ListAction, multi_select, multi_select_styled, select, select_reorderable,
     select_styled,
 };
+pub use render::{HINT_BLOCK_ROWS, hint_block, hints_width};
 pub use select_with::{SelectItem, SelectOptions, select_with};
 pub use styled::{
     StyledQuestion, StyledViews, ToggleView, confirm_styled,

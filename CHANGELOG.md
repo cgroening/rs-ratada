@@ -4,6 +4,18 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-07
+
+### Added
+
+- **`list::CursorMark`, `list::render_marked` and `list::render_boxed_marked` – the pointer glyph as the list cursor.** `CursorMark::Pointer` puts the skin's pointer glyph in a leading column on the cursor row (in the accent) and blanks of the same width on every other row, so the labels stay aligned; the selection tint stays. `render_marked` draws a list inside a frame it does not own (a picker popup), `render_boxed_marked` the full list box: rounded box, `position/total` badge in the bottom border, cursor marked by the given mark. `CursorMark::width` returns the columns the mark takes, for hosts that align a header row with the list. `CursorMark::Tint` is what `render`, `render_counted` and `render_boxed` keep drawing, so existing callers are unchanged.
+
+- **`modal::hint_block`, `modal::hints_width` and `modal::HINT_BLOCK_ROWS` are public.** A host that draws its own modal ends its body with the same blank spacer and accent hint line as the toolkit modals (`hint_block`, two rows) and sizes its box so the hint line is never cut (`hints_width` plus `chrome::MODAL_CHROME_WIDTH`).
+
+### Changed
+
+- **The select modals mark the cursor row with the pointer glyph.** `select`, `select_styled`, `select_with`, `select_reorderable` and the multi-selects draw the pointer in a leading column on the cursor row in addition to the selection tint; every other row gets a blank column of the same width. The cursor opens on the entry that currently applies, so that entry carries both marks.
+
 ## [0.8.0] - 2026-11-07
 
 ### Changed (breaking)

@@ -8,7 +8,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph},
+    widgets::{HighlightSpacing, List, ListItem, ListState, Paragraph},
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -23,7 +23,7 @@ use crate::{
 
 /// Rows a modal's hint block occupies while the hints are shown: a blank
 /// spacer and the hint line itself.
-pub(crate) const HINT_BLOCK_ROWS: u16 = 2;
+pub const HINT_BLOCK_ROWS: u16 = 2;
 
 /// The narrowest list picker, however short its labels and hints.
 const MIN_PICKER_WIDTH: u16 = 28 + MODAL_CHROME_WIDTH;
@@ -185,10 +185,17 @@ pub(super) fn check_prefix(
     }
 }
 
+/// The picker rows with the cursor row marked twice: the pointer glyph in a
+/// leading column (blank on every other row, so the labels stay aligned) and
+/// the selection tint. The cursor opens on the entry that currently applies,
+/// so that entry is what both marks point at.
 fn picker_list<'a>(entries: Vec<ListItem<'a>>, skin: &Skin) -> List<'a> {
-    List::new(entries).highlight_style(
-        style::bg(skin.palette.selection).add_modifier(Modifier::BOLD),
-    )
+    List::new(entries)
+        .highlight_style(
+            style::bg(skin.palette.selection).add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol(Line::from(format!("{} ", skin.glyphs.pointer)))
+        .highlight_spacing(HighlightSpacing::Always)
 }
 
 pub(super) fn picker_state(cursor: usize) -> ListState {
@@ -220,8 +227,9 @@ pub(super) fn picker_area(
     centered_rect(width, height, area)
 }
 
-/// The columns `hints` take on one row, so a box never cuts them off.
-pub(super) fn hints_width(hints: &[(&str, &str)]) -> usize {
+/// The columns `hints` take on one row, so a box never cuts them off. A host
+/// box adds it to its minimum width (plus `chrome::MODAL_CHROME_WIDTH`).
+pub fn hints_width(hints: &[(&str, &str)]) -> usize {
     shortcut_hints::lines(hints, Color::Default, usize::MAX)
         .first()
         .map_or(0, Line::width)
@@ -229,8 +237,9 @@ pub(super) fn hints_width(hints: &[(&str, &str)]) -> usize {
 
 /// The blank spacer and the hint line closing a modal body. A modal's key
 /// prompt is essential, so it always shows, independent of the global F1 toggle
-/// (which governs only the main-app footer).
-pub(crate) fn hint_block(
+/// (which governs only the main-app footer). A host modal ends its body with
+/// it, so its keys look like the toolkit's; it takes [`HINT_BLOCK_ROWS`] rows.
+pub fn hint_block(
     items: &[(&str, &str)],
     palette: &Palette,
     width: usize,
