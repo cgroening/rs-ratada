@@ -9,7 +9,10 @@ use ratatui::{
 };
 
 use super::State;
-use crate::{list, shortcut_hints, style, text::truncate, theme::Skin};
+use crate::{
+    list, modal::MAX_HINT_ROWS, shortcut_hints, style, text::truncate,
+    theme::Skin,
+};
 
 /// The prefix of the filter line; its width is taken off the caret line's.
 const FILTER_LABEL: &str = "filter ";
@@ -23,15 +26,18 @@ pub(super) fn render_body(
     let palette = &skin.palette;
     let inner_width = inner.width as usize;
 
-    // Header (current dir), filter line, the scrollable entry list, footer. The
-    // footer always reserves its row (popup hints ignore the F1 toggle).
+    // Header (current dir), filter line, the scrollable entry list, footer.
+    // The footer always shows (popup hints ignore the F1 toggle) and wraps
+    // on a narrow screen instead of cutting keys.
+    let hints = hint_lines(skin, inner_width);
+    let hint_rows = u16::try_from(hints.len().max(1)).unwrap_or(1);
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(shortcut_hints::footer_height(1)),
+            Constraint::Length(hint_rows),
         ])
         .split(inner);
 
@@ -86,21 +92,55 @@ pub(super) fn render_body(
     );
     state.viewport.set(viewport);
 
-    frame.render_widget(
-        Paragraph::new(
-            shortcut_hints::lines(
-                &[
-                    ("\u{2190}\u{2192}", "browse"),
-                    ("enter", "pick"),
-                    ("ctrl+h", "hidden"),
-                ],
-                palette.accent_dim,
-                inner_width,
-            )
-            .into_iter()
-            .next()
-            .unwrap_or_default(),
-        ),
-        rows[3],
-    );
+    frame.render_widget(Paragraph::new(hints), rows[3]);
+}
+
+/// The picker's keys wrapped at `width`, at most [`MAX_HINT_ROWS`] rows.
+fn hint_lines(skin: &Skin, width: usize) -> Vec<Line<'static>> {
+    shortcut_hints::lines(&HINTS, skin.palette.accent_dim, width)
+        .into_iter()
+        .take(MAX_HINT_ROWS)
+        .collect()
+}
+
+/// The keys of the path picker.
+const HINTS: [(&str, &str); 3] = [
+    ("\u{2190}\u{2192}", "browse"),
+    ("enter", "pick"),
+    ("ctrl+h", "hidden"),
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::{
+        ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+    };
+
+    fn skin() -> Skin {
+        let base = ThemeRegistry::builtin().resolve("default");
+        Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        )
+    }
+
+    fn text(lines: &[Line<'_>]) -> String {
+        lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn the_keys_wrap_on_a_narrow_screen_and_stay_complete() {
+        assert_eq!(hint_lines(&skin(), 80).len(), 1);
+        let narrow = hint_lines(&skin(), 20);
+        assert!(narrow.len() > 1);
+        let shown = text(&narrow);
+        for (key, _) in HINTS {
+            assert!(shown.contains(key), "{key} missing in\n{shown}");
+        }
+    }
 }

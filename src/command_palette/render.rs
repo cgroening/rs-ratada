@@ -14,7 +14,9 @@ use super::{
 };
 use crate::{
     filter_list::FilterList,
-    fuzzy, input, list, shortcut_hints, style,
+    fuzzy, input, list,
+    modal::MAX_HINT_ROWS,
+    shortcut_hints, style,
     theme::{Palette, Skin},
 };
 
@@ -35,14 +37,17 @@ pub(super) fn render_body(
     let grouped = state.query.trim().is_empty();
     let layout = layout_rows(items, &state.query);
 
-    // The popup footer always reserves its row (popup hints ignore the global
-    // F1 toggle, which governs only the main-app footer).
+    // The popup footer always shows (popup hints ignore the global F1
+    // toggle, which governs only the main-app footer) and wraps on a narrow
+    // screen instead of cutting keys.
+    let hints = footer_hints(skin, usize::from(inner.width), grouped);
+    let hint_rows = u16::try_from(hints.len().max(1)).unwrap_or(1);
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(shortcut_hints::footer_height(1)),
+            Constraint::Length(hint_rows),
         ])
         .split(inner);
 
@@ -87,8 +92,7 @@ pub(super) fn render_body(
     );
     state.viewport.set(viewport);
 
-    let hint = footer_hint(skin, rows[2].width as usize, grouped);
-    frame.render_widget(Paragraph::new(hint), rows[2]);
+    frame.render_widget(Paragraph::new(hints), rows[2]);
 }
 
 /// Renders one command row. Enabled commands show the label (with fuzzy match
@@ -128,8 +132,13 @@ fn item_line(
     Line::from(spans)
 }
 
-/// The footer hint line: adds `tab section` only while grouped.
-fn footer_hint(skin: &Skin, width: usize, grouped: bool) -> Line<'static> {
+/// The footer hint lines, wrapped at `width` onto at most
+/// [`MAX_HINT_ROWS`] rows: adds `tab section` only while grouped.
+fn footer_hints(
+    skin: &Skin,
+    width: usize,
+    grouped: bool,
+) -> Vec<Line<'static>> {
     let mut hints: Vec<(&str, &str)> =
         vec![("\u{2191}\u{2193}", "move"), ("enter", "run")];
     if grouped {
@@ -138,6 +147,41 @@ fn footer_hint(skin: &Skin, width: usize, grouped: bool) -> Line<'static> {
     hints.push(("esc", "close"));
     shortcut_hints::lines(&hints, skin.palette.accent_dim, width)
         .into_iter()
-        .next()
-        .unwrap_or_default()
+        .take(MAX_HINT_ROWS)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::{
+        ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+    };
+
+    fn skin() -> Skin {
+        let base = ThemeRegistry::builtin().resolve("default");
+        Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        )
+    }
+
+    fn text(lines: &[Line<'_>]) -> String {
+        lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn the_keys_wrap_on_a_narrow_screen_and_stay_complete() {
+        assert_eq!(footer_hints(&skin(), 80, true).len(), 1);
+        let narrow = footer_hints(&skin(), 24, true);
+        assert!(narrow.len() > 1);
+        let shown = text(&narrow);
+        for key in ["move", "enter", "tab", "esc"] {
+            assert!(shown.contains(key), "{key} missing in\n{shown}");
+        }
+    }
 }
