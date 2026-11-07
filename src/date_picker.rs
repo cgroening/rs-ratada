@@ -30,6 +30,7 @@ use ratatui::{
 };
 
 use super::{
+    chrome::{MODAL_CHROME_HEIGHT, MODAL_PADDING_WIDTH},
     date_entry::{self, DateEntry, EntryAction, OPEN_KEY, Validity},
     date_text, input,
     layout::centered_rect,
@@ -87,8 +88,11 @@ pub fn date_picker(
         tui,
         &mut state,
         |area, state: &Picker| {
-            let rows = body_lines(skin, state, allow_clear).len() as u16 + 2;
-            let width = BOX_WIDTH + state.week_column.extra_width();
+            let rows = body_lines(skin, state, allow_clear).len() as u16
+                + MODAL_CHROME_HEIGHT;
+            let width = BOX_WIDTH
+                + MODAL_PADDING_WIDTH
+                + state.week_column.extra_width();
             centered_rect(width, rows, area)
         },
         |frame, _| render_bg(frame),

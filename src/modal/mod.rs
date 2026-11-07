@@ -22,7 +22,7 @@ mod multi_select_with;
 mod multi_state;
 mod number;
 mod picker;
-mod render;
+pub(crate) mod render;
 mod select_with;
 mod styled;
 mod text_input;
@@ -292,8 +292,11 @@ mod tests {
         let area = Rect::new(0, 0, 100, 40);
         let picker = picker_area(area, 4, &[("enter", "pick")]);
         assert_eq!(picker.width, 50); // half the width
-        // One row per item, plus borders and the hint block.
-        assert_eq!(picker.height, 6 + HINT_BLOCK_ROWS);
+        // One row per item, plus the frame and the hint block.
+        assert_eq!(
+            picker.height,
+            4 + crate::chrome::MODAL_CHROME_HEIGHT + HINT_BLOCK_ROWS
+        );
     }
 
     /// The keys sit below the last row, not over it.
@@ -430,9 +433,10 @@ mod tests {
         let amount = rows.iter().position(|row| row.contains("Amount:  -4,20"));
         let hints = rows.iter().position(|row| row.contains("enter/y"));
         let title = title.expect("the title sits in the frame");
-        assert_eq!(date, Some(title + 1));
-        assert_eq!(amount, Some(title + 2));
-        assert_eq!(hints, Some(title + 4), "the hint block stays in view");
+        // The top padding row separates the body from the title.
+        assert_eq!(date, Some(title + 2));
+        assert_eq!(amount, Some(title + 3));
+        assert_eq!(hints, Some(title + 5), "the hint block stays in view");
     }
 
     #[test]
@@ -730,9 +734,10 @@ mod tests {
 
     #[test]
     fn a_message_box_grows_with_its_body_lines_but_keeps_its_minimum() {
-        assert_eq!(message_area("Saved.", SCREEN).height, 5);
-        assert_eq!(message_area("a\nb\nc", SCREEN).height, 5);
-        assert_eq!(message_area("a\nb\nc\nd\ne", SCREEN).height, 7);
+        let frame = crate::chrome::MODAL_CHROME_HEIGHT;
+        assert_eq!(message_area("Saved.", SCREEN).height, frame + 3);
+        assert_eq!(message_area("a\nb\nc", SCREEN).height, frame + 3);
+        assert_eq!(message_area("a\nb\nc\nd\ne", SCREEN).height, frame + 5);
     }
 
     /// A confirm's key prompt is essential, so the box reserves its hint rows
@@ -740,9 +745,10 @@ mod tests {
     /// main-app footer).
     #[test]
     fn a_confirm_box_keeps_its_hint_rows_while_global_hints_are_hidden() {
-        assert_eq!(hinted_box_height(), 3 + HINT_BLOCK_ROWS);
+        let expected = crate::chrome::MODAL_CHROME_HEIGHT + 1 + HINT_BLOCK_ROWS;
+        assert_eq!(hinted_box_height(), expected);
         shortcut_hints::set_visible(false);
-        assert_eq!(hinted_box_height(), 3 + HINT_BLOCK_ROWS);
+        assert_eq!(hinted_box_height(), expected);
         shortcut_hints::set_visible(true);
     }
 }

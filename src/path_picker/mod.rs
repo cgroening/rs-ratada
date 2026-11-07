@@ -27,7 +27,10 @@ use super::{
     overlay::{self, PopupFlow, popup_with_paste},
     terminal::Tui,
 };
-use crate::theme::Skin;
+use crate::{
+    chrome::{MODAL_PADDING_TOP, MODAL_PADDING_WIDTH},
+    theme::Skin,
+};
 
 mod fs;
 mod interaction;
@@ -194,7 +197,15 @@ pub fn path_picker(
     popup_with_paste(
         tui,
         &mut state,
-        |area, _| centered_fraction(area, 2, 3, 36, 8),
+        |area, _| {
+            centered_fraction(
+                area,
+                2,
+                3,
+                36 + MODAL_PADDING_WIDTH,
+                8 + MODAL_PADDING_TOP,
+            )
+        },
         |frame, _| render_bg(frame),
         |frame, rect, state: &State| {
             let inner = overlay::framed(frame, rect, skin, title);

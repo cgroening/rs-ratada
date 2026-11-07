@@ -15,7 +15,7 @@ use ratatui::{
 };
 
 use super::style;
-use crate::theme::Skin;
+use crate::theme::{Color, Skin};
 
 /// How far a modal's fill is lifted above the full-screen `background`, so the
 /// box reads as an elevated surface against the dimmed backdrop behind it.
@@ -34,16 +34,55 @@ pub fn menu_panel(skin: &Skin) -> Block<'static> {
     panel().style(style::bg(skin.palette.panel))
 }
 
-/// The shared modal frame: a rounded, bordered box with a filled background and
-/// an inset title. Used by every blocking modal widget. The fill is lifted
-/// above `background` (see `MODAL_BG_LIFT`) so the box stands out from the
-/// dimmed view behind it.
+/// Blank columns between a modal box's border and its content, per side.
+pub const MODAL_PADDING_X: u16 = 2;
+
+/// Blank rows between a modal box's top border and its content.
+pub const MODAL_PADDING_TOP: u16 = 1;
+
+/// Columns the side padding adds to a modal box (both sides together).
+pub const MODAL_PADDING_WIDTH: u16 = 2 * MODAL_PADDING_X;
+
+/// Columns a modal box spends around its content: two border columns plus the
+/// side padding. A box sized to its content is `content + MODAL_CHROME_WIDTH`
+/// wide.
+pub const MODAL_CHROME_WIDTH: u16 = 2 + MODAL_PADDING_WIDTH;
+
+/// Rows a modal box spends around its content: two border rows plus the top
+/// padding. A box sized to its content is `content + MODAL_CHROME_HEIGHT` high.
+pub const MODAL_CHROME_HEIGHT: u16 = 2 + MODAL_PADDING_TOP;
+
+/// The content area inside a modal box's border (`inner`, as
+/// `Block::inner` returns it): a blank row on top and [`MODAL_PADDING_X`]
+/// columns at each side. Every modal lays its content out in this rect, so
+/// they all keep the same distance to their frame.
+pub fn modal_content(inner: Rect) -> Rect {
+    Block::default()
+        .padding(Padding::new(
+            MODAL_PADDING_X,
+            MODAL_PADDING_X,
+            MODAL_PADDING_TOP,
+            0,
+        ))
+        .inner(inner)
+}
+
+/// The fill of every modal box: `background` lifted by `MODAL_BG_LIFT`, so the
+/// box stands out from the dimmed view behind it. [`modal_block`] paints it;
+/// a host box that frames itself (its own border colour, say) takes it from
+/// here to match.
+pub fn modal_fill(skin: &Skin) -> Color {
+    skin.palette.background.lighten(MODAL_BG_LIFT)
+}
+
+/// The shared modal frame: a rounded, bordered box with a filled background
+/// ([`modal_fill`]) and an inset title. Used by every blocking modal widget.
 pub fn modal_block(skin: &Skin, title: &str) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(style::border(&skin.palette))
-        .style(style::bg(skin.palette.background.lighten(MODAL_BG_LIFT)))
+        .style(style::bg(modal_fill(skin)))
         .title(border_title(
             skin,
             title,
@@ -297,7 +336,51 @@ fn badge_line(skin: &Skin, text: &str) -> Line<'static> {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::{Terminal, backend::TestBackend};
+
     use super::*;
+    use crate::theme::{
+        ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+    };
+
+    fn skin() -> Skin {
+        let base = ThemeRegistry::builtin().resolve("default");
+        Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        )
+    }
+
+    /// A host box that frames itself reads `modal_fill` to match the toolkit
+    /// modals, so the fill `modal_block` paints must be exactly that colour.
+    #[test]
+    fn modal_block_paints_the_modal_fill() {
+        let skin = skin();
+        let mut terminal = Terminal::new(TestBackend::new(10, 4)).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(modal_block(&skin, "T"), frame.area());
+            })
+            .unwrap();
+        let inside = &terminal.backend().buffer()[(4, 2)];
+        assert_eq!(inside.style().bg, style::bg(modal_fill(&skin)).bg);
+    }
+
+    /// Every modal lays its content out in this rect, so the padding it keeps
+    /// is the spacing of the whole kit.
+    #[test]
+    fn modal_content_keeps_the_padding_inside_the_border() {
+        let inner = Rect::new(1, 1, 20, 10);
+        assert_eq!(
+            modal_content(inner),
+            Rect::new(
+                1 + MODAL_PADDING_X,
+                1 + MODAL_PADDING_TOP,
+                20 - MODAL_PADDING_WIDTH,
+                10 - MODAL_PADDING_TOP,
+            )
+        );
+    }
 
     #[test]
     fn position_badge_is_one_based() {

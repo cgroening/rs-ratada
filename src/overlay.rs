@@ -19,7 +19,7 @@ use ratatui::{
 };
 
 use super::{
-    chrome::modal_block,
+    chrome::{self, modal_block},
     modal::ModalSignal,
     quit::{self, QuitKind},
     shortcut_hints, style,
@@ -125,12 +125,14 @@ pub fn popup_with_paste<S, T>(
     }
 }
 
-/// Draws the shared rounded modal frame into `rect` and returns the inner area
-/// for the caller's content. Wraps [`modal_block`] so the box chrome stays a
-/// single source of truth.
+/// Draws the shared rounded modal frame into `rect` and returns the content
+/// area for the caller: inside the border and the modal padding (see
+/// [`chrome::modal_content`]). Wraps [`modal_block`] so the box chrome stays a
+/// single source of truth. A box sized to its content adds
+/// [`chrome::MODAL_CHROME_WIDTH`] and [`chrome::MODAL_CHROME_HEIGHT`].
 pub fn framed(frame: &mut Frame, rect: Rect, skin: &Skin, title: &str) -> Rect {
     let block = modal_block(skin, title);
-    let inner = block.inner(rect);
+    let inner = chrome::modal_content(block.inner(rect));
     frame.render_widget(block, rect);
     inner
 }

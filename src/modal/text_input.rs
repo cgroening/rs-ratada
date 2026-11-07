@@ -8,6 +8,7 @@ use ratatui::{Frame, layout::Rect, widgets::Paragraph};
 use super::ModalSignal;
 use super::render::{hint_block, hinted_box_height};
 use crate::{
+    chrome::MODAL_CHROME_WIDTH,
     input::{self, TextCursor},
     layout::{centered_rect, fit},
     overlay::{self, PopupFlow, popup_with_paste},
@@ -115,7 +116,8 @@ pub(super) fn render_input(
 
 /// The popup rect for the single-line text inputs.
 pub(super) fn input_area(area: Rect) -> Rect {
-    let width = area.width.saturating_sub(8).clamp(20, 60);
+    let content = area.width.saturating_sub(8).clamp(18, 58);
+    let width = content.saturating_add(MODAL_CHROME_WIDTH).min(area.width);
     centered_rect(width, hinted_box_height(), area)
 }
 

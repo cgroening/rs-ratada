@@ -16,7 +16,9 @@ use ratatui::{
 
 use super::{Link, StyleSheet};
 use crate::{
-    chrome, input,
+    chrome,
+    chrome::{MODAL_PADDING_TOP, MODAL_PADDING_WIDTH},
+    input,
     layout::centered_fraction,
     modal::ModalSignal,
     nav,
@@ -221,7 +223,15 @@ pub fn viewer(
     popup(
         tui,
         &mut view,
-        |area, _| centered_fraction(area, 3, 4, 40, 8),
+        |area, _| {
+            centered_fraction(
+                area,
+                3,
+                4,
+                40 + MODAL_PADDING_WIDTH,
+                8 + MODAL_PADDING_TOP,
+            )
+        },
         |frame, _| render_bg(frame),
         |frame, rect, view: &MarkdownView| {
             let inner = overlay::framed(frame, rect, skin, title);

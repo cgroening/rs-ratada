@@ -25,7 +25,10 @@ use super::{
     style,
     terminal::Tui,
 };
-use crate::theme::Skin;
+use crate::{
+    chrome::{MODAL_PADDING_TOP, MODAL_PADDING_WIDTH},
+    theme::Skin,
+};
 
 /// The prefix of the query line; its width is taken off the caret line's.
 const SEARCH_LABEL: &str = "search ";
@@ -49,7 +52,15 @@ pub fn finder(
     popup_with_paste(
         tui,
         &mut state,
-        |area, _| centered_fraction(area, 2, 3, 40, 8),
+        |area, _| {
+            centered_fraction(
+                area,
+                2,
+                3,
+                40 + MODAL_PADDING_WIDTH,
+                8 + MODAL_PADDING_TOP,
+            )
+        },
         |frame, _| render_bg(frame),
         |frame, rect, state: &FilterList| {
             let inner = overlay::framed(frame, rect, skin, title);

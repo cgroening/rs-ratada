@@ -5,7 +5,12 @@
 //! focused row is tinted, changed fields get a `*` marker, `Ctrl+S` saves and
 //! `Esc` cancels. Field behaviour: text edits inline; multiline edits inline
 //! and opens `$EDITOR` with `Ctrl+G`; bool toggles with `Space`; choice cycles
-//! with `←`/`→`; date opens the calendar with `Enter`.
+//! with `←`/`→`; date opens the calendar with `Enter` (marked by the pointer
+//! glyph).
+//!
+//! The form does not validate: after [`FormOutcome::Saved`] the host checks
+//! the values and, on a problem, calls [`Form::set_error`] and runs the form
+//! again. The message shows in red under its field until the next key.
 
 use chrono::NaiveDate;
 
@@ -179,6 +184,8 @@ pub struct Form {
     title: String,
     fields: Vec<Field>,
     focus: usize,
+    /// A host-reported problem: the field index and its message.
+    error: Option<(usize, String)>,
 }
 
 impl Form {
@@ -188,12 +195,37 @@ impl Form {
             title: title.into(),
             fields,
             focus: 0,
+            error: None,
         }
     }
 
     /// The fields, for reading values after [`FormOutcome::Saved`].
     pub fn fields(&self) -> &[Field] {
         &self.fields
+    }
+
+    /// Reports a problem with the field at `index`: the next [`Form::run`]
+    /// shows `message` in red under that field, its label red, and focuses it.
+    /// The message clears on the next key. An index past the last field is
+    /// ignored.
+    pub fn set_error(&mut self, index: usize, message: impl Into<String>) {
+        if index < self.fields.len() {
+            self.focus = index;
+            self.error = Some((index, message.into()));
+        }
+    }
+
+    /// The message reported for the field at `index`, if any.
+    fn error_for(&self, index: usize) -> Option<&str> {
+        self.error
+            .as_ref()
+            .filter(|(field, _)| *field == index)
+            .map(|(_, message)| message.as_str())
+    }
+
+    /// The rows the field at `index` takes, with its error line.
+    fn row_height(&self, index: usize) -> u16 {
+        self.fields[index].height() + u16::from(self.error_for(index).is_some())
     }
 }
 

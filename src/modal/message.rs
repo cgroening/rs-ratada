@@ -5,6 +5,7 @@ use std::io;
 use super::ModalSignal;
 use super::render::text_extent;
 use crate::{
+    chrome::{MODAL_CHROME_HEIGHT, MODAL_CHROME_WIDTH},
     layout::{centered_rect, fit},
     overlay::{self, PopupFlow, popup},
     terminal::Tui,
@@ -16,9 +17,12 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
 };
 
-/// The height a message box never goes below: two border rows around three
-/// body rows, so a one-line message still reads as a dialog.
-const MIN_BOX_HEIGHT: u16 = 5;
+/// The height a message box never goes below: the frame around three body
+/// rows, so a one-line message still reads as a dialog.
+const MIN_BOX_HEIGHT: u16 = MODAL_CHROME_HEIGHT + 3;
+
+/// The width a message box never goes below.
+const MIN_BOX_WIDTH: u16 = 22 + MODAL_CHROME_WIDTH;
 
 /// Shows an informational message until any key is pressed.
 pub fn message(
@@ -43,8 +47,12 @@ pub fn message(
 /// enough for every line, so a multi-line body keeps its line breaks.
 pub(super) fn message_area(body: &str, area: Rect) -> Rect {
     let (widest, rows) = text_extent(body);
-    let width = fit(widest.saturating_add(6), 28, area.width);
-    let height = rows.saturating_add(2).max(MIN_BOX_HEIGHT);
+    let width = fit(
+        widest.saturating_add(MODAL_CHROME_WIDTH),
+        MIN_BOX_WIDTH,
+        area.width,
+    );
+    let height = rows.saturating_add(MODAL_CHROME_HEIGHT).max(MIN_BOX_HEIGHT);
     centered_rect(width, height, area)
 }
 

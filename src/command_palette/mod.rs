@@ -26,7 +26,10 @@ use super::{
     overlay::{self, PopupFlow, popup_with_paste},
     terminal::Tui,
 };
-use crate::theme::Skin;
+use crate::{
+    chrome::{MODAL_PADDING_TOP, MODAL_PADDING_WIDTH},
+    theme::Skin,
+};
 
 /// One selectable command in the palette.
 pub struct CommandItem<'a> {
@@ -73,8 +76,8 @@ pub fn command_palette(
         &mut state,
         |area, _| {
             centered_rect(
-                fit(area.width * 2 / 3, 40, area.width),
-                fit(area.height * 2 / 3, 8, area.height),
+                fit(area.width * 2 / 3, 40 + MODAL_PADDING_WIDTH, area.width),
+                fit(area.height * 2 / 3, 8 + MODAL_PADDING_TOP, area.height),
                 area,
             )
         },

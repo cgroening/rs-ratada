@@ -6,6 +6,7 @@ use std::io;
 use ratatui::{Frame, widgets::Paragraph};
 
 use super::{
+    chrome::{MODAL_CHROME_HEIGHT, MODAL_PADDING_WIDTH},
     input::InputField,
     layout::centered_rect,
     modal::ModalSignal,
@@ -317,8 +318,9 @@ pub(crate) fn run_picker(
         tui,
         &mut state,
         |area, state: &State| {
-            let rows = body_lines(skin, state).len() as u16 + 2;
-            centered_rect(BOX_WIDTH, rows, area)
+            let rows =
+                body_lines(skin, state).len() as u16 + MODAL_CHROME_HEIGHT;
+            centered_rect(BOX_WIDTH + MODAL_PADDING_WIDTH, rows, area)
         },
         |frame, _| render_bg(frame),
         |frame, rect, state: &State| {

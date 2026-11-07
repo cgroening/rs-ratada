@@ -24,12 +24,18 @@ use super::{
     fuzzy, input,
     layout::centered_fraction,
     list,
-    modal::ModalSignal,
+    modal::{
+        ModalSignal,
+        render::{HINT_BLOCK_ROWS, hint_block},
+    },
     overlay::{self, PopupFlow, popup_with_paste},
     shortcut_hints, style,
     terminal::Tui,
 };
-use crate::theme::Skin;
+use crate::{
+    chrome::{MODAL_PADDING_TOP, MODAL_PADDING_WIDTH},
+    theme::Skin,
+};
 
 /// The prefix of the query line; its width is taken off the caret line's.
 const SEARCH_LABEL: &str = "search ";
@@ -182,7 +188,13 @@ pub fn handle_key<B: AsRef<str>>(
 
 /// The overlay's box within the screen `area`.
 fn box_area(area: Rect) -> Rect {
-    centered_fraction(area, 2, 3, 40, 8)
+    centered_fraction(
+        area,
+        2,
+        3,
+        40 + MODAL_PADDING_WIDTH,
+        8 + MODAL_PADDING_TOP,
+    )
 }
 
 /// Draws the frame, the body and the position badge into `rect`.
@@ -261,14 +273,15 @@ fn render_body<B: AsRef<str>>(
     let palette = &skin.palette;
     let layout = layout_rows(sections, &state.query);
 
-    // The popup footer always reserves its row (popup hints ignore the global
-    // F1 toggle, which governs only the main-app footer).
+    // The popup footer always reserves its hint block - the blank spacer and
+    // the hint line every modal ends with (popup hints ignore the global F1
+    // toggle, which governs only the main-app footer).
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(shortcut_hints::footer_height(1)),
+            Constraint::Length(shortcut_hints::footer_height(HINT_BLOCK_ROWS)),
         ])
         .split(inner);
 
@@ -326,25 +339,16 @@ fn render_body<B: AsRef<str>>(
     );
     state.viewport.set(viewport);
 
-    let hint = footer_hint(skin, rows[2].width as usize);
-    frame.render_widget(Paragraph::new(hint), rows[2]);
+    let hints = hint_block(&FOOTER_HINTS, palette, rows[2].width as usize);
+    frame.render_widget(Paragraph::new(hints), rows[2]);
 }
 
-/// The footer hint line for the overlay.
-fn footer_hint(skin: &Skin, width: usize) -> Line<'static> {
-    shortcut_hints::lines(
-        &[
-            ("\u{2191}\u{2193}", "move"),
-            ("tab", "section"),
-            ("esc", "close"),
-        ],
-        skin.palette.accent_dim,
-        width,
-    )
-    .into_iter()
-    .next()
-    .unwrap_or_default()
-}
+/// The overlay's keys, shown in the modal hint block below the list.
+const FOOTER_HINTS: [(&str, &str); 3] = [
+    ("\u{2191}\u{2193}", "move"),
+    ("tab", "section"),
+    ("esc", "close"),
+];
 
 #[cfg(test)]
 mod tests {
@@ -528,5 +532,41 @@ mod tests {
                     panic!("{width}x{height} failed: {error}")
                 });
         }
+    }
+
+    /// The overlay ends like every modal: a blank spacer row, then the key
+    /// hints, inset by the modal padding.
+    #[test]
+    fn the_hints_close_the_box_after_a_blank_row() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        use crate::theme::{
+            ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+        };
+
+        let base = ThemeRegistry::builtin().resolve("default");
+        let skin = Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        );
+        let secs = sections();
+        let state = state();
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal
+            .draw(|frame| render(frame, frame.area(), &skin, &secs, &state))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let rows: Vec<String> = (0..24)
+            .map(|y| (0..80).map(|x| buffer[(x, y)].symbol()).collect())
+            .collect();
+        let hints = rows
+            .iter()
+            .position(|row| row.contains("│  \u{2191}\u{2193} move"))
+            .expect("the hints sit inside the padding");
+        let above = rows[hints - 1].trim();
+        assert!(
+            above.trim_matches('│').trim().is_empty(),
+            "blank spacer row expected, got {above:?}"
+        );
     }
 }

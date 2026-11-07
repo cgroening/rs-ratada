@@ -23,6 +23,7 @@ use ratatui::{
 };
 
 use super::{
+    chrome::{MODAL_CHROME_HEIGHT, MODAL_PADDING_WIDTH},
     date_entry::{self, DateEntry, EntryAction, OPEN_KEY, Validity},
     date_picker::{cursor_cell_style, today_cell_style},
     date_text, input,
@@ -87,8 +88,8 @@ pub fn month_picker(
         |area, state: &Picker| {
             let rows = body_lines(&skin.palette, state, today, allow_clear)
                 .len() as u16
-                + 2;
-            centered_rect(BOX_WIDTH, rows, area)
+                + MODAL_CHROME_HEIGHT;
+            centered_rect(BOX_WIDTH + MODAL_PADDING_WIDTH, rows, area)
         },
         |frame, _| render_bg(frame),
         |frame, rect, state: &Picker| {

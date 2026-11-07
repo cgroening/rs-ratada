@@ -4,9 +4,23 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
-## [0.7.1] - 2026-11-07
+## [0.8.0] - 2026-11-07
+
+### Changed (breaking)
+
+- **`overlay::framed` returns the content rect inside the modal padding.** Every modal now keeps a blank row below its top border and two blank columns at each side (`chrome::MODAL_PADDING_TOP`, `MODAL_PADDING_X`). A host that calls `framed` and sizes its box to its content must add `chrome::MODAL_CHROME_WIDTH`/`MODAL_CHROME_HEIGHT` instead of the two border cells, or the content is cut.
+
+### Changed
+
+- **The toolkit modals are padded.** Confirm, message, choice, styled confirm, text and number input, the list pickers, the date, date-range and month pickers, the slider, the colour picker and the swatches grow by the padding, so their content keeps its size. The fractional overlays (finder, help, pager, Markdown viewer, table, path picker, command palette) raise their minimum size by it.
+- **The help overlay ends with the modal hint block**: a blank spacer row, then the keys in the accent like every other modal (it used the dimmed accent without a spacer).
+- **`form::Form` looks like the other modals.** It is drawn through `overlay::framed` (the modal fill instead of the plain background, the padding), tints the focused row from border to border with its label in the accent and bold, marks a date field with the pointer glyph, ends with the modal hint block and is at least 44 columns wide so its hint line fits.
 
 ### Added
+
+- **`chrome::modal_fill` returns the fill of every modal box.** `modal_block` paints it; a host box that draws its own border (in its own colour, say) takes the fill from here so it matches the toolkit modals.
+- **`chrome::modal_content`** and the constants `MODAL_PADDING_X`, `MODAL_PADDING_TOP`, `MODAL_PADDING_WIDTH`, `MODAL_CHROME_WIDTH` and `MODAL_CHROME_HEIGHT` give a host box the toolkit's modal spacing.
+- **`Form::set_error(index, message)`** reports a problem with a field: the next `run` shows the message in red under that field, turns its label red and focuses it; the next key clears it. The form still does not validate on its own.
 
 - **`editor::split_editor` is public.** It splits an editor command line (`code --wait`) into program and arguments without a shell, so a host that opens an existing file in the editor launches it the way `edit_in_editor` does.
 

@@ -14,7 +14,9 @@ use super::{
     named::nearest_name,
 };
 use crate::{
-    chrome,
+    chrome::{
+        self, MODAL_CHROME_HEIGHT, MODAL_CHROME_WIDTH, MODAL_PADDING_WIDTH,
+    },
     color_picker::{CLEAR_KEYS, Clearing},
     input, list, overlay, shortcut_hints, style,
     theme::{Color, Palette, Skin},
@@ -50,14 +52,17 @@ const MARK_RIGHT: &str = "\u{258f}";
 /// an optional filter row, the content, a blank, a 4-row preview and the
 /// two-row footer (always shown), all inside the border.
 pub(super) fn box_size(state: &State) -> (u16, u16) {
-    let width = match state.mode {
-        Mode::Names | Mode::Palette => LIST_WIDTH,
-        Mode::Grid => (GRID_COLS * CELL_WIDTH) as u16 + 4,
-        Mode::Grays => (GRAY_STEPS * CELL_WIDTH).max(24) as u16 + 4,
-    };
-    // The footer wraps at the inner width (inside the border).
-    let footer = footer_rows(state, width.saturating_sub(2) as usize);
-    let extras = 1 + 1 + 4 + footer + 2; // bar + blank + preview + footer + border
+    let width = MODAL_PADDING_WIDTH
+        + match state.mode {
+            Mode::Names | Mode::Palette => LIST_WIDTH,
+            Mode::Grid => (GRID_COLS * CELL_WIDTH) as u16 + 4,
+            Mode::Grays => (GRAY_STEPS * CELL_WIDTH).max(24) as u16 + 4,
+        };
+    // The footer wraps at the content width (inside border and padding).
+    let footer =
+        footer_rows(state, width.saturating_sub(MODAL_CHROME_WIDTH) as usize);
+    // Bar, blank, preview, footer and the frame.
+    let extras = 1 + 1 + 4 + footer + MODAL_CHROME_HEIGHT;
     let body = match state.mode {
         Mode::Names | Mode::Palette => {
             VISIBLE_ROWS + u16::from(state.filtering)

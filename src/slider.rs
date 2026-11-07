@@ -11,6 +11,7 @@ use ratatui::{
 };
 
 use super::{
+    chrome::{MODAL_CHROME_HEIGHT, MODAL_PADDING_WIDTH},
     input,
     layout::centered_rect,
     modal::ModalSignal,
@@ -50,8 +51,9 @@ pub fn slider(
         tui,
         &mut value,
         |area, _| {
-            let rows = body_lines(skin, &cfg, cfg.initial).len() as u16 + 2;
-            centered_rect(BOX_WIDTH, rows, area)
+            let rows = body_lines(skin, &cfg, cfg.initial).len() as u16
+                + MODAL_CHROME_HEIGHT;
+            centered_rect(BOX_WIDTH + MODAL_PADDING_WIDTH, rows, area)
         },
         |frame, _| render_bg(frame),
         |frame, rect, value: &i64| {

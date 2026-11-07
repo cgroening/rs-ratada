@@ -15,6 +15,7 @@ use ratatui::{
 use super::ModalSignal;
 use super::render::{hint_block, hinted_box_height, text_extent};
 use crate::{
+    chrome::MODAL_CHROME_WIDTH,
     input::{self},
     layout::{centered_rect, fit},
     overlay::{self, PopupFlow, popup},
@@ -22,13 +23,13 @@ use crate::{
     theme::Skin,
 };
 
-/// Columns a confirm box adds around its body: the two border columns, the
-/// frame's inner padding and a little air to the right of the longest line.
-pub(super) const BOX_CHROME: u16 = 6;
+/// Columns a confirm box adds around its body: the modal frame (borders and
+/// side padding).
+pub(super) const BOX_CHROME: u16 = MODAL_CHROME_WIDTH;
 
 /// The width a confirm box never goes below, so a short question still reads
 /// as a dialog and the hint line fits.
-pub(super) const MIN_BOX_WIDTH: u16 = 28;
+pub(super) const MIN_BOX_WIDTH: u16 = 26 + MODAL_CHROME_WIDTH;
 
 /// Columns a frame title needs beyond its own text: the two corners and one
 /// border cell on either side.

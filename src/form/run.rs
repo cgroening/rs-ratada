@@ -41,6 +41,9 @@ impl Form {
                 TuiEvent::Resize => {}
                 TuiEvent::Paste(text) => self.paste_into_focus(&text),
                 TuiEvent::Key(key) => {
+                    // A reported problem reflects the last save; any key
+                    // dismisses it.
+                    self.error = None;
                     // Control *without* Alt: AltGr is reported as Ctrl+Alt and
                     // types real characters, which must reach the fields.
                     let ctrl = input::is_command(key);

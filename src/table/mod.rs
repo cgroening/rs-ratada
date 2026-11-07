@@ -24,7 +24,10 @@ use super::{
     overlay::{self, PopupFlow, popup},
     terminal::Tui,
 };
-use crate::theme::Skin;
+use crate::{
+    chrome::{MODAL_PADDING_TOP, MODAL_PADDING_WIDTH},
+    theme::Skin,
+};
 
 mod interaction;
 mod model;
@@ -364,7 +367,15 @@ pub fn table_select(
     popup(
         tui,
         &mut table,
-        |area, _| centered_fraction(area, 3, 4, 40, 8),
+        |area, _| {
+            centered_fraction(
+                area,
+                3,
+                4,
+                40 + MODAL_PADDING_WIDTH,
+                8 + MODAL_PADDING_TOP,
+            )
+        },
         |frame, _| render_bg(frame),
         |frame, rect, table: &Table| {
             let inner = overlay::framed(frame, rect, skin, title);

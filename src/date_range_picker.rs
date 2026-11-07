@@ -29,6 +29,7 @@ use ratatui::{
 };
 
 use super::{
+    chrome::{MODAL_CHROME_HEIGHT, MODAL_PADDING_WIDTH},
     date_entry::{self, DateEntry, EntryAction, OPEN_KEY, Validity},
     date_picker::{
         ISO_FORMAT, WeekColumn, add_months, cursor_cell_style, day_grid,
@@ -98,8 +99,11 @@ pub fn date_range_picker(
         tui,
         &mut state,
         |area, state: &Picker| {
-            let rows = body_lines(skin, state).len() as u16 + 2;
-            let width = BOX_WIDTH + state.week_column.extra_width();
+            let rows =
+                body_lines(skin, state).len() as u16 + MODAL_CHROME_HEIGHT;
+            let width = BOX_WIDTH
+                + MODAL_PADDING_WIDTH
+                + state.week_column.extra_width();
             centered_rect(width, rows, area)
         },
         |frame, _| render_bg(frame),

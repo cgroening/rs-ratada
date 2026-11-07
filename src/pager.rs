@@ -20,7 +20,10 @@ use super::{
     scroll, style,
     terminal::Tui,
 };
-use crate::theme::Skin;
+use crate::{
+    chrome::{MODAL_PADDING_TOP, MODAL_PADDING_WIDTH},
+    theme::Skin,
+};
 
 /// The scroll and search state of the pager.
 struct Pager {
@@ -161,7 +164,15 @@ pub fn pager(
     popup(
         tui,
         &mut state,
-        |area, _| centered_fraction(area, 3, 4, 40, 8),
+        |area, _| {
+            centered_fraction(
+                area,
+                3,
+                4,
+                40 + MODAL_PADDING_WIDTH,
+                8 + MODAL_PADDING_TOP,
+            )
+        },
         |frame, _| render_bg(frame),
         |frame, rect, state: &Pager| {
             let inner = overlay::framed(frame, rect, skin, title);

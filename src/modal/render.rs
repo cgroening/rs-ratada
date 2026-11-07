@@ -13,7 +13,7 @@ use ratatui::{
 use unicode_width::UnicodeWidthStr;
 
 use crate::{
-    chrome,
+    chrome::{self, MODAL_CHROME_HEIGHT, MODAL_CHROME_WIDTH},
     layout::{centered_rect, fit},
     nav,
     overlay::{self},
@@ -23,16 +23,13 @@ use crate::{
 
 /// Rows a modal's hint block occupies while the hints are shown: a blank
 /// spacer and the hint line itself.
-pub(super) const HINT_BLOCK_ROWS: u16 = 2;
-
-/// The border cells a modal box spends per axis: two rows, two columns.
-const BORDER_CELLS: u16 = 2;
+pub(crate) const HINT_BLOCK_ROWS: u16 = 2;
 
 /// The narrowest list picker, however short its labels and hints.
-const MIN_PICKER_WIDTH: u16 = 30;
+const MIN_PICKER_WIDTH: u16 = 28 + MODAL_CHROME_WIDTH;
 
-/// The shortest list picker: borders, three rows and the hint block.
-const MIN_PICKER_HEIGHT: u16 = 5 + HINT_BLOCK_ROWS;
+/// The shortest list picker: the frame, three rows and the hint block.
+const MIN_PICKER_HEIGHT: u16 = MODAL_CHROME_HEIGHT + 3 + HINT_BLOCK_ROWS;
 
 /// The keys of a single-choice list picker.
 pub(super) const SELECT_HINTS: [(&str, &str); 2] =
@@ -208,14 +205,16 @@ pub(super) fn picker_area(
     hints: &[(&str, &str)],
 ) -> Rect {
     let rows = u16::try_from(item_count).unwrap_or(u16::MAX);
-    let wanted_height = rows.saturating_add(BORDER_CELLS + HINT_BLOCK_ROWS);
+    let wanted_height =
+        rows.saturating_add(MODAL_CHROME_HEIGHT + HINT_BLOCK_ROWS);
     let height = fit(
         wanted_height,
         MIN_PICKER_HEIGHT,
         area.height.saturating_sub(2),
     );
     let hint_width = u16::try_from(hints_width(hints)).unwrap_or(u16::MAX);
-    let wanted_width = (area.width / 2).max(hint_width + BORDER_CELLS);
+    let wanted_width =
+        (area.width / 2).max(hint_width.saturating_add(MODAL_CHROME_WIDTH));
     let width =
         fit(wanted_width, MIN_PICKER_WIDTH, area.width.saturating_sub(4));
     centered_rect(width, height, area)
@@ -231,7 +230,7 @@ pub(super) fn hints_width(hints: &[(&str, &str)]) -> usize {
 /// The blank spacer and the hint line closing a modal body. A modal's key
 /// prompt is essential, so it always shows, independent of the global F1 toggle
 /// (which governs only the main-app footer).
-pub(super) fn hint_block(
+pub(crate) fn hint_block(
     items: &[(&str, &str)],
     palette: &Palette,
     width: usize,
@@ -243,10 +242,11 @@ pub(super) fn hint_block(
         .collect()
 }
 
-/// The height of a modal box whose body is one row plus a [`hint_block`]: two
-/// border rows, the row itself, and the always-shown hint block.
+/// The height of a modal box whose body is one row plus a [`hint_block`]: the
+/// frame (borders and top padding), the row itself, and the always-shown hint
+/// block.
 pub(super) fn hinted_box_height() -> u16 {
-    3 + shortcut_hints::footer_height(HINT_BLOCK_ROWS)
+    MODAL_CHROME_HEIGHT + 1 + shortcut_hints::footer_height(HINT_BLOCK_ROWS)
 }
 
 /// The columns and rows `text` needs when every `\n` starts a new row: the
