@@ -106,11 +106,7 @@ pub(super) fn render_input(
     let width = inner.width as usize;
     let line = input::render_line(text, cursor, &skin.palette, width, true);
     let mut lines = vec![line];
-    lines.extend(hint_block(
-        &[("enter", "ok"), ("esc", "cancel")],
-        &skin.palette,
-        width,
-    ));
+    lines.extend(hint_block(&INPUT_HINTS, &skin.palette, width));
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
@@ -118,11 +114,19 @@ pub(super) fn render_input(
 pub(super) fn input_area(area: Rect) -> Rect {
     let content = area.width.saturating_sub(8).clamp(18, 58);
     let width = content.saturating_add(MODAL_CHROME_WIDTH).min(area.width);
-    centered_rect(width, hinted_box_height(), area)
+    centered_rect(width, input_height(width), area)
+}
+
+/// The keys of a single-line text input.
+const INPUT_HINTS: [(&str, &str); 2] = [("enter", "ok"), ("esc", "cancel")];
+
+/// The height of a text input box `width` columns wide.
+fn input_height(width: u16) -> u16 {
+    hinted_box_height(&INPUT_HINTS, width.saturating_sub(MODAL_CHROME_WIDTH))
 }
 
 /// A wide input box (~90% of the terminal width), for long values.
 pub(super) fn input_area_wide(area: Rect) -> Rect {
     let width = fit(area.width * 9 / 10, 20, area.width);
-    centered_rect(width, hinted_box_height(), area)
+    centered_rect(width, input_height(width), area)
 }

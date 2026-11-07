@@ -14,7 +14,7 @@ use super::{
     confirm::{
         BOX_CHROME, MIN_BOX_WIDTH, TITLE_CHROME, answer_hints, confirm_key,
     },
-    render::{HINT_BLOCK_ROWS, hint_block, hinted_box_height, hints_width},
+    render::{hint_block, hint_block_height, hinted_box_height, hints_width},
 };
 use crate::{
     input::is_bare_character,
@@ -228,9 +228,13 @@ pub(super) fn dialog_area(dialog: &Dialog<'_, '_>, area: Rect) -> Rect {
     let bodies = dialog.bodies(body_width(area.width));
     let rows = bodies.iter().map(Vec::len).max().unwrap_or(0);
     let further_rows = u16::try_from(rows.saturating_sub(1));
-    let height =
-        hinted_box_height().saturating_add(further_rows.unwrap_or(u16::MAX));
-    let is_overflowing = height > area.height;
+    let hint_rows = |is_overflowing: bool, width: u16| {
+        let hints = dialog.hints(&DialogState::default(), is_overflowing);
+        hinted_box_height(&hints, body_width(width))
+            .saturating_add(further_rows.unwrap_or(u16::MAX))
+    };
+    // Whether the body scrolls decides the hints, which decide the width.
+    let is_overflowing = hint_rows(false, area.width) > area.height;
     let widest = bodies
         .iter()
         .flatten()
@@ -248,6 +252,7 @@ pub(super) fn dialog_area(dialog: &Dialog<'_, '_>, area: Rect) -> Rect {
         .saturating_add(BOX_CHROME)
         .max(title.saturating_add(TITLE_CHROME));
     let width = fit(wanted, MIN_BOX_WIDTH, area.width);
+    let height = hint_rows(is_overflowing, width);
     centered_rect(width, height, area)
 }
 
@@ -262,9 +267,19 @@ pub(super) fn render_dialog(
     let Drawn { dialog, state } = *drawn;
     let inner = overlay::framed(frame, rect, skin, dialog.question.title);
     let body = dialog.body(state, body_width(rect.width));
-    let viewport = usize::from(inner.height)
-        .saturating_sub(usize::from(HINT_BLOCK_ROWS))
-        .max(1);
+    // The rows the hints take, which grow by the scroll hint once the
+    // body overflows the rows they leave.
+    let viewport_for = |is_overflowing: bool| {
+        let hints = dialog.hints(state, is_overflowing);
+        let rows = hint_block_height(&hints, usize::from(inner.width));
+        usize::from(inner.height)
+            .saturating_sub(usize::from(rows))
+            .max(1)
+    };
+    let mut viewport = viewport_for(false);
+    if body.len() > viewport {
+        viewport = viewport_for(true);
+    }
     state.viewport.set(viewport);
     state.total.set(body.len());
     let offset = state.offset.min(state.max_offset());

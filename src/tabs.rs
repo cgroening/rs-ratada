@@ -31,9 +31,41 @@ pub fn height(brand: &str, tabs: &[(&str, &str)], width: usize) -> u16 {
     pack(brand, tabs, width).len().max(1) as u16
 }
 
+/// How much darker the inactive tabs of a locked bar are than their dim.
+const LOCK_DARKEN: f32 = 0.25;
+
 /// Renders the tab bar into `area`, wrapping tabs across rows when needed and
 /// highlighting the `active` tab.
 pub fn render(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    brand: &str,
+    tabs: &[(&str, &str)],
+    active: usize,
+) {
+    draw(frame, area, skin, brand, tabs, active);
+}
+
+/// Renders the tab bar while switching tabs is not possible (a form field
+/// is being edited): the inactive tabs darker than their usual dim, so the
+/// bar reads as disabled, the active tab bold as always.
+pub fn render_locked(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    brand: &str,
+    tabs: &[(&str, &str)],
+    active: usize,
+) {
+    let mut locked = *skin;
+    locked.palette.foreground_dim =
+        skin.palette.foreground_dim.darken(LOCK_DARKEN);
+    draw(frame, area, &locked, brand, tabs, active);
+}
+
+/// Draws the bar with `skin`'s colours.
+fn draw(
     frame: &mut Frame,
     area: Rect,
     skin: &Skin,
@@ -121,6 +153,43 @@ mod tests {
 
     const TABS: &[(&str, &str)] =
         &[("1", "Summary"), ("2", "Tasks"), ("3", "Gallery")];
+
+    /// A way to draw the bar: [`render`] or [`render_locked`].
+    type Draw = fn(&mut Frame, Rect, &Skin, &str, &[(&str, &str)], usize);
+
+    /// The foreground of the first cell of `label` in a bar drawn by `draw`.
+    fn label_fg(draw: Draw, label: &str) -> Option<ratatui::style::Color> {
+        use crate::theme::{
+            ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+        };
+        use ratatui::{Terminal, backend::TestBackend};
+        let base = ThemeRegistry::builtin().resolve("default");
+        let skin = Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        );
+        let mut terminal = Terminal::new(TestBackend::new(60, 1)).unwrap();
+        terminal
+            .draw(|frame| draw(frame, frame.area(), &skin, "app", TABS, 0))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let row: String = (0..60).map(|x| buffer[(x, 0)].symbol()).collect();
+        let column = row.find(label)?;
+        let x = u16::try_from(row[..column].chars().count()).ok()?;
+        buffer[(x, 0)].style().fg
+    }
+
+    #[test]
+    fn a_locked_bar_draws_the_inactive_tabs_darker() {
+        let open = label_fg(render, "Tasks");
+        let locked = label_fg(render_locked, "Tasks");
+        assert!(open.is_some());
+        assert_ne!(open, locked, "the inactive tab must look disabled");
+        assert_eq!(
+            label_fg(render, "Summary"),
+            label_fg(render_locked, "Summary")
+        );
+    }
 
     #[test]
     fn everything_fits_on_one_row_when_wide() {

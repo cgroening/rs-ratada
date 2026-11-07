@@ -21,15 +21,18 @@ use crate::{
     theme::{Color, Palette, Skin},
 };
 
-/// Rows a modal's hint block occupies while the hints are shown: a blank
-/// spacer and the hint line itself.
-pub const HINT_BLOCK_ROWS: u16 = 2;
+/// The most rows a modal's hints wrap onto when the box is narrower than
+/// their line (a narrow screen); below that the box grows no further.
+pub const MAX_HINT_ROWS: usize = 3;
+
+/// The rows of a hint block on one line: the blank spacer and the hints.
+const SINGLE_HINT_BLOCK: u16 = 2;
 
 /// The narrowest list picker, however short its labels and hints.
 const MIN_PICKER_WIDTH: u16 = 28 + MODAL_CHROME_WIDTH;
 
 /// The shortest list picker: the frame, three rows and the hint block.
-const MIN_PICKER_HEIGHT: u16 = MODAL_CHROME_HEIGHT + 3 + HINT_BLOCK_ROWS;
+const MIN_PICKER_HEIGHT: u16 = MODAL_CHROME_HEIGHT + 3 + SINGLE_HINT_BLOCK;
 
 /// The keys of a single-choice list picker.
 pub(super) const SELECT_HINTS: [(&str, &str); 2] =
@@ -114,13 +117,14 @@ pub(super) fn render_picker_hints(
     skin: &Skin,
     hints: &[(&str, &str)],
 ) -> Rect {
-    if inner.height <= HINT_BLOCK_ROWS {
+    let hint_rows = hint_block_height(hints, usize::from(inner.width));
+    if inner.height <= hint_rows {
         return inner;
     }
-    let list_height = inner.height - HINT_BLOCK_ROWS;
+    let list_height = inner.height - hint_rows;
     let hint_area = Rect {
         y: inner.y + list_height,
-        height: HINT_BLOCK_ROWS,
+        height: hint_rows,
         ..inner
     };
     let lines = hint_block(hints, &skin.palette, usize::from(inner.width));
@@ -220,14 +224,6 @@ pub(super) fn picker_area(
     content_width: usize,
     hints: &[(&str, &str)],
 ) -> Rect {
-    let rows = u16::try_from(item_count).unwrap_or(u16::MAX);
-    let wanted_height =
-        rows.saturating_add(MODAL_CHROME_HEIGHT + HINT_BLOCK_ROWS);
-    let height = fit(
-        wanted_height,
-        MIN_PICKER_HEIGHT,
-        area.height.saturating_sub(2),
-    );
     let content = content_width.saturating_add(PICKER_ROW_CHROME);
     let wanted = content.max(hints_width(hints));
     let wanted_width = u16::try_from(wanted)
@@ -235,6 +231,17 @@ pub(super) fn picker_area(
         .saturating_add(MODAL_CHROME_WIDTH);
     let width =
         fit(wanted_width, MIN_PICKER_WIDTH, area.width.saturating_sub(4));
+    // The width first: on a narrow screen the hints wrap and need rows.
+    let inner = usize::from(width.saturating_sub(MODAL_CHROME_WIDTH));
+    let rows = u16::try_from(item_count).unwrap_or(u16::MAX);
+    let wanted_height = rows
+        .saturating_add(MODAL_CHROME_HEIGHT)
+        .saturating_add(hint_block_height(hints, inner));
+    let height = fit(
+        wanted_height,
+        MIN_PICKER_HEIGHT,
+        area.height.saturating_sub(2),
+    );
     centered_rect(width, height, area)
 }
 
@@ -251,27 +258,43 @@ pub fn hints_width(hints: &[(&str, &str)]) -> usize {
         .map_or(0, Line::width)
 }
 
-/// The blank spacer and the hint line closing a modal body. A modal's key
-/// prompt is essential, so it always shows, independent of the global F1 toggle
-/// (which governs only the main-app footer). A host modal ends its body with
-/// it, so its keys look like the toolkit's; it takes [`HINT_BLOCK_ROWS`] rows.
+/// The blank spacer and the hint lines closing a modal body, wrapped at
+/// `width` onto at most [`MAX_HINT_ROWS`] rows, so a narrow screen shows
+/// every key instead of cutting the line. A modal's key prompt is essential,
+/// so it always shows, independent of the global F1 toggle (which governs
+/// only the main-app footer). A host modal ends its body with it, so its keys
+/// look like the toolkit's, and sizes it with [`hint_block_height`].
 pub fn hint_block(
     items: &[(&str, &str)],
     palette: &Palette,
     width: usize,
 ) -> Vec<Line<'static>> {
-    shortcut_hints::lines(items, palette.accent, width)
-        .into_iter()
-        .take(1)
-        .flat_map(|hint| [Line::from(""), hint])
+    let rows = shortcut_hints::lines(items, palette.accent, width);
+    if rows.is_empty() {
+        return Vec::new();
+    }
+    std::iter::once(Line::from(""))
+        .chain(rows.into_iter().take(MAX_HINT_ROWS))
         .collect()
 }
 
-/// The height of a modal box whose body is one row plus a [`hint_block`]: the
-/// frame (borders and top padding), the row itself, and the always-shown hint
-/// block.
-pub(super) fn hinted_box_height() -> u16 {
-    MODAL_CHROME_HEIGHT + 1 + shortcut_hints::footer_height(HINT_BLOCK_ROWS)
+/// The rows a [`hint_block`] of `items` takes at `width` columns: the
+/// spacer plus one row, or more while the hints wrap on a narrow screen.
+pub fn hint_block_height(items: &[(&str, &str)], width: usize) -> u16 {
+    let rows = shortcut_hints::lines(items, Color::Default, width)
+        .len()
+        .clamp(1, MAX_HINT_ROWS);
+    1 + u16::try_from(rows).unwrap_or(1)
+}
+
+/// The height of a modal box whose body is one row plus the [`hint_block`]
+/// of `hints` at `inner_width`: the frame (borders and top padding), the row
+/// itself and the hint block.
+pub(super) fn hinted_box_height(
+    hints: &[(&str, &str)],
+    inner_width: u16,
+) -> u16 {
+    MODAL_CHROME_HEIGHT + 1 + hint_block_height(hints, usize::from(inner_width))
 }
 
 /// The columns and rows `text` needs when every `\n` starts a new row: the

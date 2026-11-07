@@ -94,13 +94,12 @@ pub fn confirm_default(
     question: &Question<'_>,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<bool>> {
-    let prompt = question.prompt;
     let default_yes = question.default_yes;
     let mut state = ();
     popup(
         tui,
         &mut state,
-        |area, (): &()| confirm_area(prompt, area),
+        |area, (): &()| confirm_area(question, area),
         |frame, (): &()| render_bg(frame),
         |frame, rect, (): &()| render_confirm(frame, skin, question, rect),
         |(): &mut (), key| confirm_key(key, default_yes),
@@ -141,11 +140,13 @@ pub(super) fn confirm_key(key: KeyEvent, default_yes: bool) -> PopupFlow<bool> {
 /// The box of a confirm dialog asking `prompt`: as wide as its longest line
 /// and one row taller per further line, so a multi-line prompt keeps its line
 /// breaks and the hint block stays in view.
-pub(super) fn confirm_area(prompt: &str, area: Rect) -> Rect {
-    let (widest, rows) = text_extent(prompt);
+pub(super) fn confirm_area(question: &Question<'_>, area: Rect) -> Rect {
+    let (widest, rows) = text_extent(question.prompt);
     let width =
         fit(widest.saturating_add(BOX_CHROME), MIN_BOX_WIDTH, area.width);
-    let height = hinted_box_height().saturating_add(rows - 1);
+    let inner = width.saturating_sub(BOX_CHROME);
+    let height =
+        hinted_box_height(&question.hints(), inner).saturating_add(rows - 1);
     centered_rect(width, height, area)
 }
 

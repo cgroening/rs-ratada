@@ -2,6 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend};
 
 use super::*;
+use crate::form::field::FieldStyles;
 use crate::theme::{
     ColorOverrides, GlyphVariant, Glyphs, Palette, Skin, ThemeRegistry,
 };
@@ -341,4 +342,66 @@ fn the_counter_counts_while_typing_and_the_cap_holds() {
     assert_eq!(form.live_value("body").chars().count(), 60);
     let text = drawn(&form, 80, 16).join("\n");
     assert!(text.contains("60/60"), "{text}");
+}
+
+#[test]
+fn the_hints_wrap_on_a_narrow_box_and_keep_every_key() {
+    let form = form();
+    assert_eq!(hint_rows(80), 3);
+    assert!(hint_rows(30) > 3);
+    let text = drawn(&form, 34, 24).join("\n");
+    for key in ["tab", "s save", "y copy", "ctrl+o", "esc"] {
+        assert!(text.contains(key), "{key} missing in\n{text}");
+    }
+}
+
+#[test]
+fn the_height_stays_while_the_focus_moves_on_a_narrow_box() {
+    let mut form = form();
+    let height = |form: &FormState| {
+        drawn(form, 34, 30)
+            .iter()
+            .filter(|r| r.contains('\u{2502}'))
+            .count()
+    };
+    let first = height(&form);
+    form.focus_on("kind");
+    assert_eq!(height(&form), first);
+}
+
+#[test]
+fn inline_the_title_leads_and_the_tint_stays_inside() {
+    let form = form();
+    let mut terminal =
+        Terminal::new(TestBackend::new(60, 12)).expect("terminal");
+    let area = ratatui::layout::Rect::new(4, 1, 50, 10);
+    terminal
+        .draw(|frame| form.render_inline(frame, area, &skin()))
+        .expect("draw");
+    let buffer = terminal.backend().buffer();
+    let row = |y: u16| -> String {
+        (0..60).map(|x| buffer[(x, y)].symbol()).collect()
+    };
+    assert!(row(1).contains("Entry"), "{}", row(1));
+    assert!(row(3).contains("Title"), "{}", row(3));
+    let tint = FieldStyles::from_palette(&skin().palette).focus_tint.bg;
+    assert_eq!(buffer[(5, 3)].style().bg, tint, "the focused row is tinted");
+    assert_ne!(buffer[(2, 3)].style().bg, tint, "no tint left of the area");
+}
+
+#[test]
+fn the_footer_gets_field_and_form_keys_and_the_question_alone() {
+    let mut form = form();
+    let groups = form.hint_groups();
+    assert_eq!(
+        groups.iter().map(|g| g.0).collect::<Vec<_>>(),
+        ["Field", "Form"]
+    );
+    assert!(form.prompt().is_none());
+    form.focus_on("fav");
+    press(&mut form, &[KeyCode::Char(' '), KeyCode::Esc]);
+    assert_eq!(form.prompt(), Some("Save changes?"));
+    let groups = form.hint_groups();
+    assert_eq!(groups.len(), 1);
+    assert!(groups[0].1.iter().any(|(key, _)| *key == "n"));
 }

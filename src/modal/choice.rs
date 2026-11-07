@@ -90,7 +90,8 @@ fn choice_area(choice: &Choice<'_>, area: Rect) -> Rect {
         .max(title.saturating_add(TITLE_CHROME));
     let width = fit(wanted, MIN_BOX_WIDTH, area.width);
     // One empty row above and below the buttons.
-    let height = hinted_box_height().saturating_add(2);
+    let inner = width.saturating_sub(BOX_CHROME);
+    let height = hinted_box_height(&HINTS, inner).saturating_add(2);
     centered_rect(width, height, area)
 }
 

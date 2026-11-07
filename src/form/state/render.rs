@@ -31,8 +31,6 @@ pub const MULTILINE_ROWS: usize = 4;
 const MULTILINE_WIDTH: usize = 40;
 /// The fewest columns a value gets, however short the values are.
 const MIN_VALUE_WIDTH: usize = 28;
-/// Rows of the hint block: a spacer, the field's keys, the form's keys.
-pub const HINT_ROWS: u16 = 3;
 /// What a mixed value shows.
 const MIXED: &str = "(mixed)";
 
@@ -56,9 +54,10 @@ impl FormState {
         let inner_width =
             width.min(area.width).saturating_sub(MODAL_CHROME_WIDTH);
         let rows = self.rows_at(usize::from(inner_width));
+        let hint_rows = hints::hint_rows(usize::from(inner_width));
         let height = u16::try_from(rows)
             .unwrap_or(u16::MAX)
-            .saturating_add(HINT_ROWS + MODAL_CHROME_HEIGHT);
+            .saturating_add(hint_rows + MODAL_CHROME_HEIGHT);
         let rect = centered_rect(width, height, area);
         frame.render_widget(Clear, rect);
         let inner = overlay::framed(frame, rect, skin, &self.title);
@@ -70,12 +69,12 @@ impl FormState {
             &chrome::position_badge(position, total),
         );
         let rows_area = Rect {
-            height: inner.height.saturating_sub(HINT_ROWS),
+            height: inner.height.saturating_sub(hint_rows),
             ..inner
         };
         let hints_area = Rect {
             y: rows_area.bottom(),
-            height: inner.height.min(HINT_ROWS),
+            height: inner.height.min(hint_rows),
             ..inner
         };
         self.render_rows(frame, rows_area, skin);
@@ -85,11 +84,48 @@ impl FormState {
         );
     }
 
+    /// Draws the form inline in a host's content area instead of as a
+    /// modal: the title as the first row (in the accent and bold, in line
+    /// with the labels), a blank row, then the fields, the focused row's
+    /// tint inside `area`. The keys belong in the host's footer
+    /// ([`FormState::hint_groups`]), the question or notice in its status
+    /// band ([`FormState::prompt`]).
+    pub fn render_inline(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
+        if area.height == 0 {
+            return;
+        }
+        let title_style = style::accent(&skin.palette)
+            .add_modifier(ratatui::style::Modifier::BOLD);
+        let title = Line::from(vec![
+            Span::raw(" ".repeat(field::MARK_WIDTH)),
+            Span::styled(self.title.trim().to_string(), title_style),
+        ]);
+        frame.render_widget(Paragraph::new(title), Rect { height: 1, ..area });
+        let rows = Rect {
+            y: area.y.saturating_add(2),
+            height: area.height.saturating_sub(2),
+            ..area
+        };
+        self.draw_rows(frame, rows, skin, 0);
+    }
+
     /// Draws the rows into `area` (a host layout or the modal's inside):
     /// scrolled so the focused field shows, its row tinted through the
     /// modal padding, a scrollbar while they overflow, the live editor of a
     /// multi-line field and the suggestions of the field being typed into.
     pub fn render_rows(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
+        self.draw_rows(frame, area, skin, MODAL_PADDING_X);
+    }
+
+    /// [`FormState::render_rows`] with the focus tint reaching `bleed`
+    /// columns past `area` on each side (the modal padding, or none).
+    fn draw_rows(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        skin: &Skin,
+        bleed: u16,
+    ) {
         let width = usize::from(area.width);
         let lines = self.lines(width, skin);
         let viewport = usize::from(area.height);
@@ -110,9 +146,9 @@ impl FormState {
             let height =
                 u16::try_from(focus_rows.min(viewport - row)).unwrap_or(1);
             let tint = Rect::new(
-                area.x.saturating_sub(MODAL_PADDING_X),
+                area.x.saturating_sub(bleed),
                 y,
-                area.width + 2 * MODAL_PADDING_X,
+                area.width + 2 * bleed,
                 height,
             )
             .intersection(frame.area());

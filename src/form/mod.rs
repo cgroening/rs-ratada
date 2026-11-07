@@ -20,8 +20,8 @@ pub use run::FormHost;
 mod state;
 
 pub use state::{
-    FieldKind, FormEvent, FormField, FormState, HINT_ROWS, MULTILINE_ROWS, NO,
-    YES, is_yes, yes_no,
+    FieldKind, FormEvent, FormField, FormState, MULTILINE_ROWS, NO, YES,
+    hint_rows, is_yes, yes_no,
 };
 
 /// The format a date field keeps its value in.

@@ -26,10 +26,10 @@ use super::{
     list,
     modal::{
         ModalSignal,
-        render::{HINT_BLOCK_ROWS, hint_block},
+        render::{hint_block, hint_block_height},
     },
     overlay::{self, PopupFlow, popup_with_paste},
-    shortcut_hints, style,
+    style,
     terminal::Tui,
 };
 use crate::{
@@ -281,7 +281,10 @@ fn render_body<B: AsRef<str>>(
         .constraints([
             Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(shortcut_hints::footer_height(HINT_BLOCK_ROWS)),
+            Constraint::Length(hint_block_height(
+                &FOOTER_HINTS,
+                usize::from(inner.width),
+            )),
         ])
         .split(inner);
 

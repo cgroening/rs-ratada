@@ -27,7 +27,8 @@ mod render;
 #[cfg(test)]
 mod tests;
 
-pub use render::{HINT_ROWS, MULTILINE_ROWS};
+pub use hints::hint_rows;
+pub use render::MULTILINE_ROWS;
 
 use ratatui::style::Style;
 
