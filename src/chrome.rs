@@ -34,6 +34,21 @@ pub fn menu_panel(skin: &Skin) -> Block<'static> {
     panel().style(style::bg(skin.palette.panel))
 }
 
+/// Fills `area` with `bg` and returns the region inset by `padding`: a tinted
+/// panel of the app frame (header band, body, hint band) whose content keeps
+/// its distance to the panel edges.
+pub fn fill_panel(
+    frame: &mut Frame,
+    area: Rect,
+    bg: Color,
+    padding: Padding,
+) -> Rect {
+    let block = Block::default().style(style::bg(bg)).padding(padding);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    inner
+}
+
 /// Blank columns between a modal box's border and its content, per side.
 pub const MODAL_PADDING_X: u16 = 2;
 

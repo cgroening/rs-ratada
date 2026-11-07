@@ -9,7 +9,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{Frame, layout::Rect, text::Line};
 
 use super::{chrome, input, list, nav};
-use crate::theme::{GlyphVariant, Skin};
+use crate::theme::Skin;
 
 /// A node in a tree: a label plus zero or more children.
 ///
@@ -126,7 +126,18 @@ impl TreeView {
     /// current node.
     ///
     /// These are bare keys only: a Ctrl chord is ignored, so a caller stays
-    /// free to bind `Ctrl+<key>` itself.
+    /// free to bind `Ctrl+<key>` itself. A host whose keys are remappable
+    /// resolves its own keymap and calls the movement methods ([`step`],
+    /// [`page`], [`to_first`], [`to_last`], [`expand_selected`],
+    /// [`collapse_selected`], [`toggle_selected`]) instead.
+    ///
+    /// [`step`]: Self::step
+    /// [`page`]: Self::page
+    /// [`to_first`]: Self::to_first
+    /// [`to_last`]: Self::to_last
+    /// [`expand_selected`]: Self::expand_selected
+    /// [`collapse_selected`]: Self::collapse_selected
+    /// [`toggle_selected`]: Self::toggle_selected
     pub fn handle_key(&mut self, key: KeyEvent) {
         // The tree binds no chord of its own, and crossterm reports Ctrl+L and
         // Ctrl+H as `Char('l')`/`Char('h')` - without this they would expand
@@ -134,37 +145,60 @@ impl TreeView {
         if input::is_command(key) {
             return;
         }
-        let flat = self.flatten();
-        if flat.is_empty() {
-            return;
-        }
-        let page = self.viewport.get().max(1) as isize;
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.cursor = nav::cycle(self.cursor, flat.len(), -1);
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.cursor = nav::cycle(self.cursor, flat.len(), 1);
-            }
-            KeyCode::PageUp => {
-                self.cursor = nav::step_clamped(self.cursor, flat.len(), -page);
-            }
-            KeyCode::PageDown => {
-                self.cursor = nav::step_clamped(self.cursor, flat.len(), page);
-            }
-            KeyCode::Home | KeyCode::Char('g') => self.cursor = 0,
-            KeyCode::End | KeyCode::Char('G') => {
-                self.cursor = flat.len().saturating_sub(1);
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                self.set_expanded(&flat, true);
-            }
-            KeyCode::Left | KeyCode::Char('h') => {
-                self.set_expanded(&flat, false);
-            }
-            KeyCode::Enter | KeyCode::Char(' ') => self.toggle(&flat),
+            KeyCode::Up | KeyCode::Char('k') => self.step(-1),
+            KeyCode::Down | KeyCode::Char('j') => self.step(1),
+            KeyCode::PageUp => self.page(-1),
+            KeyCode::PageDown => self.page(1),
+            KeyCode::Home | KeyCode::Char('g') => self.to_first(),
+            KeyCode::End | KeyCode::Char('G') => self.to_last(),
+            KeyCode::Right | KeyCode::Char('l') => self.expand_selected(),
+            KeyCode::Left | KeyCode::Char('h') => self.collapse_selected(),
+            KeyCode::Enter | KeyCode::Char(' ') => self.toggle_selected(),
             _ => {}
         }
+    }
+
+    /// Moves the cursor `delta` rows, wrapping at both ends.
+    pub fn step(&mut self, delta: isize) {
+        let len = self.flatten().len();
+        self.cursor = nav::cycle(self.cursor, len, delta);
+    }
+
+    /// Moves the cursor by `pages` viewports, clamped at the ends.
+    pub fn page(&mut self, pages: isize) {
+        let len = self.flatten().len();
+        let page = self.viewport.get().max(1) as isize;
+        self.cursor = nav::step_clamped(self.cursor, len, pages * page);
+    }
+
+    /// Moves the cursor to the first row.
+    pub fn to_first(&mut self) {
+        self.cursor = 0;
+    }
+
+    /// Moves the cursor to the last row.
+    pub fn to_last(&mut self) {
+        self.cursor = self.flatten().len().saturating_sub(1);
+    }
+
+    /// Opens the node under the cursor; a leaf does nothing.
+    pub fn expand_selected(&mut self) {
+        let flat = self.flatten();
+        self.set_expanded(&flat, true);
+    }
+
+    /// Closes the node under the cursor; a leaf does nothing.
+    pub fn collapse_selected(&mut self) {
+        let flat = self.flatten();
+        self.set_expanded(&flat, false);
+        self.clamp_cursor();
+    }
+
+    /// Opens a closed node under the cursor and closes an open one.
+    pub fn toggle_selected(&mut self) {
+        let flat = self.flatten();
+        self.toggle(&flat);
         self.clamp_cursor();
     }
 
@@ -242,12 +276,15 @@ impl TreeView {
     /// Renders the visible nodes with indentation and expand markers, the cursor
     /// row highlighted and a scrollbar on overflow.
     pub fn render(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
-        let ascii = matches!(skin.glyphs.variant, GlyphVariant::Ascii);
         let lines: Vec<Line<'static>> = self
             .flatten()
             .iter()
             .map(|node| {
-                let marker = marker(node.has_children, node.expanded, ascii);
+                let marker = if node.has_children {
+                    skin.glyphs.fold(node.expanded)
+                } else {
+                    " "
+                };
                 let indent = "  ".repeat(node.depth);
                 Line::from(format!("{indent}{marker} {}", node.label))
             })
@@ -266,17 +303,6 @@ impl TreeView {
             None => list::render_counted(frame, area, skin, view),
         };
         self.viewport.set(viewport);
-    }
-}
-
-/// The expand/collapse marker for a node.
-fn marker(has_children: bool, expanded: bool, ascii: bool) -> &'static str {
-    match (has_children, expanded, ascii) {
-        (false, _, _) => " ",
-        (true, true, false) => "\u{25be}", // ▾
-        (true, false, false) => "\u{25b8}", // ▸
-        (true, true, true) => "-",
-        (true, false, true) => "+",
     }
 }
 

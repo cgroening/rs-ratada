@@ -242,7 +242,7 @@ impl Table {
         None
     }
 
-    /// The 2-cell left gutter: a check marker for selected rows (row mode).
+    /// The 2-cell left gutter: the mark glyph for selected rows (row mode).
     fn gutter_span(
         &self,
         orig: usize,
@@ -252,7 +252,7 @@ impl Table {
         let selected =
             self.mode == SelectMode::Row && self.selected_rows.contains(&orig);
         let text = if line_no == 0 && selected {
-            format!("{} ", skin.glyphs.check)
+            format!("{} ", skin.glyphs.mark)
         } else {
             " ".repeat(GUTTER)
         };

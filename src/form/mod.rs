@@ -1,26 +1,32 @@
-//! A schema-driven form modal.
+//! A schema-driven form modal, and the [`field`] building blocks every form
+//! row is drawn from.
 //!
-//! Build it from a list of [`Field`]s, run it, then read the values back. All
-//! fields are visible; `Tab`/`BackTab` step between them (wrapping); the
-//! focused row is tinted, changed fields get a `*` marker, `Ctrl+S` saves and
-//! `Esc` cancels. Field behaviour: text edits inline; multiline edits inline
-//! and opens `$EDITOR` with `Ctrl+G`; bool toggles with `Space`; choice cycles
-//! with `←`/`→`; date opens the calendar with `Enter` (marked by the pointer
-//! glyph).
+//! Build a [`Form`] from a list of [`Field`]s and [`run`](Form::run) it with a
+//! save callback. All fields are visible; `Tab`/`BackTab` (and `↑`/`↓`) step
+//! between them, wrapping. The form opens in normal mode, where letters are
+//! commands: `Enter` edits the focused text field (or toggles a checkbox,
+//! opens the calendar of a date field), `←`/`→` step a choice, `s` saves and
+//! `y` copies the focused value. While a field is edited, letters type into
+//! it; `Enter` (single line) or `Esc` end the editing. In both modes `Ctrl+S`
+//! saves, `Ctrl+O` puts the focused field back to its baseline and `Ctrl+G`
+//! hands a multi-line field to `$EDITOR`.
 //!
-//! The form does not validate: after [`FormOutcome::Saved`] the host checks
-//! the values and, on a problem, calls [`Form::set_error`] and runs the form
-//! again. The message shows in red under its field until the next key.
+//! Saving calls the host's callback with the fields. It persists them or
+//! returns a [`FieldProblem`]: one tied to a field shows in red under it and
+//! takes the focus, any other in a message box. After a save the form stays
+//! open with the saved values as the new baseline; a second save press within
+//! a second closes it. `Esc` closes an unchanged form at once and asks "Save
+//! changes?" otherwise.
 
 use chrono::NaiveDate;
 
-use super::{input::InputField, textarea::TextArea};
+use super::{double_press::DoublePress, input::InputField, textarea::TextArea};
 
+pub mod field;
 mod render;
 mod run;
 
 const MULTILINE_ROWS: u16 = 4;
-const LABEL_WIDTH: u16 = 14;
 
 /// A read-only snapshot of a field's value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,27 +43,29 @@ pub enum FieldValue {
     Date(Option<NaiveDate>),
 }
 
+/// A field's value and its baseline - the value the form opened with or last
+/// saved, which the change marker compares against and `Ctrl+O` restores.
 enum FieldState {
     Text {
         input: InputField,
-        initial: String,
+        baseline: String,
     },
     Multiline {
         area: TextArea,
-        initial: String,
+        baseline: String,
     },
     Bool {
         value: bool,
-        initial: bool,
+        baseline: bool,
     },
     Choice {
         index: usize,
-        initial: usize,
+        baseline: usize,
         options: Vec<String>,
     },
     Date {
         value: Option<NaiveDate>,
-        initial: Option<NaiveDate>,
+        baseline: Option<NaiveDate>,
     },
 }
 
@@ -74,7 +82,7 @@ impl Field {
             label: label.into(),
             state: FieldState::Text {
                 input: InputField::new(initial),
-                initial: initial.to_string(),
+                baseline: initial.to_string(),
             },
         }
     }
@@ -85,7 +93,7 @@ impl Field {
             label: label.into(),
             state: FieldState::Multiline {
                 area: TextArea::new(initial),
-                initial: initial.to_string(),
+                baseline: initial.to_string(),
             },
         }
     }
@@ -96,22 +104,24 @@ impl Field {
             label: label.into(),
             state: FieldState::Bool {
                 value: initial,
-                initial,
+                baseline: initial,
             },
         }
     }
 
-    /// A cycling choice field over `options`, starting at index `initial`.
+    /// A choice field over `options`, stepped with `←`/`→`, starting at
+    /// index `initial` (clamped to the last option).
     pub fn choice(
         label: impl Into<String>,
         options: Vec<String>,
         initial: usize,
     ) -> Self {
+        let index = initial.min(options.len().saturating_sub(1));
         Self {
             label: label.into(),
             state: FieldState::Choice {
-                index: initial.min(options.len().saturating_sub(1)),
-                initial,
+                index,
+                baseline: index,
                 options,
             },
         }
@@ -123,7 +133,7 @@ impl Field {
             label: label.into(),
             state: FieldState::Date {
                 value: initial,
-                initial,
+                baseline: initial,
             },
         }
     }
@@ -143,22 +153,78 @@ impl Field {
                 FieldValue::Multiline(area.text().to_string())
             }
             FieldState::Bool { value, .. } => FieldValue::Bool(*value),
-            FieldState::Choice { index, options, .. } => {
-                FieldValue::Choice(options[*index].clone())
-            }
+            FieldState::Choice { index, options, .. } => FieldValue::Choice(
+                options.get(*index).cloned().unwrap_or_default(),
+            ),
             FieldState::Date { value, .. } => FieldValue::Date(*value),
         }
     }
 
-    /// Whether the value changed from its initial.
+    /// Whether the value differs from its baseline.
     pub fn is_dirty(&self) -> bool {
         match &self.state {
-            FieldState::Text { input, initial } => input.value() != initial,
-            FieldState::Multiline { area, initial } => area.text() != initial,
-            FieldState::Bool { value, initial } => value != initial,
-            FieldState::Choice { index, initial, .. } => index != initial,
-            FieldState::Date { value, initial } => value != initial,
+            FieldState::Text { input, baseline } => input.value() != baseline,
+            FieldState::Multiline { area, baseline } => area.text() != baseline,
+            FieldState::Bool { value, baseline } => value != baseline,
+            FieldState::Choice {
+                index, baseline, ..
+            } => index != baseline,
+            FieldState::Date { value, baseline } => value != baseline,
         }
+    }
+
+    /// Puts the value back to its baseline.
+    fn reset(&mut self) {
+        match &mut self.state {
+            FieldState::Text { input, baseline } => {
+                *input = InputField::new(baseline);
+            }
+            FieldState::Multiline { area, baseline } => {
+                area.set_text(baseline.clone());
+            }
+            FieldState::Bool { value, baseline } => *value = *baseline,
+            FieldState::Choice {
+                index, baseline, ..
+            } => *index = *baseline,
+            FieldState::Date { value, baseline } => *value = *baseline,
+        }
+    }
+
+    /// Makes the current value the baseline (after a save).
+    fn mark_clean(&mut self) {
+        match &mut self.state {
+            FieldState::Text { input, baseline } => {
+                *baseline = input.value().to_string();
+            }
+            FieldState::Multiline { area, baseline } => {
+                *baseline = area.text().to_string();
+            }
+            FieldState::Bool { value, baseline } => *baseline = *value,
+            FieldState::Choice {
+                index, baseline, ..
+            } => *baseline = *index,
+            FieldState::Date { value, baseline } => *baseline = *value,
+        }
+    }
+
+    /// The value as the text `y` copies; `None` when there is none.
+    fn copy_text(&self) -> Option<String> {
+        let text = match self.value() {
+            FieldValue::Text(text)
+            | FieldValue::Multiline(text)
+            | FieldValue::Choice(text) => text,
+            FieldValue::Bool(value) => value.to_string(),
+            FieldValue::Date(date) => date?.to_string(),
+        };
+        (!text.is_empty()).then_some(text)
+    }
+
+    /// Whether `Enter` starts typing into this field.
+    fn is_typed(&self) -> bool {
+        matches!(
+            self.state,
+            FieldState::Text { .. } | FieldState::Multiline { .. }
+        )
     }
 
     fn height(&self) -> u16 {
@@ -169,14 +235,51 @@ impl Field {
     }
 }
 
+/// A problem the save callback reports: the save did not happen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldProblem {
+    /// The index of the field to blame, or `None` for a problem of the whole
+    /// form (a write conflict, an I/O error).
+    pub field: Option<usize>,
+    /// What is wrong, as the user should read it.
+    pub message: String,
+}
+
+impl FieldProblem {
+    /// A problem with the field at `index`: it shows in red under the field,
+    /// which takes the focus.
+    pub fn at(index: usize, message: impl Into<String>) -> Self {
+        Self {
+            field: Some(index),
+            message: message.into(),
+        }
+    }
+
+    /// A problem of the whole form: it shows in a message box.
+    pub fn form(message: impl Into<String>) -> Self {
+        Self {
+            field: None,
+            message: message.into(),
+        }
+    }
+}
+
 /// How the form was closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormOutcome {
-    /// The user saved (`Ctrl+S`).
+    /// The form was closed after at least one successful save.
     Saved,
-    /// The user cancelled (`Esc`).
+    /// The form was closed without saving anything.
     Cancelled,
-    /// The global quit chord was pressed.
+    /// The global quit chord was pressed (saves made before still stand).
     Quit,
+}
+
+/// Whether letters are commands or type into the focused field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Normal,
+    Editing,
 }
 
 /// A modal form over a set of [`Field`]s.
@@ -184,8 +287,13 @@ pub struct Form {
     title: String,
     fields: Vec<Field>,
     focus: usize,
-    /// A host-reported problem: the field index and its message.
+    mode: Mode,
+    /// A field problem: the field index and its message.
     error: Option<(usize, String)>,
+    /// A short confirmation shown in the hint block until the next key.
+    notice: Option<String>,
+    save_press: DoublePress,
+    has_saved: bool,
 }
 
 impl Form {
@@ -195,18 +303,27 @@ impl Form {
             title: title.into(),
             fields,
             focus: 0,
+            mode: Mode::Normal,
             error: None,
+            notice: None,
+            save_press: DoublePress::new(),
+            has_saved: false,
         }
     }
 
-    /// The fields, for reading values after [`FormOutcome::Saved`].
+    /// The fields, for reading the values.
     pub fn fields(&self) -> &[Field] {
         &self.fields
     }
 
-    /// Reports a problem with the field at `index`: the next [`Form::run`]
-    /// shows `message` in red under that field, its label red, and focuses it.
-    /// The message clears on the next key. An index past the last field is
+    /// Whether any field differs from its baseline.
+    pub fn is_dirty(&self) -> bool {
+        self.fields.iter().any(Field::is_dirty)
+    }
+
+    /// Reports a problem with the field at `index` before the form runs: it
+    /// shows in red under that field, its label red, and focuses it. The
+    /// message clears on the next key. An index past the last field is
     /// ignored.
     pub fn set_error(&mut self, index: usize, message: impl Into<String>) {
         if index < self.fields.len() {
@@ -226,6 +343,18 @@ impl Form {
     /// The rows the field at `index` takes, with its error line.
     fn row_height(&self, index: usize) -> u16 {
         self.fields[index].height() + u16::from(self.error_for(index).is_some())
+    }
+
+    /// Puts the focused field back to its baseline.
+    fn reset_focused(&mut self) {
+        self.fields[self.focus].reset();
+    }
+
+    /// Makes every current value the baseline (after a save).
+    fn mark_clean(&mut self) {
+        for field in &mut self.fields {
+            field.mark_clean();
+        }
     }
 }
 
@@ -276,5 +405,23 @@ mod tests {
         }
         assert!(field.is_dirty());
         assert_eq!(field.value(), FieldValue::Choice("b".to_string()));
+    }
+
+    #[test]
+    fn reset_restores_the_baseline_and_a_save_moves_it() {
+        let mut field = Field::checkbox("done", false);
+        if let FieldState::Bool { value, .. } = &mut field.state {
+            *value = true;
+        }
+        field.reset();
+        assert_eq!(field.value(), FieldValue::Bool(false));
+
+        if let FieldState::Bool { value, .. } = &mut field.state {
+            *value = true;
+        }
+        field.mark_clean();
+        assert!(!field.is_dirty());
+        field.reset();
+        assert_eq!(field.value(), FieldValue::Bool(true));
     }
 }

@@ -301,7 +301,7 @@ fn render_viewer_body(
     }
 }
 
-/// A dim footer line for the active link (`› text · url`), clipped to `width`.
+/// A dim footer line for the active link (`↗ text · url`), clipped to `width`.
 fn link_hint_line(
     view: &MarkdownView,
     skin: &Skin,
@@ -310,7 +310,10 @@ fn link_hint_line(
     match view.selected_link() {
         Some(link) => {
             let text = truncate(
-                &format!(" \u{203a} {} \u{b7} {} ", link.text, link.url),
+                &format!(
+                    " {} {} \u{b7} {} ",
+                    skin.glyphs.link, link.text, link.url
+                ),
                 width,
             );
             Line::from(Span::styled(text, style::secondary(&skin.palette)))

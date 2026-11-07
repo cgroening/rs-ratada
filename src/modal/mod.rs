@@ -23,6 +23,7 @@ mod multi_state;
 mod number;
 mod picker;
 pub(crate) mod render;
+mod save_changes;
 mod select_with;
 mod styled;
 mod text_input;
@@ -39,6 +40,7 @@ pub use picker::{
     select_styled,
 };
 pub use render::{HINT_BLOCK_ROWS, hint_block, hints_width};
+pub use save_changes::{SaveChoice, ask_save};
 pub use select_with::{SelectItem, SelectOptions, select_with};
 pub use styled::{
     StyledQuestion, StyledViews, ToggleView, confirm_styled,
@@ -138,7 +140,7 @@ mod tests {
         };
         terminal
             .draw(|frame| {
-                let rect = picker_area(frame.area(), items.len(), hints);
+                let rect = picker_area(frame.area(), items.len(), 10, hints);
                 render_picker(frame, &skin(), items, &chrome, rect);
             })
             .expect("the frame draws");
@@ -278,7 +280,7 @@ mod tests {
         for (width, height) in [(1, 1), (4, 2), (20, 6), (27, 10)] {
             let area = Rect::new(0, 0, width, height);
             for rect in [
-                picker_area(area, 40, &[("enter", "pick")]),
+                picker_area(area, 40, 10, &[("enter", "pick")]),
                 input_area(area),
                 input_area_wide(area),
             ] {
@@ -291,8 +293,12 @@ mod tests {
     #[test]
     fn a_roomy_terminal_still_gets_the_preferred_size() {
         let area = Rect::new(0, 0, 100, 40);
-        let picker = picker_area(area, 4, &[("enter", "pick")]);
-        assert_eq!(picker.width, 50); // half the width
+        let picker = picker_area(area, 4, 40, &[("enter", "pick")]);
+        // As wide as its rows (label, pointer and scrollbar columns) plus
+        // the frame and padding - not a share of the screen.
+        assert_eq!(picker.width, 40 + 3 + 6);
+        let narrow = picker_area(area, 4, 3, &[("enter", "pick")]);
+        assert_eq!(narrow.width, 28 + 6); // the narrowest picker
         // One row per item, plus the frame and the hint block.
         assert_eq!(
             picker.height,
@@ -321,7 +327,7 @@ mod tests {
         let area = Rect::new(0, 0, 60, 20);
         let hints =
             [("space", "tick"), ("enter", "confirm"), ("esc", "cancel")];
-        let picker = picker_area(area, 2, &hints);
+        let picker = picker_area(area, 2, 10, &hints);
         let hint_width = super::render::hints_width(&hints);
         assert!(usize::from(picker.width) >= hint_width + 2);
     }

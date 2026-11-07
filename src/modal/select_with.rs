@@ -18,8 +18,8 @@ use ratatui::{
 use super::ModalSignal;
 use super::picker::{navigate_list, navigate_list_without_vim};
 use super::render::{
-    SELECT_HINTS, picker_area, render_picker_badge, render_picker_hints,
-    render_picker_list,
+    SELECT_HINTS, labels_width, picker_area, render_picker_badge,
+    render_picker_hints, render_picker_list,
 };
 use crate::{
     input,
@@ -31,6 +31,9 @@ use crate::{
 
 /// Columns the `[K] ` key prefix takes, also for a row without a key.
 const KEY_PREFIX_BLANK: &str = "    ";
+
+/// Columns the check mark after the entry that applies takes (gap and glyph).
+const CURRENT_MARK_WIDTH: usize = 2;
 
 /// One entry of [`select_with`]: its label, its style and the key that picks
 /// it.
@@ -101,12 +104,21 @@ pub struct SelectOptions {
     /// `j`/`k` move the cursor, as in [`super::select`]. Turn this off when an
     /// item's key is `j` or `k`, which navigation would otherwise take first.
     pub vim_keys: bool,
+    /// The entry that applies right now. The list opens on it (instead of
+    /// `initial`) and it keeps the check glyph after its label while the
+    /// cursor moves on, so the user always sees what is set. `None` marks
+    /// nothing.
+    pub current: Option<usize>,
 }
 
 impl Default for SelectOptions {
-    /// The behaviour of [`super::select`]: `j`/`k` move the cursor.
+    /// The behaviour of [`super::select`]: `j`/`k` move the cursor, no entry
+    /// is marked as current.
     fn default() -> Self {
-        Self { vim_keys: true }
+        Self {
+            vim_keys: true,
+            current: None,
+        }
     }
 }
 
@@ -136,15 +148,23 @@ pub fn select_with(
     if items.is_empty() {
         return Ok(ModalSignal::Cancelled);
     }
-    let mut cursor = initial.min(items.len() - 1);
+    let current = options.current.filter(|index| *index < items.len());
+    let mut cursor = current.unwrap_or(initial).min(items.len() - 1);
     let page_rows = Cell::new(1usize);
     popup(
         tui,
         &mut cursor,
-        |area, _| picker_area(area, items.len(), &SELECT_HINTS),
+        |area, _| {
+            let width = keyed_width(items, current.is_some());
+            picker_area(area, items.len(), width, &SELECT_HINTS)
+        },
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
-            let list = KeyedList { title, items };
+            let list = KeyedList {
+                title,
+                items,
+                current,
+            };
             page_rows.set(list.render(frame, skin, *cursor, rect));
         },
         |cursor, key| {
@@ -234,10 +254,22 @@ fn apply_hotkey(
     }
 }
 
-/// What the keyed picker draws: its frame title and its entries.
+/// The columns the widest row of a keyed list needs: the key column (when
+/// any entry has a key), the label and the check of the current entry.
+fn keyed_width(items: &[SelectItem], has_current: bool) -> usize {
+    let has_keys = items.iter().any(|item| item.usable_hotkey().is_some());
+    let labels = labels_width(items.iter().map(|item| item.label.as_str()));
+    let keys = if has_keys { KEY_PREFIX_BLANK.len() } else { 0 };
+    let mark = if has_current { CURRENT_MARK_WIDTH } else { 0 };
+    keys + labels + mark
+}
+
+/// What the keyed picker draws: its frame title, its entries and the entry
+/// that applies.
 struct KeyedList<'a> {
     title: &'a str,
     items: &'a [SelectItem],
+    current: Option<usize>,
 }
 
 impl KeyedList<'_> {
@@ -255,15 +287,21 @@ impl KeyedList<'_> {
         let has_keys =
             self.items.iter().any(|item| item.usable_hotkey().is_some());
         let key_style = style::fg(skin.palette.foreground_dim);
+        let check_style = style::accent(&skin.palette);
         let entries: Vec<ListItem> = self
             .items
             .iter()
-            .map(|item| {
-                let mut spans = Vec::with_capacity(2);
+            .enumerate()
+            .map(|(index, item)| {
+                let mut spans = Vec::with_capacity(3);
                 if has_keys {
                     spans.push(Span::styled(key_prefix(item), key_style));
                 }
                 spans.push(Span::styled(item.label.clone(), item.style));
+                if self.current == Some(index) {
+                    let check = format!(" {}", skin.glyphs.check);
+                    spans.push(Span::styled(check, check_style));
+                }
                 ListItem::new(Line::from(spans))
             })
             .collect();
@@ -429,7 +467,10 @@ mod tests {
 
     #[test]
     fn without_vim_keys_k_picks_its_entry_and_j_does_not_move() {
-        let options = SelectOptions { vim_keys: false };
+        let options = SelectOptions {
+            vim_keys: false,
+            ..SelectOptions::default()
+        };
         let keys = vec![bare(KeyCode::Char('j')), bare(KeyCode::Char('k'))];
         assert_eq!(picked(&run(&categories(), options, keys)), Some(4));
         let keys = vec![bare(KeyCode::Down), bare(KeyCode::Enter)];
@@ -454,19 +495,46 @@ mod tests {
         assert!(plain.iter().any(|row| row.contains("│  \u{203a} Kinder")));
     }
 
+    #[test]
+    fn the_current_entry_opens_under_the_cursor_and_keeps_its_check() {
+        let options = SelectOptions {
+            current: Some(2),
+            ..SelectOptions::default()
+        };
+        let keys = vec![bare(KeyCode::Enter)];
+        assert_eq!(picked(&run(&categories(), options, keys)), Some(2));
+
+        let rows = rendered_with(&categories(), Some(2), 0);
+        let familie = rows.iter().find(|row| row.contains("Familie")).unwrap();
+        assert!(familie.contains("Familie \u{2713}"), "{familie:?}");
+        let code = rows.iter().find(|row| row.contains("Code")).unwrap();
+        assert!(!code.contains('\u{2713}'));
+    }
+
     /// Draws the keyed list on a real frame and returns its rows as text.
     fn rendered(items: &[SelectItem]) -> Vec<String> {
+        rendered_with(items, None, 0)
+    }
+
+    /// Like [`rendered`], with an entry marked as current and the cursor on
+    /// `cursor`.
+    fn rendered_with(
+        items: &[SelectItem],
+        current: Option<usize>,
+        cursor: usize,
+    ) -> Vec<String> {
         let backend = TestBackend::new(WIDTH, HEIGHT);
         let mut terminal = Terminal::new(backend).expect("a test terminal");
         terminal
             .draw(|frame| {
                 let rect =
-                    picker_area(frame.area(), items.len(), &SELECT_HINTS);
+                    picker_area(frame.area(), items.len(), 10, &SELECT_HINTS);
                 let list = KeyedList {
                     title: "Pick",
                     items,
+                    current,
                 };
-                list.render(frame, &skin(), 0, rect);
+                list.render(frame, &skin(), cursor, rect);
             })
             .expect("the frame draws");
         let buffer = terminal.backend().buffer();

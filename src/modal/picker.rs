@@ -8,8 +8,8 @@ use ratatui::{Frame, style::Style};
 use super::ModalSignal;
 use super::multi_state::{CONFIRM_HINTS, MultiSelect};
 use super::render::{
-    PickerChrome, SELECT_HINTS, picker_area, render_picker,
-    render_styled_picker,
+    CHECK_PREFIX_WIDTH, PickerChrome, SELECT_HINTS, labels_width, picker_area,
+    render_picker, render_styled_picker,
 };
 use crate::{
     input::{self},
@@ -96,7 +96,9 @@ pub fn select(
     popup(
         tui,
         &mut cursor,
-        |area, _| picker_area(area, items.len(), &SELECT_HINTS),
+        |area, _| {
+            picker_area(area, items.len(), plain_width(items), &SELECT_HINTS)
+        },
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
             let chrome = PickerChrome {
@@ -122,7 +124,6 @@ pub fn multi_select(
     title: &str,
     items: &[String],
     initial: &[usize],
-    check: &str,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<Vec<usize>>> {
     if items.is_empty() {
@@ -132,14 +133,17 @@ pub fn multi_select(
     popup(
         tui,
         &mut state,
-        |area, _| picker_area(area, items.len(), &CONFIRM_HINTS),
+        |area, _| {
+            let width = plain_width(items) + CHECK_PREFIX_WIDTH;
+            picker_area(area, items.len(), width, &CONFIRM_HINTS)
+        },
         |frame, _| render_bg(frame),
         |frame, rect, state: &MultiSelect| {
             let hints = state.hints();
             let chrome = PickerChrome {
                 title,
                 cursor: state.cursor,
-                checked: Some((&state.checked, check)),
+                checked: Some((&state.checked, skin.glyphs.mark)),
                 hints: &hints,
             };
             state
@@ -182,7 +186,9 @@ pub fn select_reorderable(
     popup(
         tui,
         &mut cursor,
-        |area, _| picker_area(area, items.len(), &REORDER_HINTS),
+        |area, _| {
+            picker_area(area, items.len(), plain_width(items), &REORDER_HINTS)
+        },
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
             let chrome = PickerChrome {
@@ -242,7 +248,9 @@ pub fn select_styled(
     popup(
         tui,
         &mut cursor,
-        |area, _| picker_area(area, items.len(), &SELECT_HINTS),
+        |area, _| {
+            picker_area(area, items.len(), styled_width(items), &SELECT_HINTS)
+        },
         |frame, _| render_bg(frame),
         |frame, rect, cursor: &usize| {
             let chrome = PickerChrome {
@@ -266,7 +274,6 @@ pub fn multi_select_styled(
     title: &str,
     items: &[(String, Style)],
     initial: &[usize],
-    check: &str,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<Vec<usize>>> {
     if items.is_empty() {
@@ -276,14 +283,17 @@ pub fn multi_select_styled(
     popup(
         tui,
         &mut state,
-        |area, _| picker_area(area, items.len(), &CONFIRM_HINTS),
+        |area, _| {
+            let width = styled_width(items) + CHECK_PREFIX_WIDTH;
+            picker_area(area, items.len(), width, &CONFIRM_HINTS)
+        },
         |frame, _| render_bg(frame),
         |frame, rect, state: &MultiSelect| {
             let hints = state.hints();
             let chrome = PickerChrome {
                 title,
                 cursor: state.cursor,
-                checked: Some((&state.checked, check)),
+                checked: Some((&state.checked, skin.glyphs.mark)),
                 hints: &hints,
             };
             let viewport =
@@ -310,4 +320,14 @@ fn pick_key(
         KeyCode::Esc => PopupFlow::Cancelled,
         _ => PopupFlow::Continue,
     }
+}
+
+/// The widest plain label, for sizing a picker.
+fn plain_width(items: &[String]) -> usize {
+    labels_width(items.iter().map(String::as_str))
+}
+
+/// The widest styled label, for sizing a picker.
+fn styled_width(items: &[(String, Style)]) -> usize {
+    labels_width(items.iter().map(|(label, _)| label.as_str()))
 }

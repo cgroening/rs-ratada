@@ -36,7 +36,7 @@ pub use state::{
 };
 
 use super::{keymap, style};
-use crate::theme::Color;
+use crate::theme::{Color, Skin};
 
 /// A titled group of key hints. An empty `label` renders without a label
 /// column, so the group's hints flow like an ungrouped list.
@@ -63,6 +63,19 @@ pub struct HintStyle {
     pub background: Option<Color>,
 }
 
+impl HintStyle {
+    /// The main-app footer: keys in the accent and bold, labels and
+    /// descriptions dim, one blank row above and no background, so the hints
+    /// sit on the terminal's own colour. Every app's hint band uses this one
+    /// style.
+    pub fn footer(skin: &Skin) -> Self {
+        Self {
+            key: style::fg(skin.palette.accent).add_modifier(Modifier::BOLD),
+            ..Self::default()
+        }
+    }
+}
+
 impl Default for HintStyle {
     /// Dim labels and descriptions, bold (uncolored) keys, a one-row top margin
     /// and no background.
@@ -86,6 +99,26 @@ mod tests {
     use super::*;
 
     const ITEMS: &[(&str, &str)] = &[("a", "add"), ("q", "quit")];
+
+    #[test]
+    fn the_footer_style_puts_the_keys_in_the_accent() {
+        use crate::theme::{
+            ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+        };
+        let base = ThemeRegistry::builtin().resolve("default");
+        let skin = crate::theme::Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        );
+        let footer = HintStyle::footer(&skin);
+        assert_eq!(
+            footer.key,
+            style::fg(skin.palette.accent).add_modifier(Modifier::BOLD)
+        );
+        assert_eq!(footer.description, style::dim());
+        assert_eq!(footer.top_margin, 1);
+        assert!(footer.background.is_none());
+    }
 
     #[test]
     fn fits_on_one_line_when_wide() {

@@ -204,11 +204,20 @@ pub(super) fn picker_state(cursor: usize) -> ListState {
     state
 }
 
-/// The popup rect for the list pickers: half the width but at least as wide
-/// as `hints`, one row per item plus the hint block.
+/// Columns the check column of a multi-select takes (glyph and gap).
+pub(super) const CHECK_PREFIX_WIDTH: usize = 2;
+
+/// Columns a picker row spends beside its label: the pointer column (glyph
+/// and gap) and the scrollbar column.
+const PICKER_ROW_CHROME: usize = 3;
+
+/// The popup rect for the list pickers: as wide as the widest row
+/// (`content_width` columns of label, plus the pointer and scrollbar columns)
+/// but at least as wide as `hints`, one row per item plus the hint block.
 pub(super) fn picker_area(
     area: Rect,
     item_count: usize,
+    content_width: usize,
     hints: &[(&str, &str)],
 ) -> Rect {
     let rows = u16::try_from(item_count).unwrap_or(u16::MAX);
@@ -219,12 +228,19 @@ pub(super) fn picker_area(
         MIN_PICKER_HEIGHT,
         area.height.saturating_sub(2),
     );
-    let hint_width = u16::try_from(hints_width(hints)).unwrap_or(u16::MAX);
-    let wanted_width =
-        (area.width / 2).max(hint_width.saturating_add(MODAL_CHROME_WIDTH));
+    let content = content_width.saturating_add(PICKER_ROW_CHROME);
+    let wanted = content.max(hints_width(hints));
+    let wanted_width = u16::try_from(wanted)
+        .unwrap_or(u16::MAX)
+        .saturating_add(MODAL_CHROME_WIDTH);
     let width =
         fit(wanted_width, MIN_PICKER_WIDTH, area.width.saturating_sub(4));
     centered_rect(width, height, area)
+}
+
+/// The widest of `labels` in display columns, for sizing a picker.
+pub(super) fn labels_width<'a>(labels: impl Iterator<Item = &'a str>) -> usize {
+    labels.map(UnicodeWidthStr::width).max().unwrap_or(0)
 }
 
 /// The columns `hints` take on one row, so a box never cuts them off. A host

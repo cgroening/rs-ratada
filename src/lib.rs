@@ -107,6 +107,7 @@ pub mod overlay;
 pub mod pager;
 pub mod path_picker;
 pub mod quit;
+pub mod reload;
 pub mod scroll;
 pub mod shortcut_hints;
 pub mod sidebar;

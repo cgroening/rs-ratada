@@ -14,7 +14,10 @@ use ratatui::{Frame, style::Style};
 use super::ModalSignal;
 use super::SelectItem;
 use super::multi_state::{CONFIRM_HINTS, MultiSelect};
-use super::render::{PickerChrome, picker_area, render_styled_picker};
+use super::render::{
+    CHECK_PREFIX_WIDTH, PickerChrome, labels_width, picker_area,
+    render_styled_picker,
+};
 use crate::{
     input,
     overlay::{PopupFlow, popup},
@@ -93,7 +96,11 @@ pub fn multi_select_with(
     popup(
         tui,
         &mut state,
-        |area, _| picker_area(area, items.len(), &CONFIRM_HINTS),
+        |area, _| {
+            let labels = items.iter().map(|item| item.label.as_str());
+            let width = labels_width(labels) + CHECK_PREFIX_WIDTH;
+            picker_area(area, items.len(), width, &CONFIRM_HINTS)
+        },
         |frame, _| render_bg(frame),
         |frame, rect, state: &Moded| {
             let shown = moded_title(title, modes, state.mode);
@@ -101,7 +108,7 @@ pub fn multi_select_with(
             let chrome = PickerChrome {
                 title: &shown,
                 cursor: state.list.cursor,
-                checked: Some((&state.list.checked, skin.glyphs.check)),
+                checked: Some((&state.list.checked, skin.glyphs.mark)),
                 hints: &hints,
             };
             let viewport =
