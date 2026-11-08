@@ -31,6 +31,10 @@ pub struct ImageCache {
 impl ImageCache {
     /// Asks the terminal which image protocol it supports, falling back to
     /// half blocks when it does not answer.
+    ///
+    /// Input that arrived while the terminal was asked - keys typed early,
+    /// or a late answer to the query - is dropped afterwards, so it cannot
+    /// show up as key presses.
     pub fn detect() -> Self {
         let picker = Picker::from_query_stdio().unwrap_or_else(|error| {
             log::info!(
@@ -38,6 +42,7 @@ impl ImageCache {
             );
             Picker::halfblocks()
         });
+        drain_input();
         Self::with_picker(picker)
     }
 
@@ -80,6 +85,15 @@ impl ImageCache {
                 log::info!("cannot draw {}: {error}", path.display());
                 None
             }
+        }
+    }
+}
+
+/// Drops every input event already waiting, without blocking.
+fn drain_input() {
+    while crossterm::event::poll(std::time::Duration::ZERO).unwrap_or(false) {
+        if crossterm::event::read().is_err() {
+            break;
         }
     }
 }
