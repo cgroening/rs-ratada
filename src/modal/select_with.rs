@@ -480,8 +480,8 @@ mod tests {
     #[test]
     fn the_list_shows_its_keys_at_the_bottom() {
         let rows = rendered(&categories());
-        assert!(rows.iter().any(|row| row.contains("enter pick")));
-        assert!(rows.iter().any(|row| row.contains("esc cancel")));
+        assert!(rows.iter().any(|row| row.contains("Enter pick")));
+        assert!(rows.iter().any(|row| row.contains("Esc cancel")));
     }
 
     #[test]

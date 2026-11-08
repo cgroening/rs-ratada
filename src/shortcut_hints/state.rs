@@ -27,7 +27,7 @@ thread_local! {
 const TOGGLE_LABEL: &str = "toggle hints";
 
 /// The hard quit chord, wired into `terminal::classify` and not rebindable.
-const HARD_QUIT: (&str, &str) = ("ctrl+q", "force quit");
+const HARD_QUIT: (&str, &str) = ("Ctrl+Q", "force quit");
 
 /// Whether shortcut hints are currently shown.
 pub fn visible() -> bool {
@@ -92,8 +92,8 @@ pub fn set_toggle_key(key: Option<KeyEvent>) {
 /// use ratada::shortcut_hints::global_bindings;
 ///
 /// let bindings = global_bindings();
-/// assert!(bindings.iter().any(|(key, _)| key == "f1"));
-/// assert!(bindings.iter().any(|(key, _)| key == "ctrl+q"));
+/// assert!(bindings.iter().any(|(key, _)| key == "F1"));
+/// assert!(bindings.iter().any(|(key, _)| key == "Ctrl+Q"));
 /// ```
 pub fn global_bindings() -> Vec<(String, String)> {
     let mut bindings = Vec::new();
@@ -146,5 +146,5 @@ pub fn consume_toggle(key: KeyEvent) -> bool {
 /// a user writes in config and a handler matches on: one rendering of a key in
 /// the crate, not one per caller that can drift from the others.
 pub(super) fn chord_label(key: KeyEvent) -> String {
-    keymap::KeyChord::from_key(key).display()
+    keymap::KeyChord::from_key(key).label()
 }

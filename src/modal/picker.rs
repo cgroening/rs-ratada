@@ -21,9 +21,9 @@ use crate::{
 
 /// The keys of [`select_reorderable`].
 const REORDER_HINTS: [(&str, &str); 3] = [
-    ("alt+\u{2191}\u{2193}", "move"),
-    ("enter", "pick"),
-    ("esc", "cancel"),
+    ("Alt+\u{2191}\u{2193}", "move"),
+    ("Enter", "pick"),
+    ("Esc", "cancel"),
 ];
 
 /// Applies the shared list-navigation keys to `cursor` over `len` items,

@@ -233,8 +233,8 @@ fn the_form_renders_as_a_whole() {
         "\u{203a}",
         "  Kind       \u{2190} git \u{2192}",
         "  Favourite  [ ]",
-        "enter edit",
-        "tab next \u{b7} s save \u{b7} y copy \u{b7} ctrl+o reset \u{b7} esc leave (asks to save)",
+        "Enter edit",
+        "Tab next \u{b7} s save \u{b7} y copy \u{b7} Ctrl+O reset \u{b7} Esc leave (asks to save)",
         "1/4",
     ];
     for part in expected {
@@ -258,7 +258,7 @@ fn the_hints_are_complete_at_the_narrowest_box() {
     let width = u16::try_from(form.content_width()).unwrap()
         + crate::chrome::MODAL_CHROME_WIDTH;
     let text = drawn(&form, width, 16).join("\n");
-    assert!(text.contains("esc leave (asks to save)"), "{text}");
+    assert!(text.contains("Esc leave (asks to save)"), "{text}");
 }
 
 #[test]
@@ -350,7 +350,7 @@ fn the_hints_wrap_on_a_narrow_box_and_keep_every_key() {
     assert_eq!(hint_rows(80), 3);
     assert!(hint_rows(30) > 3);
     let text = drawn(&form, 34, 24).join("\n");
-    for key in ["tab", "s save", "y copy", "ctrl+o", "esc"] {
+    for key in ["Tab", "s save", "y copy", "Ctrl+O", "Esc"] {
         assert!(text.contains(key), "{key} missing in\n{text}");
     }
 }

@@ -140,11 +140,11 @@ fn footer_hints(
     grouped: bool,
 ) -> Vec<Line<'static>> {
     let mut hints: Vec<(&str, &str)> =
-        vec![("\u{2191}\u{2193}", "move"), ("enter", "run")];
+        vec![("\u{2191}\u{2193}", "move"), ("Enter", "run")];
     if grouped {
-        hints.push(("tab", "section"));
+        hints.push(("Tab", "section"));
     }
-    hints.push(("esc", "close"));
+    hints.push(("Esc", "close"));
     shortcut_hints::lines(&hints, skin.palette.accent_dim, width)
         .into_iter()
         .take(MAX_HINT_ROWS)
@@ -180,7 +180,7 @@ mod tests {
         let narrow = footer_hints(&skin(), 24, true);
         assert!(narrow.len() > 1);
         let shown = text(&narrow);
-        for key in ["move", "enter", "tab", "esc"] {
+        for key in ["move", "Enter", "Tab", "Esc"] {
             assert!(shown.contains(key), "{key} missing in\n{shown}");
         }
     }

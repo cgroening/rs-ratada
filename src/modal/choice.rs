@@ -31,8 +31,8 @@ use crate::{
 /// The footer hints.
 const HINTS: [(&str, &str); 3] = [
     ("\u{2190}\u{2192}", "choose"),
-    ("enter", "ok"),
-    ("esc", "cancel"),
+    ("Enter", "ok"),
+    ("Esc", "cancel"),
 ];
 
 /// The space between two buttons.

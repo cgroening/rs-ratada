@@ -315,8 +315,8 @@ fn hints(state: &State) -> Vec<(&'static str, &'static str)> {
         return vec![
             ("type", "filter"),
             ("\u{2191}/\u{2193}", "move"),
-            ("enter", "pick"),
-            ("esc", "clear"),
+            ("Enter", "pick"),
+            ("Esc", "clear"),
         ];
     }
     let mut hints = vec![("m", "mode")];
@@ -326,10 +326,10 @@ fn hints(state: &State) -> Vec<(&'static str, &'static str)> {
     if state.mode == Mode::Names {
         hints.push(("/", "filter"));
     }
-    hints.extend_from_slice(&[("enter", "pick"), ("e", "edit"), ("y", "copy")]);
+    hints.extend_from_slice(&[("Enter", "pick"), ("e", "edit"), ("y", "copy")]);
     if state.clearing == Clearing::On {
         hints.push((CLEAR_KEYS, "none"));
     }
-    hints.push(("esc", "cancel"));
+    hints.push(("Esc", "cancel"));
     hints
 }

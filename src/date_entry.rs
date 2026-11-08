@@ -30,7 +30,7 @@ pub(crate) const EDIT_HINT: (&str, &str) = ("e", "edit");
 
 /// The hints shown while the entry field holds the keyboard.
 pub(crate) const ENTRY_HINTS: [(&str, &str); 2] =
-    [("enter", "ok"), ("esc", "cancel")];
+    [("Enter", "ok"), ("Esc", "cancel")];
 
 /// Whether the typed text currently parses.
 ///
@@ -310,7 +310,7 @@ mod tests {
     fn the_hint_footer_is_the_same_height_in_both_modes() {
         let palette = palette();
         let calendar =
-            [("\u{2190}\u{2192}", "move"), EDIT_HINT, ("enter", "pick")];
+            [("\u{2190}\u{2192}", "move"), EDIT_HINT, ("Enter", "pick")];
         let shown = hint_lines(&calendar, &ENTRY_HINTS, &palette, INNER_WIDTH);
         let other = hint_lines(&ENTRY_HINTS, &calendar, &palette, INNER_WIDTH);
         assert_eq!(shown.len(), other.len());

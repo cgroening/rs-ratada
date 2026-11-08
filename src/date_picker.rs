@@ -369,10 +369,10 @@ fn calendar_hints(allow_clear: bool) -> Vec<(&'static str, &'static str)> {
     let mut hints = vec![
         ("\u{2190}\u{2192}\u{2191}\u{2193}", "move"),
         date_entry::EDIT_HINT,
-        ("enter", "pick"),
+        ("Enter", "pick"),
     ];
     if allow_clear {
-        hints.push(("del", "clear"));
+        hints.push(("Del", "clear"));
     }
     hints
 }

@@ -180,7 +180,8 @@ impl<A: Action> Keymap<A> {
             .map(|(_, action)| *action)
     }
 
-    /// The display strings of the keys bound to `action`, in binding order.
+    /// The keys bound to `action` in config syntax ([`KeyChord::display`]:
+    /// `ctrl+s`), in binding order.
     #[must_use]
     pub fn keys_for(&self, action: A) -> Vec<String> {
         self.entries
@@ -196,19 +197,31 @@ impl<A: Action> Keymap<A> {
         &self.conflicts
     }
 
+    /// The keys bound to `action` as a reader sees them ([`KeyChord::label`]:
+    /// `Ctrl+S`, `Enter`, `G`), in binding order: what a footer, a help
+    /// screen and a README show.
+    #[must_use]
+    pub fn labels_for(&self, action: A) -> Vec<String> {
+        self.entries
+            .iter()
+            .filter(|(_, bound)| *bound == action)
+            .map(|(chord, _)| chord.label())
+            .collect()
+    }
+
     /// `(keys, description)` hint pairs for `actions`, in the given order,
     /// skipping any action with no bound key.
     ///
     /// The one source for a footer and a help screen: several keys for one
-    /// action join with `/` (`"up/k"`), and the keys read exactly as they do in
-    /// config, since both come from [`KeyChord::display`]. Feed the result to
+    /// action join with `/` (`"\u{2191}/k"`), each written as a reader sees it
+    /// ([`KeyChord::label`]: `Ctrl+S`, `Enter`). Feed the result to
     /// `shortcut_hints`.
     #[must_use]
     pub fn hints(&self, actions: &[A]) -> Vec<(String, String)> {
         actions
             .iter()
             .filter_map(|&action| {
-                let keys = self.keys_for(action).join("/");
+                let keys = self.labels_for(action).join("/");
                 if keys.is_empty() {
                     return None;
                 }
@@ -309,6 +322,23 @@ mod tests {
         assert_eq!(chord("pageup").display(), "pgup");
         assert_eq!(chord("space").display(), "space");
         assert_eq!(chord("ctrl+alt+del").display(), "ctrl+alt+del");
+    }
+
+    #[test]
+    fn a_label_reads_like_the_key_cap() {
+        assert_eq!(chord("a").label(), "a");
+        assert_eq!(chord("G").label(), "G");
+        assert_eq!(chord("ctrl+q").label(), "Ctrl+Q");
+        assert_eq!(chord("ctrl+shift+q").label(), "Ctrl+Shift+Q");
+        assert_eq!(chord("Ctrl+Q"), chord("ctrl+q"), "a label reads as typed");
+        assert_eq!(chord("alt+up").label(), "Alt+\u{2191}");
+        assert_eq!(chord("shift+left").label(), "Shift+\u{2190}");
+        assert_eq!(chord("backtab").label(), "Shift+Tab");
+        assert_eq!(chord("f2").label(), "F2");
+        assert_eq!(chord("pgup").label(), "PgUp");
+        assert_eq!(chord("space").label(), "Space");
+        assert_eq!(chord("enter").label(), "Enter");
+        assert_eq!(chord("ctrl+alt+del").label(), "Ctrl+Alt+Del");
     }
 
     #[test]
@@ -624,7 +654,7 @@ mod tests {
         let map: Keymap<Act> = Keymap::from_overrides(&overrides);
         assert_eq!(
             map.hints(&[Act::Up, Act::Quit]),
-            vec![("up/k".to_string(), "test action".to_string())]
+            vec![("\u{2191}/k".to_string(), "test action".to_string())]
         );
     }
 

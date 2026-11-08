@@ -329,7 +329,7 @@ mod tests {
         let bindings = global_bindings();
         let keys: Vec<&str> =
             bindings.iter().map(|(key, _)| key.as_str()).collect();
-        assert_eq!(keys, ["f1", "ctrl+q"]);
+        assert_eq!(keys, ["F1", "Ctrl+Q"]);
     }
 
     #[test]
@@ -337,13 +337,13 @@ mod tests {
         let rebound = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::CONTROL);
         with_toggle_key(Some(rebound), || {
             let bindings = global_bindings();
-            assert_eq!(bindings[0].0, "ctrl+h");
+            assert_eq!(bindings[0].0, "Ctrl+H");
         });
         with_toggle_key(None, || {
             let bindings = global_bindings();
             // Only the hard quit is left; the toggle has no key to name.
             assert_eq!(bindings.len(), 1);
-            assert_eq!(bindings[0].0, "ctrl+q");
+            assert_eq!(bindings[0].0, "Ctrl+Q");
         });
     }
 
@@ -351,11 +351,11 @@ mod tests {
     fn chord_label_names_modifiers_and_keys() {
         let label =
             |code, modifiers| chord_label(KeyEvent::new(code, modifiers));
-        assert_eq!(label(KeyCode::F(1), KeyModifiers::NONE), "f1");
-        assert_eq!(label(KeyCode::Char('h'), KeyModifiers::CONTROL), "ctrl+h");
-        assert_eq!(label(KeyCode::Enter, KeyModifiers::SHIFT), "shift+enter");
-        assert_eq!(label(KeyCode::Esc, KeyModifiers::NONE), "esc");
-        assert_eq!(label(KeyCode::Char(' '), KeyModifiers::NONE), "space");
+        assert_eq!(label(KeyCode::F(1), KeyModifiers::NONE), "F1");
+        assert_eq!(label(KeyCode::Char('h'), KeyModifiers::CONTROL), "Ctrl+H");
+        assert_eq!(label(KeyCode::Enter, KeyModifiers::SHIFT), "Shift+Enter");
+        assert_eq!(label(KeyCode::Esc, KeyModifiers::NONE), "Esc");
+        assert_eq!(label(KeyCode::Char(' '), KeyModifiers::NONE), "Space");
     }
 
     /// A hint must keep an upper-case key upper-case: an app binding both `g`
@@ -368,9 +368,8 @@ mod tests {
         assert_eq!(label(KeyCode::Char('g'), KeyModifiers::NONE), "g");
     }
 
-    /// The label and the config grammar are one thing now: every rendered hint
-    /// must parse back into the chord it came from, or a user could not type
-    /// what the footer shows into their `[keys]` table.
+    /// Every rendered hint must parse back into the chord it came from, or a
+    /// user could not type what the footer shows into their `[keys]` table.
     #[test]
     fn a_rendered_chord_parses_back_into_itself() {
         for (code, modifiers) in [

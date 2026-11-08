@@ -18,27 +18,27 @@ use crate::{
 const QUESTION: &str = "Save changes?";
 
 const NORMAL_HINTS: [(&str, &str); 5] = [
-    ("tab", "next"),
+    ("Tab", "next"),
     ("s", "save"),
     ("y", "copy"),
-    ("ctrl+o", "reset"),
-    ("esc", "leave (asks to save)"),
+    ("Ctrl+O", "reset"),
+    ("Esc", "leave (asks to save)"),
 ];
 const EDITING_HINTS: [(&str, &str); 3] =
-    [("tab", "next"), ("ctrl+s", "save"), ("ctrl+o", "reset")];
+    [("Tab", "next"), ("Ctrl+S", "save"), ("Ctrl+O", "reset")];
 const QUESTION_HINTS: [(&str, &str); 3] =
     [("y", "save"), ("n", "discard"), ("b", "back")];
-const TEXT_HINTS: [(&str, &str); 1] = [("enter", "edit")];
-const LINE_EDITING_HINTS: [(&str, &str); 1] = [("enter/esc", "done")];
-const AREA_HINTS: [(&str, &str); 2] = [("enter", "edit"), ("ctrl+g", "editor")];
+const TEXT_HINTS: [(&str, &str); 1] = [("Enter", "edit")];
+const LINE_EDITING_HINTS: [(&str, &str); 1] = [("Enter/Esc", "done")];
+const AREA_HINTS: [(&str, &str); 2] = [("Enter", "edit"), ("Ctrl+G", "editor")];
 const AREA_EDITING_HINTS: [(&str, &str); 2] =
-    [("esc", "done"), ("ctrl+g", "editor")];
-const PICKER_HINTS: [(&str, &str); 1] = [("enter", "choose")];
+    [("Esc", "done"), ("Ctrl+G", "editor")];
+const PICKER_HINTS: [(&str, &str); 1] = [("Enter", "choose")];
 const CLEARABLE_HINTS: [(&str, &str); 2] =
-    [("enter", "choose"), ("del", "clear")];
+    [("Enter", "choose"), ("Del", "clear")];
 const TEXT_PICKER_HINTS: [(&str, &str); 2] =
-    [("enter", "choose"), ("e", "type")];
-const TOGGLE_HINTS: [(&str, &str); 1] = [("space", "toggle")];
+    [("Enter", "choose"), ("e", "type")];
+const TOGGLE_HINTS: [(&str, &str); 1] = [("Space", "toggle")];
 const STEPPER_HINTS: [(&str, &str); 1] = [("\u{2190}\u{2192}", "change")];
 const NO_HINTS: [(&str, &str); 0] = [];
 

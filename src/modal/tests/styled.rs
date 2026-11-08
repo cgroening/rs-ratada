@@ -53,7 +53,7 @@ fn a_styled_confirm_shows_its_title_body_rows_and_hints() {
     let title = rows.iter().position(|row| row.contains(" Delete? "));
     let date = rows.iter().position(|row| row.contains("Date:    today"));
     let amount = rows.iter().position(|row| row.contains("Amount:  -4,20"));
-    let hints = rows.iter().position(|row| row.contains("enter/y"));
+    let hints = rows.iter().position(|row| row.contains("Enter/y"));
     let title = title.expect("the title sits in the frame");
     // The top padding row separates the body from the title.
     assert_eq!(date, Some(title + 2));
@@ -152,7 +152,7 @@ fn a_tall_styled_body_is_cut_to_the_screen_and_offers_scrolling() {
     assert!(rows.iter().any(|row| row.contains("row 1 ")));
     assert!(!rows.iter().any(|row| row.contains("row 30")));
     assert!(rows.iter().any(|row| row.contains("scroll")));
-    assert!(rows.iter().any(|row| row.contains("enter/y")));
+    assert!(rows.iter().any(|row| row.contains("Enter/y")));
 }
 
 #[test]
@@ -226,7 +226,7 @@ fn the_second_view_is_drawn_in_a_box_sized_for_both() {
     assert!(second.iter().any(|row| row.contains("all in one row")));
     assert!(!second.iter().any(|row| row.contains("Date:")));
     let hint_row =
-        |rows: &[String]| rows.iter().position(|row| row.contains("enter/y"));
+        |rows: &[String]| rows.iter().position(|row| row.contains("Enter/y"));
     assert_eq!(
         hint_row(&first),
         hint_row(&second),

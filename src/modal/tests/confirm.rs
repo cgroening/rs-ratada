@@ -74,7 +74,7 @@ fn confirm_honours_the_default_and_esc_declines() {
 fn a_plain_question_lets_enter_confirm() {
     let question = Question::new("Save the file?");
     assert!(question.default_yes);
-    assert_eq!(question.hints(), [("enter/y", "yes"), ("n", "no")]);
+    assert_eq!(question.hints(), [("Enter/y", "yes"), ("n", "no")]);
 }
 
 /// The point of `declining`: a stray `Enter` on a destructive prompt must
@@ -83,7 +83,7 @@ fn a_plain_question_lets_enter_confirm() {
 fn a_declining_question_lets_enter_decline() {
     let question = Question::declining("Delete everything?");
     assert!(!question.default_yes);
-    assert_eq!(question.hints(), [("y", "yes"), ("enter/n", "no")]);
+    assert_eq!(question.hints(), [("y", "yes"), ("Enter/n", "no")]);
 }
 
 #[test]

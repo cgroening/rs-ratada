@@ -112,9 +112,9 @@ pub(super) fn answer_hints(
     default_yes: bool,
 ) -> [(&'static str, &'static str); 2] {
     if default_yes {
-        [("enter/y", "yes"), ("n", "no")]
+        [("Enter/y", "yes"), ("n", "no")]
     } else {
-        [("y", "yes"), ("enter/n", "no")]
+        [("y", "yes"), ("Enter/n", "no")]
     }
 }
 

@@ -57,6 +57,7 @@ cd ~/Developer/Rust && grep -rln --include=Cargo.toml ratada apps libs templates
 When a change here affects consumers:
 
 - **Version bump:** raising the minor version (`0.6` → `0.7`) breaks every consumer whose requirement still names the old one – cargo no longer resolves it and the crate stops building. Raise the `version` in each consumer's `ratada` line in the same go.
+- **Key names:** a hint, a help screen or a README writes a key the way the key cap reads (`KeyChord::label`: `Enter`, `Esc`, `PgUp`, `Ctrl+S`, `Shift+Tab`, `↑`; a bare letter as typed, `g`/`G`); `Keymap::hints`/`labels_for` produce it. `KeyChord::display`/`Keymap::keys_for` are config syntax (`ctrl+s`); `parse` reads both.
 - **Modal hints wrap:** a modal's hint block (`modal::hint_block`) wraps onto at most `MAX_HINT_ROWS` rows on a narrow screen; every box sizes it with `hint_block_height` at the width it really gets, never with a fixed row count.
 - **Breaking API or key changes:** check each consumer for uses of the changed items (`grep` for the module or function) – not only compile errors, also hint texts, help rows and README tables that spell out the old keys (as with the swatch picker's `Enter`/`e` in the `clibase` gallery).
 - **Verify each consumer in its own directory** (`cd apps/<name> && cargo build && cargo test && cargo clippy --all-targets -- -D warnings`), never via `--manifest-path`, so its `.cargo/config.toml` target dir applies.

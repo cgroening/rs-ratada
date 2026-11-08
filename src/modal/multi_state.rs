@@ -10,12 +10,12 @@ use crate::{input, overlay::PopupFlow};
 
 /// The hints while `Enter` takes the cursor row.
 const PICK_HINTS: [(&str, &str); 3] =
-    [("space", "tick"), ("enter", "pick"), ("esc", "cancel")];
+    [("Space", "tick"), ("Enter", "pick"), ("Esc", "cancel")];
 
 /// The hints while `Enter` confirms the checks. Also the widest set, so the
 /// box is sized for it and does not change width when the hints switch.
 pub(super) const CONFIRM_HINTS: [(&str, &str); 3] =
-    [("space", "tick"), ("enter", "confirm"), ("esc", "cancel")];
+    [("Space", "tick"), ("Enter", "confirm"), ("Esc", "cancel")];
 
 /// The cursor, the checked set and the list viewport height captured at
 /// render (for page-wise navigation).

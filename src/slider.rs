@@ -143,7 +143,7 @@ fn body_lines(
     // box (sized from these lines) loses exactly the two rows.
     lines.extend(
         shortcut_hints::lines(
-            &[("\u{2190}/\u{2192}", "adjust"), ("enter", "ok")],
+            &[("\u{2190}/\u{2192}", "adjust"), ("Enter", "ok")],
             palette.accent_dim,
             bar_width,
         )

@@ -339,7 +339,7 @@ fn hint_lines(skin: &Skin, state: &Picker, width: usize) -> Vec<Line<'static>> {
     let calendar = [
         ("\u{2190}\u{2192}\u{2191}\u{2193}", "move"),
         date_entry::EDIT_HINT,
-        ("enter", "start/end"),
+        ("Enter", "start/end"),
     ];
     let palette = &skin.palette;
     match state.entry {

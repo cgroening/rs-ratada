@@ -118,7 +118,7 @@ pub(super) fn input_area(area: Rect) -> Rect {
 }
 
 /// The keys of a single-line text input.
-const INPUT_HINTS: [(&str, &str); 2] = [("enter", "ok"), ("esc", "cancel")];
+const INPUT_HINTS: [(&str, &str); 2] = [("Enter", "ok"), ("Esc", "cancel")];
 
 /// The height of a text input box `width` columns wide.
 fn input_height(width: u16) -> u16 {

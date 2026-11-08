@@ -349,8 +349,8 @@ fn render_body<B: AsRef<str>>(
 /// The overlay's keys, shown in the modal hint block below the list.
 const FOOTER_HINTS: [(&str, &str); 3] = [
     ("\u{2191}\u{2193}", "move"),
-    ("tab", "section"),
-    ("esc", "close"),
+    ("Tab", "section"),
+    ("Esc", "close"),
 ];
 
 #[cfg(test)]

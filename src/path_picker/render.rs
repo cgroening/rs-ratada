@@ -106,8 +106,8 @@ fn hint_lines(skin: &Skin, width: usize) -> Vec<Line<'static>> {
 /// The keys of the path picker.
 const HINTS: [(&str, &str); 3] = [
     ("\u{2190}\u{2192}", "browse"),
-    ("enter", "pick"),
-    ("ctrl+h", "hidden"),
+    ("Enter", "pick"),
+    ("Ctrl+H", "hidden"),
 ];
 
 #[cfg(test)]

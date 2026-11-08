@@ -36,7 +36,7 @@ const MIN_PICKER_HEIGHT: u16 = MODAL_CHROME_HEIGHT + 3 + SINGLE_HINT_BLOCK;
 
 /// The keys of a single-choice list picker.
 pub(super) const SELECT_HINTS: [(&str, &str); 2] =
-    [("enter", "pick"), ("esc", "cancel")];
+    [("Enter", "pick"), ("Esc", "cancel")];
 
 /// What a list picker shows around its rows: the frame title, the cursor, the
 /// checks of a multi-select (with their glyph) and the key hints.

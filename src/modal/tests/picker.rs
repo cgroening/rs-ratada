@@ -50,21 +50,21 @@ fn navigate_list_leaves_ctrl_chords_to_the_caller() {
 #[test]
 fn a_list_picker_shows_its_keys_below_the_rows() {
     let items = vec!["alpha".to_string(), "beta".to_string()];
-    let hints = [("space", "tick"), ("enter", "confirm"), ("esc", "cancel")];
+    let hints = [("Space", "tick"), ("Enter", "confirm"), ("Esc", "cancel")];
     let rows = rendered_picker(&items, &hints);
     let row_of = |text: &str| {
         rows.iter().position(|row| row.contains(text)).expect(text)
     };
-    let hint_row = row_of("space tick");
-    assert!(rows[hint_row].contains("enter confirm"));
-    assert!(rows[hint_row].contains("esc cancel"));
+    let hint_row = row_of("Space tick");
+    assert!(rows[hint_row].contains("Enter confirm"));
+    assert!(rows[hint_row].contains("Esc cancel"));
     assert!(hint_row > row_of("beta"));
 }
 
 #[test]
 fn a_picker_is_wide_enough_for_its_hints() {
     let area = Rect::new(0, 0, 60, 20);
-    let hints = [("space", "tick"), ("enter", "confirm"), ("esc", "cancel")];
+    let hints = [("Space", "tick"), ("Enter", "confirm"), ("Esc", "cancel")];
     let picker = picker_area(area, 2, 10, &hints);
     let hint_width = crate::modal::render::hints_width(&hints);
     assert!(usize::from(picker.width) >= hint_width + 2);

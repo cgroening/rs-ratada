@@ -20,7 +20,7 @@ use crate::{modal, terminal::Tui, theme::Skin};
 pub const RELOAD_KEY: KeyCode = KeyCode::F(5);
 
 /// The `(key, description)` hint for the help overlay and the footer.
-pub const RELOAD_HINT: (&str, &str) = ("f5", "reload config");
+pub const RELOAD_HINT: (&str, &str) = ("F5", "reload config");
 
 /// Whether `key` is `F5` without a modifier.
 pub fn is_reload_key(key: KeyEvent) -> bool {

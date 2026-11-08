@@ -103,7 +103,7 @@ fn popup_geometry_survives_a_terminal_below_its_minimum() {
     for (width, height) in [(1, 1), (4, 2), (20, 6), (27, 10)] {
         let area = Rect::new(0, 0, width, height);
         for rect in [
-            picker_area(area, 40, 10, &[("enter", "pick")]),
+            picker_area(area, 40, 10, &[("Enter", "pick")]),
             input_area(area),
             input_area_wide(area),
         ] {
@@ -116,11 +116,11 @@ fn popup_geometry_survives_a_terminal_below_its_minimum() {
 #[test]
 fn a_roomy_terminal_still_gets_the_preferred_size() {
     let area = Rect::new(0, 0, 100, 40);
-    let picker = picker_area(area, 4, 40, &[("enter", "pick")]);
+    let picker = picker_area(area, 4, 40, &[("Enter", "pick")]);
     // As wide as its rows (label, pointer and scrollbar columns) plus
     // the frame and padding - not a share of the screen.
     assert_eq!(picker.width, 40 + 3 + 6);
-    let narrow = picker_area(area, 4, 3, &[("enter", "pick")]);
+    let narrow = picker_area(area, 4, 3, &[("Enter", "pick")]);
     assert_eq!(narrow.width, 28 + 6); // the narrowest picker
     // One row per item, plus the frame and the hint block.
     assert_eq!(picker.height, 4 + crate::chrome::MODAL_CHROME_HEIGHT + 2);
@@ -146,10 +146,10 @@ fn a_message_box_grows_with_its_body_lines_but_keeps_its_minimum() {
 #[test]
 fn hints_wrap_on_a_narrow_screen_and_the_box_grows() {
     let hints = [
-        ("enter", "pick"),
-        ("esc", "cancel"),
-        ("tab", "next field"),
-        ("ctrl+o", "reset"),
+        ("Enter", "pick"),
+        ("Esc", "cancel"),
+        ("Tab", "next field"),
+        ("Ctrl+O", "reset"),
     ];
     assert_eq!(hint_block_height(&hints, 80), 2);
     assert_eq!(hint_block_height(&hints, 28), 4);
