@@ -2,7 +2,7 @@
 
 All notable changes to `ratada` are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) – while `0.x`, a minor bump may contain breaking changes.
 
-## [0.8.0] - 2026-11-07
+## [0.8.0] - 2026-11-08
 
 ### Changed (breaking)
 
@@ -274,8 +274,8 @@ Crate-wide cleanup and API consolidation. This release contains breaking changes
 - `textarea` now reuses the shared single-line edit core from `input` (SSOT).
 - Documentation synced with the code and the public API surface tightened.
 
-[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.7.1...HEAD
-[0.7.1]: https://github.com/cgroening/rs-ratada/compare/v0.7.0...v0.7.1
+[Unreleased]: https://github.com/cgroening/rs-ratada/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/cgroening/rs-ratada/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/cgroening/rs-ratada/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/cgroening/rs-ratada/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/cgroening/rs-ratada/compare/v0.4.0...v0.5.0
