@@ -3,6 +3,12 @@
 //! Tabs are packed onto as few rows as fit `width`; overflow wraps to the next
 //! row, indented under the brand. The active tab (its number and label) stands
 //! out in the normal text color and bold; the rest are dim.
+//!
+//! [`render`] separates every tab with a dim `│`. [`render_grouped`] takes the
+//! tabs in groups instead: tabs of one group stand [`GROUP_TAB_GAP`] apart,
+//! groups [`GROUP_GAP`] apart, and a row only wraps between two groups unless
+//! a single group is wider than the row. [`render_sub`] draws a second-level
+//! bar for the sub-views of the active tab, indented under the first tab.
 
 use ratatui::{
     Frame,
@@ -17,6 +23,21 @@ use super::style;
 use crate::theme::Skin;
 
 const SEPARATOR: &str = " \u{2502} ";
+
+/// Gap between two tabs of the same group in a grouped bar.
+pub const GROUP_TAB_GAP: &str = "  ";
+
+/// Gap between two groups of a grouped bar - wider than [`GROUP_TAB_GAP`], so
+/// the grouping reads without a divider glyph.
+pub const GROUP_GAP: &str = "    ";
+
+/// One tab placed on a row: its index into the flat tab list and the gap
+/// drawn before it (empty for the first tab of a row).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Placed {
+    index: usize,
+    lead: &'static str,
+}
 
 fn brand_label(brand: &str) -> String {
     format!(" {brand}   ")
@@ -58,10 +79,108 @@ pub fn render_locked(
     tabs: &[(&str, &str)],
     active: usize,
 ) {
+    draw(frame, area, &locked_skin(skin), brand, tabs, active);
+}
+
+/// Number of rows a grouped tab bar needs at `width`.
+pub fn height_grouped(
+    brand: &str,
+    groups: &[&[(&str, &str)]],
+    width: usize,
+) -> u16 {
+    pack_grouped(brand_label(brand).width(), groups, width)
+        .len()
+        .max(1) as u16
+}
+
+/// Renders a grouped tab bar into `area`, highlighting the `active` tab.
+///
+/// `groups` lists the tabs group by group; `active` indexes the tabs in that
+/// order as one flat list. Tabs of a group stand [`GROUP_TAB_GAP`] apart and
+/// groups [`GROUP_GAP`] apart; a row wraps between groups, and inside a group
+/// only when the group alone is wider than the row.
+pub fn render_grouped(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    brand: &str,
+    groups: &[&[(&str, &str)]],
+    active: usize,
+) {
+    draw_grouped(frame, area, skin, brand, groups, active);
+}
+
+/// Renders a grouped tab bar while switching tabs is not possible, with the
+/// inactive tabs darker than their usual dim (see [`render_locked`]).
+pub fn render_grouped_locked(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    brand: &str,
+    groups: &[&[(&str, &str)]],
+    active: usize,
+) {
+    draw_grouped(frame, area, &locked_skin(skin), brand, groups, active);
+}
+
+/// Number of rows the sub-view bar needs at `width` under a bar with `brand`.
+pub fn sub_height(brand: &str, items: &[(&str, &str)], width: usize) -> u16 {
+    pack_grouped(brand_label(brand).width(), &[items], width)
+        .len()
+        .max(1) as u16
+}
+
+/// Renders the sub-view bar of the active tab into `area`: the `items`
+/// (key, label) indented under the first tab of the bar above (`brand` sets
+/// the indent), [`GROUP_TAB_GAP`] apart, the `active` one bold in the accent
+/// and the rest dim.
+pub fn render_sub(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    brand: &str,
+    items: &[(&str, &str)],
+    active: usize,
+) {
+    let indent = brand_label(brand).width();
+    let rows = pack_grouped(indent, &[items], area.width as usize);
+    let active_style =
+        style::fg(skin.palette.accent).add_modifier(Modifier::BOLD);
+    let lines = rows
+        .iter()
+        .map(|row| {
+            let mut spans = vec![Span::raw(" ".repeat(indent))];
+            spans.extend(tab_spans(skin, items, row, active, active_style));
+            Line::from(spans)
+        })
+        .collect::<Vec<_>>();
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Draws a grouped bar with `skin`'s colours.
+fn draw_grouped(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    brand: &str,
+    groups: &[&[(&str, &str)]],
+    active: usize,
+) {
+    let tabs: Vec<(&str, &str)> = groups
+        .iter()
+        .flat_map(|group| group.iter().copied())
+        .collect();
+    let rows =
+        pack_grouped(brand_label(brand).width(), groups, area.width as usize);
+    draw_rows(frame, area, skin, brand, &tabs, &rows, active);
+}
+
+/// A copy of `skin` whose dim is darkened, for a locked bar.
+fn locked_skin(skin: &Skin) -> Skin {
     let mut locked = *skin;
     locked.palette.foreground_dim =
         skin.palette.foreground_dim.darken(LOCK_DARKEN);
-    draw(frame, area, &locked, brand, tabs, active);
+    locked
 }
 
 /// Draws the bar with `skin`'s colours.
@@ -73,14 +192,42 @@ fn draw(
     tabs: &[(&str, &str)],
     active: usize,
 ) {
+    let rows: Vec<Vec<Placed>> = pack(brand, tabs, area.width as usize)
+        .into_iter()
+        .map(|row| {
+            row.into_iter()
+                .enumerate()
+                .map(|(position, index)| Placed {
+                    index,
+                    lead: if position == 0 { "" } else { SEPARATOR },
+                })
+                .collect()
+        })
+        .collect();
+    draw_rows(frame, area, skin, brand, tabs, &rows, active);
+}
+
+/// Draws packed `rows` of `tabs`: the brand on the first row, continuation
+/// rows indented under it, each tab after its gap.
+fn draw_rows(
+    frame: &mut Frame,
+    area: Rect,
+    skin: &Skin,
+    brand: &str,
+    tabs: &[(&str, &str)],
+    rows: &[Vec<Placed>],
+    active: usize,
+) {
     let palette = &skin.palette;
     let brand_width = brand_label(brand).width();
-    let rows = pack(brand, tabs, area.width as usize);
+    // The active tab's number and label share one style: the normal text
+    // color in bold; inactive tabs are wholly dimmed.
+    let active_style = Style::default().add_modifier(Modifier::BOLD);
 
     let lines: Vec<Line> = rows
         .iter()
         .enumerate()
-        .map(|(row_index, segments)| {
+        .map(|(row_index, row)| {
             let mut spans: Vec<Span> = Vec::new();
             if row_index == 0 {
                 spans.push(Span::styled(
@@ -90,29 +237,39 @@ fn draw(
             } else {
                 spans.push(Span::raw(" ".repeat(brand_width)));
             }
-            for (position, &index) in segments.iter().enumerate() {
-                if position > 0 {
-                    spans.push(Span::styled(
-                        SEPARATOR,
-                        style::secondary(palette),
-                    ));
-                }
-                let (key, label) = tabs[index];
-                // The active tab's number and label share one style: the normal
-                // text color in bold; inactive tabs are wholly dimmed.
-                let tab_style = if index == active {
-                    Style::default().add_modifier(Modifier::BOLD)
-                } else {
-                    style::secondary(palette)
-                };
-                spans.push(Span::styled(format!("{key} "), tab_style));
-                spans.push(Span::styled(label.to_string(), tab_style));
-            }
+            spans.extend(tab_spans(skin, tabs, row, active, active_style));
             Line::from(spans)
         })
         .collect();
 
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// The spans of one packed row: each tab's gap (dim) and its number and
+/// label, in `active_style` for the `active` tab and dim otherwise.
+fn tab_spans<'a>(
+    skin: &Skin,
+    tabs: &[(&'a str, &'a str)],
+    row: &[Placed],
+    active: usize,
+    active_style: Style,
+) -> Vec<Span<'a>> {
+    let dim = style::secondary(&skin.palette);
+    let mut spans = Vec::new();
+    for placed in row {
+        if !placed.lead.is_empty() {
+            spans.push(Span::styled(placed.lead, dim));
+        }
+        let (key, label) = tabs[placed.index];
+        let tab_style = if placed.index == active {
+            active_style
+        } else {
+            dim
+        };
+        spans.push(Span::styled(format!("{key} "), tab_style));
+        spans.push(Span::styled(label, tab_style));
+    }
+    spans
 }
 
 /// Packs tab indices onto rows that each fit `width`. The first tab on a row is
@@ -143,6 +300,57 @@ fn pack(brand: &str, tabs: &[(&str, &str)], width: usize) -> Vec<Vec<usize>> {
     }
     if rows.is_empty() {
         rows.push(Vec::new());
+    }
+    rows
+}
+
+/// Packs grouped tabs onto rows that each fit `width`, after an indent of
+/// `indent` columns on every row. A group moves to the next row as a whole
+/// when it does not fit behind the previous one; only a group wider than a
+/// row of its own wraps between its tabs. A tab is never split.
+fn pack_grouped(
+    indent: usize,
+    groups: &[&[(&str, &str)]],
+    width: usize,
+) -> Vec<Vec<Placed>> {
+    let mut rows: Vec<Vec<Placed>> = Vec::new();
+    let mut current: Vec<Placed> = Vec::new();
+    let mut used = indent;
+    let mut first_index = 0;
+
+    for group in groups {
+        let widths: Vec<usize> = group
+            .iter()
+            .map(|(key, label)| tab_label(key, label).width())
+            .collect();
+        let group_width = widths.iter().sum::<usize>()
+            + GROUP_TAB_GAP.width() * widths.len().saturating_sub(1);
+        if !current.is_empty() && used + GROUP_GAP.width() + group_width > width
+        {
+            rows.push(std::mem::take(&mut current));
+            used = indent;
+        }
+        for (offset, tab_width) in widths.iter().enumerate() {
+            let mut lead = match (current.is_empty(), offset) {
+                (true, _) => "",
+                (false, 0) => GROUP_GAP,
+                (false, _) => GROUP_TAB_GAP,
+            };
+            if !current.is_empty() && used + lead.width() + tab_width > width {
+                rows.push(std::mem::take(&mut current));
+                used = indent;
+                lead = "";
+            }
+            current.push(Placed {
+                index: first_index + offset,
+                lead,
+            });
+            used += lead.width() + tab_width;
+        }
+        first_index += group.len();
+    }
+    if !current.is_empty() || rows.is_empty() {
+        rows.push(current);
     }
     rows
 }
@@ -236,5 +444,123 @@ mod tests {
                 "width {width}"
             );
         }
+    }
+
+    const GROUPS: &[&[(&str, &str)]] =
+        &[&[("1", "A"), ("2", "B")], &[("3", "C")], &[("0", "D")]];
+
+    /// The default skin used by the rendering tests.
+    fn test_skin() -> Skin {
+        use crate::theme::{
+            ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+        };
+        let base = ThemeRegistry::builtin().resolve("default");
+        Skin::new(
+            Palette::resolve(base, &ColorOverrides::default()),
+            Glyphs::new(GlyphVariant::Unicode),
+        )
+    }
+
+    /// The text rows of `draw` rendered into a `width`×`height` buffer, with
+    /// trailing blanks trimmed.
+    fn rendered_rows(
+        width: u16,
+        height: u16,
+        draw: impl FnOnce(&mut Frame),
+    ) -> Vec<String> {
+        use ratatui::{Terminal, backend::TestBackend};
+        let mut terminal =
+            Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(draw).unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..height)
+            .map(|y| {
+                let row: String =
+                    (0..width).map(|x| buffer[(x, y)].symbol()).collect();
+                row.trim_end().to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_grouped_bar_spaces_tabs_and_groups_without_a_divider() {
+        let skin = test_skin();
+        let rows = rendered_rows(60, 1, |frame| {
+            render_grouped(frame, frame.area(), &skin, "app", GROUPS, 0);
+        });
+        assert_eq!(rows[0], " app   1 A  2 B    3 C    0 D");
+    }
+
+    #[test]
+    fn a_grouped_bar_wraps_between_groups() {
+        // "1 A  2 B" fits behind the brand, "3 C" does not fit behind it.
+        let rows = pack_grouped(6, GROUPS, 20);
+        let indices: Vec<Vec<usize>> = rows
+            .iter()
+            .map(|row| row.iter().map(|placed| placed.index).collect())
+            .collect();
+        assert_eq!(indices, vec![vec![0, 1], vec![2, 3]]);
+        assert_eq!(rows[1][0].lead, "", "a row never starts with a gap");
+        assert_eq!(rows[1][1].lead, GROUP_GAP);
+    }
+
+    /// A group wider than a row on its own still wraps between its tabs
+    /// instead of overflowing.
+    #[test]
+    fn a_group_wider_than_the_row_wraps_inside() {
+        let wide: &[&[(&str, &str)]] =
+            &[&[("1", "Alpha"), ("2", "Beta"), ("3", "Gamma")]];
+        let rows = pack_grouped(6, wide, 18);
+        let flat: Vec<usize> = rows.concat().iter().map(|p| p.index).collect();
+        assert!(rows.len() > 1, "expected a wrap, got {rows:?}");
+        assert_eq!(flat, vec![0, 1, 2], "every tab must appear exactly once");
+    }
+
+    #[test]
+    fn the_grouped_height_matches_the_packed_rows() {
+        for width in [80, 30, 20, 12] {
+            let rows = pack_grouped(brand_label("app").width(), GROUPS, width);
+            assert_eq!(
+                height_grouped("app", GROUPS, width) as usize,
+                rows.len(),
+                "width {width}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_locked_grouped_bar_draws_the_inactive_tabs_darker() {
+        let skin = test_skin();
+        let fg = |locked: bool| {
+            use ratatui::{Terminal, backend::TestBackend};
+            let mut terminal = Terminal::new(TestBackend::new(40, 1)).unwrap();
+            terminal
+                .draw(|frame| {
+                    let area = frame.area();
+                    if locked {
+                        render_grouped_locked(
+                            frame, area, &skin, "app", GROUPS, 0,
+                        );
+                    } else {
+                        render_grouped(frame, area, &skin, "app", GROUPS, 0);
+                    }
+                })
+                .unwrap();
+            // "3 C" starts at column 17 (" app   1 A  2 B    ").
+            terminal.backend().buffer()[(17, 0)].style().fg
+        };
+        assert_ne!(fg(false), fg(true), "the inactive tab must look disabled");
+    }
+
+    #[test]
+    fn the_sub_bar_is_indented_under_the_first_tab() {
+        let skin = test_skin();
+        let items = &[("Alt+1", "Readings"), ("Alt+2", "Months")];
+        let rows = rendered_rows(60, 1, |frame| {
+            render_sub(frame, frame.area(), &skin, "app", items, 1);
+        });
+        assert_eq!(rows[0], "       Alt+1 Readings  Alt+2 Months");
+        assert_eq!(sub_height("app", items, 60), 1);
+        assert_eq!(sub_height("app", items, 20), 2);
     }
 }
