@@ -166,7 +166,7 @@ pub fn render<B: AsRef<str>>(
 /// Applies one key to the help overlay `state`.
 ///
 /// `Esc` and `?` close it; everything else is list navigation or filter text,
-/// handled by the shared [`FilterList`] core the filtered overlays share. A
+/// handled by the shared `FilterList` core the filtered overlays share. A
 /// command chord is ignored, so the host keeps it.
 pub fn handle_key<B: AsRef<str>>(
     state: &mut HelpState,
