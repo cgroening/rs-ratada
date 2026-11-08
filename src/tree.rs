@@ -6,20 +6,26 @@
 use std::{cell::Cell, collections::HashSet};
 
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{Frame, layout::Rect, text::Line};
+use ratatui::{
+    Frame,
+    layout::Rect,
+    text::{Line, Span},
+};
 
-use super::{chrome, input, list, nav};
+use super::{chrome, input, list, nav, style};
 use crate::theme::Skin;
 
 /// A node in a tree: a label plus zero or more children.
 ///
-/// A leaf may carry a caller-defined `id`, which [`TreeView::selected_id`]
-/// hands back for the node under the cursor. Labels are not unique, so an `id`
-/// is the only reliable way to map a selection back to the caller's data.
+/// A leaf or a node may carry a caller-defined `id`, which
+/// [`TreeView::selected_id`] hands back for the row under the cursor. Labels
+/// are not unique, so an `id` is the only reliable way to map a selection back
+/// to the caller's data.
 #[derive(Debug, Clone)]
 pub struct TreeItem {
     label: String,
     id: Option<usize>,
+    is_dimmed: bool,
     children: Vec<TreeItem>,
 }
 
@@ -29,6 +35,7 @@ impl TreeItem {
         Self {
             label: label.into(),
             id: None,
+            is_dimmed: false,
             children: Vec::new(),
         }
     }
@@ -39,6 +46,7 @@ impl TreeItem {
         Self {
             label: label.into(),
             id: Some(id),
+            is_dimmed: false,
             children: Vec::new(),
         }
     }
@@ -48,8 +56,33 @@ impl TreeItem {
         Self {
             label: label.into(),
             id: None,
+            is_dimmed: false,
             children,
         }
+    }
+
+    /// A node with children that also carries `id`, for a row that stands
+    /// for something of its own (a deck with sections, a folder that can be
+    /// opened as a whole) besides grouping its children.
+    pub fn node_with_id(
+        label: impl Into<String>,
+        id: usize,
+        children: Vec<TreeItem>,
+    ) -> Self {
+        Self {
+            label: label.into(),
+            id: Some(id),
+            is_dimmed: false,
+            children,
+        }
+    }
+
+    /// Draws this row dimmed, for an entry that is shown but inactive (an
+    /// excluded or unreadable item).
+    #[must_use]
+    pub fn dimmed(mut self) -> Self {
+        self.is_dimmed = true;
+        self
     }
 
     fn has_children(&self) -> bool {
@@ -63,6 +96,7 @@ struct Flat {
     depth: usize,
     label: String,
     id: Option<usize>,
+    is_dimmed: bool,
     has_children: bool,
     expanded: bool,
 }
@@ -107,7 +141,8 @@ impl TreeView {
     }
 
     /// The id of the node under the cursor, or `None` when the tree is empty or
-    /// the node was built without one (see [`TreeItem::leaf_with_id`]).
+    /// the node was built without one (see [`TreeItem::leaf_with_id`] and
+    /// [`TreeItem::node_with_id`]).
     pub fn selected_id(&self) -> Option<usize> {
         self.flatten().get(self.cursor).and_then(|node| node.id)
     }
@@ -264,6 +299,7 @@ impl TreeView {
                 depth,
                 label: item.label.clone(),
                 id: item.id,
+                is_dimmed: item.is_dimmed,
                 has_children: item.has_children(),
                 expanded,
             });
@@ -286,7 +322,14 @@ impl TreeView {
                     " "
                 };
                 let indent = "  ".repeat(node.depth);
-                Line::from(format!("{indent}{marker} {}", node.label))
+                let text = format!("{indent}{marker} {}", node.label);
+                // The dim rides on the span, so the cursor tint still lays
+                // over the row as a whole.
+                if node.is_dimmed {
+                    Line::from(Span::styled(text, style::dim()))
+                } else {
+                    Line::from(text)
+                }
             })
             .collect();
         let view = list::ListView {
@@ -439,5 +482,50 @@ mod tests {
         view.handle_key(key(KeyCode::Down));
         assert!(view.selected_is_leaf()); // on "geography"
         assert!(!TreeView::new(Vec::new()).selected_is_leaf());
+    }
+
+    #[test]
+    fn a_node_with_an_id_reports_it_and_still_folds() {
+        let mut view = TreeView::new(vec![TreeItem::node_with_id(
+            "deck",
+            4,
+            vec![TreeItem::leaf_with_id("section", 5)],
+        )]);
+        assert_eq!(view.selected_id(), Some(4));
+        assert!(!view.selected_is_leaf());
+        view.expand_selected();
+        view.step(1);
+        assert_eq!(view.selected_id(), Some(5));
+    }
+
+    #[test]
+    fn a_dimmed_row_is_drawn_with_the_dim_attribute() {
+        use ratatui::{Terminal, backend::TestBackend, style::Modifier};
+
+        let view = TreeView::new(vec![
+            TreeItem::leaf("plain"),
+            TreeItem::leaf("faded").dimmed(),
+        ]);
+        let mut terminal =
+            Terminal::new(TestBackend::new(20, 4)).expect("terminal");
+        let base = crate::theme::ThemeRegistry::builtin().resolve("default");
+        let skin = Skin::new(
+            crate::theme::Palette::resolve(
+                base,
+                &crate::theme::ColorOverrides::default(),
+            ),
+            crate::theme::Glyphs::new(crate::theme::GlyphVariant::Unicode),
+        );
+        terminal
+            .draw(|frame| view.render(frame, frame.area(), &skin))
+            .expect("draw");
+        let buffer = terminal.backend().buffer();
+        let row_has_dim = |y: u16| {
+            (0..buffer.area.width).any(|x| {
+                buffer[(x, y)].modifier.contains(Modifier::DIM)
+                    && buffer[(x, y)].symbol() != " "
+            })
+        };
+        assert!(row_has_dim(1), "the dimmed row carries DIM");
     }
 }

@@ -2,8 +2,6 @@
 
 All notable changes to `ratada` are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) – while `0.x`, a minor bump may contain breaking changes.
 
-## [Unreleased]
-
 ## [0.8.0] - 2026-11-07
 
 ### Changed (breaking)
@@ -46,8 +44,9 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 - **`TextArea::rows(width)`** – the rows the text takes at a width, the extra row of a caret at the end of a full row included, so a host can size a box that grows with its text.
 - **`terminal::script_events`** queues any terminal events for a test, like `script_keys` does keys - a bracketed `Event::Paste` between keys, say.
 - **`modal::hint_block`, `modal::hint_block_height`, `modal::hints_width` and `modal::MAX_HINT_ROWS` are public.** A host that draws its own modal ends its body with the same blank spacer and accent hint lines as the toolkit modals (`hint_block`) and sizes its box so the hints are never cut: at least `hints_width` plus `chrome::MODAL_CHROME_WIDTH` wide, and `hint_block_height` rows at the width it really gets.
-
 - **`editor::split_editor` is public.** It splits an editor command line (`code --wait`) into program and arguments without a shell, so a host that opens an existing file in the editor launches it the way `edit_in_editor` does.
+- **`tree::TreeItem::node_with_id` – a node that carries an id.** `selected_id` reports it for a row with children too, so a host can open a node with `Enter` (a deck with sections, a folder studied as a whole) and fold it with `←`/`→`.
+- **`tree::TreeItem::dimmed` – an inactive row.** The row is drawn with the `DIM` attribute on its text; the cursor tint still covers it.
 
 ### Fixed
 
