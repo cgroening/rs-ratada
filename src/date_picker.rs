@@ -17,6 +17,11 @@
 //! A column left of the grid shows the ISO calendar week of each row, the
 //! cursor's week in the accent and today's a step brighter than the rest. It is
 //! on by default; [`set_week_column`] hides it for this and the range picker.
+//!
+//! [`date_picker_with`] adds keys of the caller's own (an [`ExtraKey`], such as
+//! "E inbox"): they appear in the hint footer and close the picker with
+//! [`DatePick::Extra`]. [`date_picker`] offers none, so it looks and behaves as
+//! it always did.
 
 use std::io;
 
@@ -26,7 +31,6 @@ use ratatui::{
     Frame,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
 };
 
 use super::{
@@ -45,6 +49,10 @@ use crate::{
 };
 
 pub use crate::week_column::{WeekColumn, set_week_column, week_column};
+
+mod extra;
+
+pub use extra::{DatePick, DatePickerOptions, ExtraKey, date_picker_with};
 
 const BOX_WIDTH: u16 = 24;
 const INNER_WIDTH: usize = 22;
@@ -65,6 +73,8 @@ struct Picker {
     cursor: NaiveDate,
     entry: Option<DateEntry<NaiveDate>>,
     week_column: WeekColumn,
+    /// The caller's own keys, shown in the hints (none for `date_picker`).
+    extra: Vec<ExtraKey>,
 }
 
 /// Opens the calendar at `current` (or today). `allow_clear` lets `Del` return
@@ -79,31 +89,21 @@ pub fn date_picker(
     allow_clear: bool,
     render_bg: impl Fn(&mut Frame),
 ) -> io::Result<ModalSignal<Option<NaiveDate>>> {
-    let mut state = Picker {
-        cursor: current.unwrap_or_else(today),
-        entry: None,
-        week_column: week_column(),
+    let options = DatePickerOptions {
+        prompt,
+        current,
+        allow_clear,
+        extra: &[],
     };
-    popup_with_paste(
-        tui,
-        &mut state,
-        |area, state: &Picker| {
-            let rows = body_lines(skin, state, allow_clear).len() as u16
-                + MODAL_CHROME_HEIGHT;
-            let width = BOX_WIDTH
-                + MODAL_PADDING_WIDTH
-                + state.week_column.extra_width();
-            centered_rect(width, rows, area)
-        },
-        |frame, _| render_bg(frame),
-        |frame, rect, state: &Picker| {
-            let inner = overlay::framed(frame, rect, skin, prompt);
-            let lines = body_lines(skin, state, allow_clear);
-            frame.render_widget(Paragraph::new(lines), inner);
-        },
-        |state, key| handle_key(state, key, allow_clear),
-        |state, text| handle_paste(state, &text),
-    )
+    Ok(match date_picker_with(tui, skin, &options, render_bg)? {
+        ModalSignal::Value(DatePick::Date(date)) => ModalSignal::Value(date),
+        // No extra key is offered, so none can close the picker; treat the
+        // impossible case like Esc rather than panic.
+        ModalSignal::Value(DatePick::Extra(_)) | ModalSignal::Cancelled => {
+            ModalSignal::Cancelled
+        }
+        ModalSignal::Quit => ModalSignal::Quit,
+    })
 }
 
 /// Applies one key in whichever mode the picker is in, or reports that it is
@@ -344,7 +344,7 @@ fn hint_lines(
     allow_clear: bool,
     width: usize,
 ) -> Vec<Line<'static>> {
-    let calendar = calendar_hints(allow_clear);
+    let calendar = calendar_hints(allow_clear, &state.extra);
     match state.entry {
         Some(_) => date_entry::hint_lines(
             &date_entry::ENTRY_HINTS,
@@ -361,11 +361,15 @@ fn hint_lines(
     }
 }
 
-/// The calendar-mode hints; `del clear` only where clearing is allowed.
+/// The calendar-mode hints; `del clear` only where clearing is allowed, then
+/// the caller's extra keys.
 ///
 /// The edit token sits second on purpose: it shares the first row with the
 /// short `move` token there, which keeps the footer two rows tall.
-fn calendar_hints(allow_clear: bool) -> Vec<(&'static str, &'static str)> {
+fn calendar_hints(
+    allow_clear: bool,
+    extra: &[ExtraKey],
+) -> Vec<(&'static str, &'static str)> {
     let mut hints = vec![
         ("\u{2190}\u{2192}\u{2191}\u{2193}", "move"),
         date_entry::EDIT_HINT,
@@ -374,6 +378,7 @@ fn calendar_hints(allow_clear: bool) -> Vec<(&'static str, &'static str)> {
     if allow_clear {
         hints.push(("Del", "clear"));
     }
+    hints.extend(extra.iter().map(|key| (key.key, key.label)));
     hints
 }
 

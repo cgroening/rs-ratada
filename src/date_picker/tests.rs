@@ -13,6 +13,7 @@ fn picker() -> Picker {
         cursor: start(),
         entry: None,
         week_column: WeekColumn::Shown,
+        extra: Vec::new(),
     }
 }
 
