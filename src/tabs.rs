@@ -4,11 +4,11 @@
 //! row, indented under the brand. The active tab (its number and label) stands
 //! out in the normal text color and bold; the rest are dim.
 //!
-//! [`render`] separates every tab with a dim `│`. [`render_grouped`] takes the
-//! tabs in groups instead: tabs of one group stand [`GROUP_TAB_GAP`] apart,
-//! groups [`GROUP_GAP`] apart, and a row only wraps between two groups unless
-//! a single group is wider than the row. [`render_sub`] draws a second-level
-//! bar for the sub-views of the active tab, indented under the first tab.
+//! Every tab is separated from the next one on its row by a dim `│`.
+//! [`render_grouped`] takes the tabs in groups: a row then only wraps between
+//! two groups, unless a single group is wider than the row. [`render_sub`]
+//! draws a second-level bar for the sub-views of the active tab, indented
+//! under the first tab, its items [`SUB_GAP`] apart.
 
 use ratatui::{
     Frame,
@@ -24,12 +24,8 @@ use crate::theme::Skin;
 
 const SEPARATOR: &str = " \u{2502} ";
 
-/// Gap between two tabs of the same group in a grouped bar.
-pub const GROUP_TAB_GAP: &str = "  ";
-
-/// Gap between two groups of a grouped bar - wider than [`GROUP_TAB_GAP`], so
-/// the grouping reads without a divider glyph.
-pub const GROUP_GAP: &str = "    ";
+/// Gap between two items of the sub-view bar.
+pub const SUB_GAP: &str = "  ";
 
 /// One tab placed on a row: its index into the flat tab list and the gap
 /// drawn before it (empty for the first tab of a row).
@@ -88,7 +84,7 @@ pub fn height_grouped(
     groups: &[&[(&str, &str)]],
     width: usize,
 ) -> u16 {
-    pack_grouped(brand_label(brand).width(), groups, width)
+    pack_grouped(brand_label(brand).width(), groups, SEPARATOR, width)
         .len()
         .max(1) as u16
 }
@@ -96,9 +92,9 @@ pub fn height_grouped(
 /// Renders a grouped tab bar into `area`, highlighting the `active` tab.
 ///
 /// `groups` lists the tabs group by group; `active` indexes the tabs in that
-/// order as one flat list. Tabs of a group stand [`GROUP_TAB_GAP`] apart and
-/// groups [`GROUP_GAP`] apart; a row wraps between groups, and inside a group
-/// only when the group alone is wider than the row.
+/// order as one flat list. A dim `│` separates the tabs on a row; a row wraps
+/// between groups, and inside a group only when the group alone is wider
+/// than the row.
 pub fn render_grouped(
     frame: &mut Frame,
     area: Rect,
@@ -125,14 +121,14 @@ pub fn render_grouped_locked(
 
 /// Number of rows the sub-view bar needs at `width` under a bar with `brand`.
 pub fn sub_height(brand: &str, items: &[(&str, &str)], width: usize) -> u16 {
-    pack_grouped(brand_label(brand).width(), &[items], width)
+    pack_grouped(brand_label(brand).width(), &[items], SUB_GAP, width)
         .len()
         .max(1) as u16
 }
 
 /// Renders the sub-view bar of the active tab into `area`: the `items`
 /// (key, label) indented under the first tab of the bar above (`brand` sets
-/// the indent), [`GROUP_TAB_GAP`] apart, the `active` one bold in the accent
+/// the indent), [`SUB_GAP`] apart, the `active` one bold in the accent
 /// and the rest dim.
 pub fn render_sub(
     frame: &mut Frame,
@@ -143,7 +139,7 @@ pub fn render_sub(
     active: usize,
 ) {
     let indent = brand_label(brand).width();
-    let rows = pack_grouped(indent, &[items], area.width as usize);
+    let rows = pack_grouped(indent, &[items], SUB_GAP, area.width as usize);
     let active_style =
         style::fg(skin.palette.accent).add_modifier(Modifier::BOLD);
     let lines = rows
@@ -170,8 +166,12 @@ fn draw_grouped(
         .iter()
         .flat_map(|group| group.iter().copied())
         .collect();
-    let rows =
-        pack_grouped(brand_label(brand).width(), groups, area.width as usize);
+    let rows = pack_grouped(
+        brand_label(brand).width(),
+        groups,
+        SEPARATOR,
+        area.width as usize,
+    );
     draw_rows(frame, area, skin, brand, &tabs, &rows, active);
 }
 
@@ -305,12 +305,13 @@ fn pack(brand: &str, tabs: &[(&str, &str)], width: usize) -> Vec<Vec<usize>> {
 }
 
 /// Packs grouped tabs onto rows that each fit `width`, after an indent of
-/// `indent` columns on every row. A group moves to the next row as a whole
+/// `indent` columns on every row, `gap` between two tabs of a row. A group moves to the next row as a whole
 /// when it does not fit behind the previous one; only a group wider than a
 /// row of its own wraps between its tabs. A tab is never split.
 fn pack_grouped(
     indent: usize,
     groups: &[&[(&str, &str)]],
+    gap: &'static str,
     width: usize,
 ) -> Vec<Vec<Placed>> {
     let mut rows: Vec<Vec<Placed>> = Vec::new();
@@ -324,18 +325,13 @@ fn pack_grouped(
             .map(|(key, label)| tab_label(key, label).width())
             .collect();
         let group_width = widths.iter().sum::<usize>()
-            + GROUP_TAB_GAP.width() * widths.len().saturating_sub(1);
-        if !current.is_empty() && used + GROUP_GAP.width() + group_width > width
-        {
+            + gap.width() * widths.len().saturating_sub(1);
+        if !current.is_empty() && used + gap.width() + group_width > width {
             rows.push(std::mem::take(&mut current));
             used = indent;
         }
         for (offset, tab_width) in widths.iter().enumerate() {
-            let mut lead = match (current.is_empty(), offset) {
-                (true, _) => "",
-                (false, 0) => GROUP_GAP,
-                (false, _) => GROUP_TAB_GAP,
-            };
+            let mut lead = if current.is_empty() { "" } else { gap };
             if !current.is_empty() && used + lead.width() + tab_width > width {
                 rows.push(std::mem::take(&mut current));
                 used = indent;
@@ -483,25 +479,25 @@ mod tests {
     }
 
     #[test]
-    fn a_grouped_bar_spaces_tabs_and_groups_without_a_divider() {
+    fn a_grouped_bar_divides_every_tab_on_a_row() {
         let skin = test_skin();
         let rows = rendered_rows(60, 1, |frame| {
             render_grouped(frame, frame.area(), &skin, "app", GROUPS, 0);
         });
-        assert_eq!(rows[0], " app   1 A  2 B    3 C    0 D");
+        assert_eq!(rows[0], " app   1 A │ 2 B │ 3 C │ 0 D");
     }
 
     #[test]
     fn a_grouped_bar_wraps_between_groups() {
-        // "1 A  2 B" fits behind the brand, "3 C" does not fit behind it.
-        let rows = pack_grouped(6, GROUPS, 20);
+        // "1 A │ 2 B" fits behind the brand, "3 C" does not fit behind it.
+        let rows = pack_grouped(6, GROUPS, SEPARATOR, 20);
         let indices: Vec<Vec<usize>> = rows
             .iter()
             .map(|row| row.iter().map(|placed| placed.index).collect())
             .collect();
         assert_eq!(indices, vec![vec![0, 1], vec![2, 3]]);
         assert_eq!(rows[1][0].lead, "", "a row never starts with a gap");
-        assert_eq!(rows[1][1].lead, GROUP_GAP);
+        assert_eq!(rows[1][1].lead, SEPARATOR);
     }
 
     /// A group wider than a row on its own still wraps between its tabs
@@ -510,7 +506,7 @@ mod tests {
     fn a_group_wider_than_the_row_wraps_inside() {
         let wide: &[&[(&str, &str)]] =
             &[&[("1", "Alpha"), ("2", "Beta"), ("3", "Gamma")]];
-        let rows = pack_grouped(6, wide, 18);
+        let rows = pack_grouped(6, wide, SEPARATOR, 18);
         let flat: Vec<usize> = rows.concat().iter().map(|p| p.index).collect();
         assert!(rows.len() > 1, "expected a wrap, got {rows:?}");
         assert_eq!(flat, vec![0, 1, 2], "every tab must appear exactly once");
@@ -519,7 +515,12 @@ mod tests {
     #[test]
     fn the_grouped_height_matches_the_packed_rows() {
         for width in [80, 30, 20, 12] {
-            let rows = pack_grouped(brand_label("app").width(), GROUPS, width);
+            let rows = pack_grouped(
+                brand_label("app").width(),
+                GROUPS,
+                SEPARATOR,
+                width,
+            );
             assert_eq!(
                 height_grouped("app", GROUPS, width) as usize,
                 rows.len(),
@@ -546,8 +547,8 @@ mod tests {
                     }
                 })
                 .unwrap();
-            // "3 C" starts at column 17 (" app   1 A  2 B    ").
-            terminal.backend().buffer()[(17, 0)].style().fg
+            // "3 C" starts at column 19 (" app   1 A │ 2 B │ ").
+            terminal.backend().buffer()[(19, 0)].style().fg
         };
         assert_ne!(fg(false), fg(true), "the inactive tab must look disabled");
     }

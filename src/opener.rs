@@ -1,9 +1,12 @@
-//! Opening a file in the operating system's default application.
+//! Opening a file in the operating system's default application, and a web
+//! link in the default browser.
 //!
 //! The platform opener is invoked with an argument list via
 //! [`std::process::Command`], never a shell, so a path can never be
 //! interpreted as a command (no injection). The path is made absolute first,
-//! so it can never be mistaken for an option either.
+//! so it can never be mistaken for an option either. A link must be an
+//! `http(s)` URL without blanks or control characters, so it can neither be
+//! read as an option nor open a local file or another scheme.
 
 use std::{
     io,
@@ -30,6 +33,62 @@ pub fn open(path: &Path) -> io::Result<()> {
     } else {
         Err(io::Error::other(format!("opener exited with {status}")))
     }
+}
+
+/// Opens the web link `url` in the default browser.
+///
+/// # Errors
+///
+/// Returns [`io::ErrorKind::InvalidInput`] if `url` is not an `http://` or
+/// `https://` link (or carries blanks or control characters), or any I/O
+/// error from launching the opener.
+pub fn open_url(url: &str) -> io::Result<()> {
+    let url = checked_url(url)?;
+    let status = url_command(url).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("opener exited with {status}")))
+    }
+}
+
+/// `url` trimmed, if it is a plain `http(s)` link.
+fn checked_url(url: &str) -> io::Result<&str> {
+    let url = url.trim();
+    let lower = url.to_ascii_lowercase();
+    let is_web = lower.starts_with("https://") || lower.starts_with("http://");
+    let is_plain = !url.chars().any(|c| c.is_whitespace() || c.is_control());
+    if is_web && is_plain {
+        Ok(url)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("not a web link: {url}"),
+        ))
+    }
+}
+
+/// Builds the platform-specific command that opens the web link `url`.
+#[cfg(target_os = "macos")]
+fn url_command(url: &str) -> Command {
+    let mut command = Command::new("open");
+    command.arg(url);
+    command
+}
+
+#[cfg(target_os = "windows")]
+fn url_command(url: &str) -> Command {
+    // As for files: no shell, the link is one argument.
+    let mut command = Command::new("rundll32.exe");
+    command.arg("url.dll,FileProtocolHandler").arg(url);
+    command
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn url_command(url: &str) -> Command {
+    let mut command = Command::new("xdg-open");
+    command.arg(url);
+    command
 }
 
 /// Returns `path` in the form handed to the opener: absolute where possible.
@@ -101,6 +160,25 @@ mod tests {
         let argument = as_argument(Path::new("-a"));
         assert!(argument.is_absolute(), "{}", argument.display());
         assert_eq!(argument.file_name(), Some("-a".as_ref()));
+    }
+
+    #[test]
+    fn only_plain_web_links_pass() {
+        assert_eq!(
+            checked_url(" https://example.org/x?y=1 ").unwrap(),
+            "https://example.org/x?y=1"
+        );
+        assert!(checked_url("HTTP://example.org").is_ok());
+        for bad in [
+            "file:///etc/passwd",
+            "-a",
+            "https://a b",
+            "javascript:x",
+            "",
+        ] {
+            let error = checked_url(bad).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{bad}");
+        }
     }
 
     #[test]
