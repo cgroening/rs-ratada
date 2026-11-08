@@ -15,6 +15,7 @@ A reusable [ratatui](https://ratatui.rs) widget toolkit for Rust terminal apps.
 - **Pickers** – color, swatch, date, date-range, month, path (with an optional confinement root) and slider pickers. The three calendar pickers also take their value typed: `e` turns the header into a live-validating text field that takes ISO (`2026-02-01`, `2026-02`) as well as German dates (`1.2.2026`, `1.2.26`, `1.2.` without a year, `02/2026`). The date and date-range pickers show the ISO calendar week left of each row; `date_picker::set_week_column(WeekColumn::Hidden)` switches it off.
 - **Overlays & chrome** – a fuzzy help overlay, a command palette, box framing, header and status bars, and wrapping shortcut-hint footers.
 - **Key bindings** – `keymap`: a `KeyChord` grammar (`"ctrl+s"`, `"shift+left"`) and a user-remappable `Keymap<A>` over an app's own `Action` enum, with footer hints and conflict detection. `reload` gives every app the same `F5` configuration reload.
+- **Images** (feature `images`, off by default) – `images::ImageCache` draws image files in the terminal over Kitty, iTerm2 or Sixel, with half blocks as the fallback that works everywhere.
 - **Markdown** – a CommonMark renderer (headings, lists, task lists, code blocks, quotes, GFM tables/callouts, links) producing styled lines, plus a scrollable `MarkdownView` widget and a viewer modal.
 - **Theming** – a `Skin` bundling a `Palette` (semantic colors) and `Glyphs` (Unicode/ASCII variants, one meaning per glyph: pointer, check, mark, fold, stepper, descend, link); framework-agnostic so a CLI can share it, with a single ratatui adapter in `style`. A theme names a few base colors and the rest is derived: `border_focus` follows `border` unless it is set, and an override on `border` alone drags it along, so a focused frame never sinks into its own border. Colours are `#rrggbb`, `rgb(r, g, b)`, a soft named colour or a terminal colour `ansi:<name>`. The terminal `DIM` attribute can be drawn in the palette colour `dim` instead (`dim::apply_palette`).
 - **Diagnostics** – degraded conditions (a missing clipboard tool, an unreadable directory, an invalid color override, a failed terminal restore) are emitted through the [`log`](https://crates.io/crates/log) facade at `warn`/`error`; install a logger to surface them.
@@ -24,9 +25,11 @@ A reusable [ratatui](https://ratatui.rs) widget toolkit for Rust terminal apps.
 ```toml
 [dependencies]
 ratada = "0.8"
+# or, to draw images in the terminal:
+# ratada = { version = "0.8", features = ["images"] }
 ```
 
-Requires Rust 1.88 or newer (the crate uses `let`-chains).
+Requires Rust 1.88 or newer (the crate uses `let`-chains); the feature `images` needs Rust 1.90 (`ratatui-image` through `quantette`).
 
 Implement the `Screen` trait and hand it to `run`, which owns the draw/input loop inside a raw-mode `Tui` guard. The `prelude` re-exports the driver essentials:
 

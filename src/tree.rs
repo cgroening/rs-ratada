@@ -101,6 +101,14 @@ struct Flat {
     expanded: bool,
 }
 
+/// One node of the whole tree, visible or not: its preorder index, id and
+/// the preorder indices of its ancestors.
+struct NodeRef {
+    index: usize,
+    id: Option<usize>,
+    ancestors: Vec<usize>,
+}
+
 /// A tree view over owned [`TreeItem`] roots. Nodes start collapsed.
 pub struct TreeView {
     roots: Vec<TreeItem>,
@@ -217,6 +225,44 @@ impl TreeView {
         self.cursor = self.flatten().len().saturating_sub(1);
     }
 
+    /// The ids of the expanded nodes that carry one, so a host can restore
+    /// the fold state after rebuilding the tree (see [`expand_ids`]).
+    ///
+    /// [`expand_ids`]: Self::expand_ids
+    pub fn expanded_ids(&self) -> Vec<usize> {
+        self.all_nodes()
+            .into_iter()
+            .filter(|node| self.expanded.contains(&node.index))
+            .filter_map(|node| node.id)
+            .collect()
+    }
+
+    /// Expands every node whose id is in `ids`; unknown ids are ignored.
+    pub fn expand_ids(&mut self, ids: &[usize]) {
+        for node in self.all_nodes() {
+            if node.id.is_some_and(|id| ids.contains(&id)) {
+                self.expanded.insert(node.index);
+            }
+        }
+    }
+
+    /// Moves the cursor onto the node with `id`, expanding its ancestors so
+    /// it is visible. Returns whether such a node exists.
+    pub fn select_id(&mut self, id: usize) -> bool {
+        let nodes = self.all_nodes();
+        let Some(target) = nodes.iter().find(|node| node.id == Some(id)) else {
+            return false;
+        };
+        self.expanded.extend(target.ancestors.iter().copied());
+        let index = target.index;
+        if let Some(row) =
+            self.flatten().iter().position(|node| node.index == index)
+        {
+            self.cursor = row;
+        }
+        true
+    }
+
     /// Opens the node under the cursor; a leaf does nothing.
     pub fn expand_selected(&mut self) {
         let flat = self.flatten();
@@ -278,6 +324,35 @@ impl TreeView {
         let mut counter = 0usize;
         for item in &self.roots {
             self.walk(item, 0, true, &mut counter, &mut out);
+        }
+        out
+    }
+
+    /// Every node with its preorder index, id and ancestors, visible or not.
+    fn all_nodes(&self) -> Vec<NodeRef> {
+        fn visit(
+            item: &TreeItem,
+            ancestors: &mut Vec<usize>,
+            counter: &mut usize,
+            out: &mut Vec<NodeRef>,
+        ) {
+            let index = *counter;
+            *counter += 1;
+            out.push(NodeRef {
+                index,
+                id: item.id,
+                ancestors: ancestors.clone(),
+            });
+            ancestors.push(index);
+            for child in &item.children {
+                visit(child, ancestors, counter, out);
+            }
+            ancestors.pop();
+        }
+        let mut out = Vec::new();
+        let mut counter = 0usize;
+        for item in &self.roots {
+            visit(item, &mut Vec::new(), &mut counter, &mut out);
         }
         out
     }
@@ -527,5 +602,29 @@ mod tests {
             })
         };
         assert!(row_has_dim(1), "the dimmed row carries DIM");
+    }
+
+    #[test]
+    fn the_fold_state_and_cursor_restore_by_id() {
+        let build = || {
+            TreeView::new(vec![TreeItem::node_with_id(
+                "decks",
+                1,
+                vec![TreeItem::node_with_id(
+                    "rust",
+                    2,
+                    vec![TreeItem::leaf_with_id("traits", 3)],
+                )],
+            )])
+        };
+        let mut view = build();
+        assert!(view.select_id(3), "expands the ancestors");
+        assert_eq!(view.selected_label().as_deref(), Some("traits"));
+        let expanded = view.expanded_ids();
+        assert_eq!(expanded, [1, 2]);
+        let mut rebuilt = build();
+        rebuilt.expand_ids(&expanded);
+        assert_eq!(rebuilt.flatten().len(), 3);
+        assert!(!rebuilt.select_id(99));
     }
 }

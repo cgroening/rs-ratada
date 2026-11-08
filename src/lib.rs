@@ -94,6 +94,8 @@ pub mod fuzzy;
 pub mod gauge;
 pub mod header;
 pub mod help;
+#[cfg(feature = "images")]
+pub mod images;
 pub mod input;
 pub mod keymap;
 pub mod layout;

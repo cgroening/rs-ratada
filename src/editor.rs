@@ -97,6 +97,60 @@ pub fn edit_in_editor_as(
     Ok(result)
 }
 
+/// Opens the existing file `path` in `editor` at the 1-based `line`, with
+/// the terminal handed over while the editor runs. Returns whether the editor
+/// exited successfully.
+///
+/// The line is passed the way the editor understands it (see
+/// [`line_args`]); an editor without a known form just opens the file.
+///
+/// # Errors
+///
+/// Returns an I/O error if the terminal cannot be suspended or restored.
+pub fn open_file_at(
+    tui: &mut Tui,
+    editor: &str,
+    path: &std::path::Path,
+    line: usize,
+) -> io::Result<bool> {
+    let (program, args) = split_editor(editor);
+    let extra = line_args(program, &path.to_string_lossy(), line);
+    let status =
+        tui.suspend(|| Command::new(program).args(args).args(&extra).status())?;
+    Ok(match status {
+        Ok(code) if code.success() => true,
+        Ok(code) => {
+            log::warn!("editor '{editor}' exited with {code}");
+            false
+        }
+        Err(error) => {
+            log::warn!("could not launch editor '{editor}': {error}");
+            false
+        }
+    })
+}
+
+/// The arguments that open `path` at the 1-based `line` in `program`: `+N
+/// file` for vi-style editors (vi, vim, nvim, nano, helix, kakoune, emacs,
+/// micro), `-g file:N` for VS Code and its forks, `file:N` for Sublime and
+/// Zed, just the file otherwise. Only the program's file name is looked at.
+#[must_use]
+pub fn line_args(program: &str, path: &str, line: usize) -> Vec<String> {
+    let name = std::path::Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(program);
+    match name {
+        "vi" | "vim" | "nvim" | "nano" | "hx" | "helix" | "kak" | "emacs"
+        | "micro" => vec![format!("+{line}"), path.to_string()],
+        "code" | "codium" | "cursor" => {
+            vec!["-g".to_string(), format!("{path}:{line}")]
+        }
+        "subl" | "zed" => vec![format!("{path}:{line}")],
+        _ => vec![path.to_string()],
+    }
+}
+
 /// The text an editor session produced: line endings normalised to LF and
 /// trailing blank lines dropped.
 ///
@@ -219,5 +273,14 @@ mod tests {
     fn check_extension_rejects_an_empty_extension() {
         let error = check_extension("").expect_err("empty must not pass");
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn the_line_reaches_each_editor_in_its_own_form() {
+        assert_eq!(line_args("nvim", "a.md", 7), ["+7", "a.md"]);
+        assert_eq!(line_args("/usr/bin/vim", "a.md", 7), ["+7", "a.md"]);
+        assert_eq!(line_args("code", "a.md", 7), ["-g", "a.md:7"]);
+        assert_eq!(line_args("zed", "a.md", 7), ["a.md:7"]);
+        assert_eq!(line_args("ed", "a.md", 7), ["a.md"]);
     }
 }
