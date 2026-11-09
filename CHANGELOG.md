@@ -14,6 +14,10 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 - **`images::ImageCache` draws images in the terminal** (feature `images`, off by default). `detect` asks the terminal for its protocol - Kitty, iTerm2, Sixel - and falls back to half blocks; `half_blocks` skips the query. `render(frame, area, path)` decodes a file once, keeps it and draws it scaled to fit; a file that cannot be read draws nothing. Built on `ratatui-image` and `image`, which only the feature pulls in; with it, the toolkit needs Rust 1.90 (without it, 1.88 as before).
 - **`editor::open_file_at` opens an existing file at a line.** The terminal is handed over while the editor runs. `editor::line_args` gives the form each editor understands: `+N file` for vi, vim, nvim, nano, helix, kakoune, emacs and micro, `-g file:N` for VS Code and its forks, `file:N` for Sublime and Zed, just the file otherwise.
 
+### Changed
+
+- **A stepper whose value is none of its options steps to the ends.** When the host set a value outside the options (a form showing "Custom", say), `→` (and `Enter`) now steps to the first option and `←` to the last; before, the value counted as the first option, so `→` skipped it.
+
 ## [0.8.0] - 2026-11-08
 
 ### Changed (breaking)

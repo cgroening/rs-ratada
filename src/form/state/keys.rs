@@ -329,7 +329,9 @@ impl FormState {
         self.changed_event(index)
     }
 
-    /// Steps the focused stepper by `delta` options, wrapping.
+    /// Steps the focused stepper by `delta` options, wrapping. A value that is
+    /// none of the options (one the host set, say "Custom") steps forward to
+    /// the first option and back to the last.
     fn step_value(&mut self, delta: isize) -> FormEvent {
         let index = self.focus;
         let field = &mut self.fields[index];
@@ -337,7 +339,11 @@ impl FormState {
             return FormEvent::Pending;
         };
         let current = options.iter().position(|o| *o == field.value);
-        let next = nav::cycle(current.unwrap_or(0), options.len(), delta);
+        let next = match current {
+            Some(current) => nav::cycle(current, options.len(), delta),
+            None if delta < 0 => options.len().saturating_sub(1),
+            None => 0,
+        };
         if let Some(option) = options.get(next) {
             field.value.clone_from(option);
             field.is_mixed = false;

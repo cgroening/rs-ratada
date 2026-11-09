@@ -116,6 +116,22 @@ fn stepper_and_toggle_change_in_place() {
     assert!(is_yes(form.value("fav")));
 }
 
+/// A value outside the options (set by the host) steps to the ends.
+#[test]
+fn a_stepper_off_its_options_steps_to_the_first_or_last() {
+    let mut forward = form();
+    forward.set_value("kind", "custom");
+    forward.focus_on("kind");
+    press(&mut forward, &[KeyCode::Right]);
+    assert_eq!(forward.value("kind"), "git");
+
+    let mut back = form();
+    back.set_value("kind", "custom");
+    back.focus_on("kind");
+    press(&mut back, &[KeyCode::Left]);
+    assert_eq!(back.value("kind"), "path");
+}
+
 #[test]
 fn a_save_stays_open_and_a_second_press_closes() {
     let mut form = form();
