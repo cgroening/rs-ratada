@@ -2,18 +2,20 @@
 //!
 //! The caller builds an owned tree of [`TreeItem`]s; [`TreeView`] holds the
 //! expand/collapse and cursor state and renders the currently visible nodes.
+//! A row may carry a dimmed suffix and right-aligned [`TreeCell`]s, which the
+//! view lines up into columns across the whole tree, under an optional
+//! header row (see [`TreeView::with_column_headers`]).
+
+mod render;
+#[cfg(test)]
+mod tests;
 
 use std::{cell::Cell, collections::HashSet};
 
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{
-    Frame,
-    layout::Rect,
-    text::{Line, Span},
-};
+use ratatui::style::Style;
 
-use super::{chrome, input, list, nav, style};
-use crate::theme::Skin;
+use crate::{chrome, input, nav};
 
 /// A node in a tree: a label plus zero or more children.
 ///
@@ -26,39 +28,52 @@ pub struct TreeItem {
     label: String,
     id: Option<usize>,
     is_dimmed: bool,
+    suffix: Option<String>,
+    columns: Vec<TreeCell>,
     children: Vec<TreeItem>,
+}
+
+/// One right-aligned cell of a tree row (see [`TreeItem::with_columns`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TreeCell {
+    text: String,
+    style: Style,
+}
+
+impl TreeCell {
+    /// A cell showing `text` in the row's own style.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            style: Style::default(),
+        }
+    }
+
+    /// A cell showing `text` in `style`, for a value whose look carries
+    /// meaning (a highlighted count, a dimmed zero).
+    pub fn styled(text: impl Into<String>, style: Style) -> Self {
+        Self {
+            text: text.into(),
+            style,
+        }
+    }
 }
 
 impl TreeItem {
     /// A leaf node with no children and no id.
     pub fn leaf(label: impl Into<String>) -> Self {
-        Self {
-            label: label.into(),
-            id: None,
-            is_dimmed: false,
-            children: Vec::new(),
-        }
+        Self::build(label.into(), None, Vec::new())
     }
 
     /// A leaf node carrying `id`, so the caller can map a selection back to
     /// whatever the leaf stands for.
     pub fn leaf_with_id(label: impl Into<String>, id: usize) -> Self {
-        Self {
-            label: label.into(),
-            id: Some(id),
-            is_dimmed: false,
-            children: Vec::new(),
-        }
+        Self::build(label.into(), Some(id), Vec::new())
     }
 
     /// A node with children.
     pub fn node(label: impl Into<String>, children: Vec<TreeItem>) -> Self {
-        Self {
-            label: label.into(),
-            id: None,
-            is_dimmed: false,
-            children,
-        }
+        Self::build(label.into(), None, children)
     }
 
     /// A node with children that also carries `id`, for a row that stands
@@ -69,12 +84,7 @@ impl TreeItem {
         id: usize,
         children: Vec<TreeItem>,
     ) -> Self {
-        Self {
-            label: label.into(),
-            id: Some(id),
-            is_dimmed: false,
-            children,
-        }
+        Self::build(label.into(), Some(id), children)
     }
 
     /// Draws this row dimmed, for an entry that is shown but inactive (an
@@ -83,6 +93,41 @@ impl TreeItem {
     pub fn dimmed(mut self) -> Self {
         self.is_dimmed = true;
         self
+    }
+
+    /// Adds `suffix` after the label, dimmed: a note on the entry (that it
+    /// is excluded, why it failed) that gives way first when the row is too
+    /// narrow, so the label stays readable.
+    #[must_use]
+    pub fn with_suffix(mut self, suffix: impl Into<String>) -> Self {
+        self.suffix = Some(suffix.into());
+        self
+    }
+
+    /// Adds right-aligned `cells` after the label. The view lines each
+    /// column up across all rows, the columns starting after the widest
+    /// label and suffix among the rows with cells; a row with fewer cells
+    /// leaves the rest blank, and a row without any may use the whole width
+    /// for its label and suffix.
+    #[must_use]
+    pub fn with_columns(mut self, cells: Vec<TreeCell>) -> Self {
+        self.columns = cells;
+        self
+    }
+
+    fn build(
+        label: String,
+        id: Option<usize>,
+        children: Vec<TreeItem>,
+    ) -> Self {
+        Self {
+            label,
+            id,
+            is_dimmed: false,
+            suffix: None,
+            columns: Vec::new(),
+            children,
+        }
     }
 
     fn has_children(&self) -> bool {
@@ -97,6 +142,8 @@ struct Flat {
     label: String,
     id: Option<usize>,
     is_dimmed: bool,
+    suffix: Option<String>,
+    columns: Vec<TreeCell>,
     has_children: bool,
     expanded: bool,
 }
@@ -117,6 +164,8 @@ pub struct TreeView {
     offset: Cell<usize>,
     viewport: Cell<usize>,
     decor: Option<chrome::BoxDecor>,
+    /// The column headings drawn above the rows; empty draws no header.
+    headers: Vec<String>,
 }
 
 impl TreeView {
@@ -129,6 +178,7 @@ impl TreeView {
             offset: Cell::new(0),
             viewport: Cell::new(1),
             decor: None,
+            headers: Vec::new(),
         }
     }
 
@@ -138,6 +188,15 @@ impl TreeView {
     #[must_use]
     pub fn boxed(mut self, decor: chrome::BoxDecor) -> Self {
         self.decor = Some(decor);
+        self
+    }
+
+    /// Draws `headers` in a row above the tree, each right-aligned over its
+    /// column of [`TreeCell`]s (see [`TreeItem::with_columns`]). The row stays
+    /// in place while the tree scrolls.
+    #[must_use]
+    pub fn with_column_headers(mut self, headers: Vec<String>) -> Self {
+        self.headers = headers;
         self
     }
 
@@ -375,6 +434,8 @@ impl TreeView {
                 label: item.label.clone(),
                 id: item.id,
                 is_dimmed: item.is_dimmed,
+                suffix: item.suffix.clone(),
+                columns: item.columns.clone(),
                 has_children: item.has_children(),
                 expanded,
             });
@@ -382,249 +443,5 @@ impl TreeView {
         for child in &item.children {
             self.walk(child, depth + 1, visible && expanded, counter, out);
         }
-    }
-
-    /// Renders the visible nodes with indentation and expand markers, the cursor
-    /// row highlighted and a scrollbar on overflow.
-    pub fn render(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
-        let lines: Vec<Line<'static>> = self
-            .flatten()
-            .iter()
-            .map(|node| {
-                let marker = if node.has_children {
-                    skin.glyphs.fold(node.expanded)
-                } else {
-                    " "
-                };
-                let indent = "  ".repeat(node.depth);
-                let text = format!("{indent}{marker} {}", node.label);
-                // The dim rides on the span, so the cursor tint still lays
-                // over the row as a whole.
-                if node.is_dimmed {
-                    Line::from(Span::styled(text, style::dim()))
-                } else {
-                    Line::from(text)
-                }
-            })
-            .collect();
-        let view = list::ListView {
-            rows: lines,
-            selected: self.cursor,
-            offset: &self.offset,
-        };
-        let viewport = match &self.decor {
-            Some(decor) => {
-                list::render_boxed(frame, area, skin, view, decor, true)
-            }
-            // Without a box there is no border to hang the badge on, so the
-            // bottom row carries it.
-            None => list::render_counted(frame, area, skin, view),
-        };
-        self.viewport.set(viewport);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crossterm::event::KeyModifiers;
-
-    use super::*;
-
-    fn key(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::NONE)
-    }
-
-    fn ctrl(code: KeyCode) -> KeyEvent {
-        KeyEvent::new(code, KeyModifiers::CONTROL)
-    }
-
-    fn sample() -> TreeView {
-        TreeView::new(vec![
-            TreeItem::node(
-                "src",
-                vec![TreeItem::leaf("main.rs"), TreeItem::leaf("lib.rs")],
-            ),
-            TreeItem::leaf("Cargo.toml"),
-        ])
-    }
-
-    #[test]
-    fn starts_collapsed_showing_only_roots() {
-        let view = sample();
-        assert_eq!(view.flatten().len(), 2);
-        assert_eq!(view.selected_label().as_deref(), Some("src"));
-    }
-
-    #[test]
-    fn expanding_reveals_children() {
-        let mut view = sample();
-        view.handle_key(key(KeyCode::Right));
-        assert_eq!(view.flatten().len(), 4);
-    }
-
-    #[test]
-    fn collapsing_hides_children_again() {
-        let mut view = sample();
-        view.handle_key(key(KeyCode::Enter)); // expand src
-        assert_eq!(view.flatten().len(), 4);
-        view.handle_key(key(KeyCode::Enter)); // collapse src
-        assert_eq!(view.flatten().len(), 2);
-    }
-
-    #[test]
-    fn navigation_stays_in_bounds() {
-        let mut view = sample();
-        view.handle_key(key(KeyCode::Up)); // wrap to last
-        assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
-    }
-
-    #[test]
-    fn home_and_end_jump_to_the_first_and_last_row() {
-        let mut view = sample();
-        view.handle_key(key(KeyCode::End));
-        assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
-        view.handle_key(key(KeyCode::Home));
-        assert_eq!(view.selected_label().as_deref(), Some("src"));
-        // vim g/G mirror Home/End.
-        view.handle_key(key(KeyCode::Char('G')));
-        assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
-        view.handle_key(key(KeyCode::Char('g')));
-        assert_eq!(view.selected_label().as_deref(), Some("src"));
-    }
-
-    #[test]
-    fn page_down_clamps_at_the_last_row() {
-        // The default one-row viewport makes a page one row; PageDown from the
-        // top still clamps at the last node rather than wrapping.
-        let mut view = sample();
-        view.handle_key(key(KeyCode::PageDown));
-        assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
-        view.handle_key(key(KeyCode::PageDown));
-        assert_eq!(view.selected_label().as_deref(), Some("Cargo.toml"));
-    }
-
-    #[test]
-    fn ctrl_chords_do_not_navigate_or_expand() {
-        let mut view = sample();
-        // crossterm reports Ctrl+L/Ctrl+H as `Char('l')`/`Char('h')`, which
-        // would expand and collapse the node under the cursor.
-        view.handle_key(ctrl(KeyCode::Char('l')));
-        assert_eq!(view.flatten().len(), 2, "Ctrl+L must not expand");
-        view.handle_key(key(KeyCode::Right)); // expand src for real
-        view.handle_key(ctrl(KeyCode::Char('h')));
-        assert_eq!(view.flatten().len(), 4, "Ctrl+H must not collapse");
-        // Ctrl+J/Ctrl+G must not move the cursor either.
-        view.handle_key(ctrl(KeyCode::Char('j')));
-        view.handle_key(ctrl(KeyCode::Char('G')));
-        assert_eq!(view.selected_label().as_deref(), Some("src"));
-    }
-
-    /// A folder holding two identically labelled leaves, so only the ids can
-    /// tell them apart.
-    fn sample_with_ids() -> TreeView {
-        TreeView::new(vec![
-            TreeItem::node(
-                "decks",
-                vec![
-                    TreeItem::leaf_with_id("rust", 7),
-                    TreeItem::leaf_with_id("rust", 9),
-                ],
-            ),
-            TreeItem::leaf_with_id("geography", 3),
-        ])
-    }
-
-    #[test]
-    fn selected_id_survives_expanding_and_collapsing() {
-        let mut view = sample_with_ids();
-        assert_eq!(view.selected_id(), None); // the folder carries no id
-        view.handle_key(key(KeyCode::Right)); // expand decks
-        view.handle_key(key(KeyCode::Down));
-        assert_eq!(view.selected_id(), Some(7));
-        view.handle_key(key(KeyCode::Down));
-        assert_eq!(view.selected_id(), Some(9));
-        view.handle_key(key(KeyCode::Up));
-        view.handle_key(key(KeyCode::Up));
-        view.handle_key(key(KeyCode::Left)); // collapse decks
-        view.handle_key(key(KeyCode::Down));
-        assert_eq!(view.selected_id(), Some(3));
-    }
-
-    #[test]
-    fn selected_is_leaf_separates_folders_from_leaves() {
-        let mut view = sample_with_ids();
-        assert!(!view.selected_is_leaf()); // on "decks"
-        view.handle_key(key(KeyCode::Down));
-        assert!(view.selected_is_leaf()); // on "geography"
-        assert!(!TreeView::new(Vec::new()).selected_is_leaf());
-    }
-
-    #[test]
-    fn a_node_with_an_id_reports_it_and_still_folds() {
-        let mut view = TreeView::new(vec![TreeItem::node_with_id(
-            "deck",
-            4,
-            vec![TreeItem::leaf_with_id("section", 5)],
-        )]);
-        assert_eq!(view.selected_id(), Some(4));
-        assert!(!view.selected_is_leaf());
-        view.expand_selected();
-        view.step(1);
-        assert_eq!(view.selected_id(), Some(5));
-    }
-
-    #[test]
-    fn a_dimmed_row_is_drawn_with_the_dim_attribute() {
-        use ratatui::{Terminal, backend::TestBackend, style::Modifier};
-
-        let view = TreeView::new(vec![
-            TreeItem::leaf("plain"),
-            TreeItem::leaf("faded").dimmed(),
-        ]);
-        let mut terminal =
-            Terminal::new(TestBackend::new(20, 4)).expect("terminal");
-        let base = crate::theme::ThemeRegistry::builtin().resolve("default");
-        let skin = Skin::new(
-            crate::theme::Palette::resolve(
-                base,
-                &crate::theme::ColorOverrides::default(),
-            ),
-            crate::theme::Glyphs::new(crate::theme::GlyphVariant::Unicode),
-        );
-        terminal
-            .draw(|frame| view.render(frame, frame.area(), &skin))
-            .expect("draw");
-        let buffer = terminal.backend().buffer();
-        let row_has_dim = |y: u16| {
-            (0..buffer.area.width).any(|x| {
-                buffer[(x, y)].modifier.contains(Modifier::DIM)
-                    && buffer[(x, y)].symbol() != " "
-            })
-        };
-        assert!(row_has_dim(1), "the dimmed row carries DIM");
-    }
-
-    #[test]
-    fn the_fold_state_and_cursor_restore_by_id() {
-        let build = || {
-            TreeView::new(vec![TreeItem::node_with_id(
-                "decks",
-                1,
-                vec![TreeItem::node_with_id(
-                    "rust",
-                    2,
-                    vec![TreeItem::leaf_with_id("traits", 3)],
-                )],
-            )])
-        };
-        let mut view = build();
-        assert!(view.select_id(3), "expands the ancestors");
-        assert_eq!(view.selected_label().as_deref(), Some("traits"));
-        let expanded = view.expanded_ids();
-        assert_eq!(expanded, [1, 2]);
-        let mut rebuilt = build();
-        rebuilt.expand_ids(&expanded);
-        assert_eq!(rebuilt.flatten().len(), 3);
-        assert!(!rebuilt.select_id(99));
     }
 }

@@ -49,7 +49,8 @@ src/
   # data display
   table/            Table (type-aware sort, fuzzy filter, row/cell select),
                     split into model / interaction / render
-  tree.rs           collapsible TreeView
+  tree/             collapsible TreeView with aligned columns and a header
+                    row, split into mod / render
   list.rs           selectable list + scrollbar (ListView; render/_counted/_boxed)
   markdown/         CommonMark renderer: render/ is the engine (mod = block
                     walk, inline, overlay, wrap, block_list, block_table),
