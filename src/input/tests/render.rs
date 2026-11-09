@@ -25,7 +25,7 @@ fn line_spans_paint_the_caret_and_selection_distinctly() {
     // The caret cell (col 2) carries the cursor bg; the other selected cell
     // (col 1) carries the selection bg - two distinct runs.
     let cursor_bg = Some(style::to_ratatui(palette.cursor));
-    let selection_bg = Some(style::to_ratatui(palette.selection));
+    let selection_bg = Some(style::to_ratatui(palette.text_selection));
     let caret_run = spans.iter().find(|span| span.style.bg == cursor_bg);
     let selected = spans.iter().find(|span| span.style.bg == selection_bg);
     assert_eq!(caret_run.map(|span| span.content.as_ref()), Some("c"));
@@ -148,7 +148,7 @@ fn scrolled_line_spans_paint_only_the_visible_selection_slice() {
         content: None,
     };
     let spans = scrolled_line_spans("abcdefghij", paint, &palette);
-    let selection_bg = Some(style::to_ratatui(palette.selection));
+    let selection_bg = Some(style::to_ratatui(palette.text_selection));
     let selected: String = spans
         .iter()
         .filter(|span| span.style.bg == selection_bg)
@@ -171,7 +171,7 @@ fn query_spans_at_honours_a_mid_string_caret_and_selection() {
     let cursor_bg = Some(style::to_ratatui(palette.cursor));
     let caret = spans.iter().find(|span| span.style.bg == cursor_bg);
     assert_eq!(caret.map(|span| span.content.as_ref()), Some("b"));
-    let selection_bg = Some(style::to_ratatui(palette.selection));
+    let selection_bg = Some(style::to_ratatui(palette.text_selection));
     let selected: String = spans
         .iter()
         .filter(|span| span.style.bg == selection_bg)

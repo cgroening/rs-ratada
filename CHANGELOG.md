@@ -4,6 +4,10 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **Selected text has its own palette colour, `text_selection`.** Text fields (`InputField`, `TextArea`, `input::line_spans`, `scrolled_line_spans`, `query_spans_at`, so every modal input, the typed entry of the pickers and the filter lines) paint a selection in `text_selection` instead of `selection`, which keeps the highlighted list row, the form's focus tint and the calendar range. It defaults to `selection`, so nothing changes until a host sets it; a host that tints the active field like a selected row (`input_bg_active` = `selection`) sets it to keep a selection visible. `Palette` has the new field (a struct literal needs it), `ColorOverrides` takes `text_selection`, and `Palette::KEYS` lists it.
+
 ### Added
 
 - **`textarea::TextArea::fitted_height` gives the height that shows the whole text.** It counts the wrapped rows at the given width (the row a caret at the end of a full row opens included) and adds the box of `boxed`, so a host can grow the area with its text and cap it at the room it has; a longer text scrolls inside as before. The box's frame is now named: `chrome::BOX_CHROME_WIDTH`/`BOX_CHROME_HEIGHT` (border and side padding of a `framed_decor` box, `BOX_PADDING_X` per side), for a host that sizes such a box to its content.

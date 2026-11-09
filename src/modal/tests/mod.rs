@@ -20,7 +20,7 @@ use super::{
         confirm_styled, confirm_styled_views, dialog_area, dialog_key,
         render_dialog,
     },
-    text_input::{input_area, input_area_wide},
+    text_input::{input_area, input_area_wide, render_input},
 };
 use crate::{
     overlay::PopupFlow,
@@ -165,4 +165,40 @@ fn hints_wrap_on_a_narrow_screen_and_the_box_grows() {
     let picker = picker_area(Rect::new(0, 0, 30, 24), 2, 10, &hints);
     let wide = picker_area(Rect::new(0, 0, 80, 24), 2, 10, &hints);
     assert!(picker.height > wide.height, "{picker:?} vs {wide:?}");
+}
+
+/// A host that tints the active field like a selected row (`selection` =
+/// `input_bg_active`) still sees selected text in the input dialog: it is
+/// painted in `text_selection`.
+#[test]
+fn the_input_dialog_shows_a_selection_on_a_row_coloured_field() {
+    let mut skin = skin();
+    skin.palette.selection = skin.palette.input_bg_active;
+    skin.palette.text_selection = skin.palette.success;
+    let mut cursor = crate::input::TextCursor::at(0);
+    cursor.anchor = Some(4);
+    let backend = TestBackend::new(SCREEN.width, SCREEN.height);
+    let mut terminal = Terminal::new(backend).expect("a test terminal");
+    terminal
+        .draw(|frame| {
+            let rect = input_area_wide(frame.area());
+            render_input(frame, &skin, "Title", "Pay it", &cursor, rect);
+        })
+        .expect("the frame draws");
+    let buffer = terminal.backend().buffer();
+    let selected = crate::style::to_ratatui(skin.palette.text_selection);
+    let row = (0..SCREEN.height)
+        .find(|y| {
+            (0..SCREEN.width)
+                .map(|x| buffer[(x, *y)].symbol())
+                .collect::<String>()
+                .contains("Pay it")
+        })
+        .expect("the value row");
+    let painted: String = (0..SCREEN.width)
+        .filter(|x| buffer[(*x, row)].bg == selected)
+        .map(|x| buffer[(x, row)].symbol())
+        .collect();
+    // "Pay " is selected; the caret cell on "P" keeps its own colour.
+    assert_eq!(painted, "ay ");
 }

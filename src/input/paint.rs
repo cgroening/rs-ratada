@@ -145,7 +145,7 @@ pub fn line_spans(
     // The character under the block cursor takes whichever ink reads on it.
     let ink = palette.foreground.readable_on(palette.cursor);
     let cursor_style = style::cursor(palette).fg(style::to_ratatui(ink));
-    let selection_style = style::bg(palette.selection);
+    let selection_style = style::bg(palette.text_selection);
 
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut run = String::new();

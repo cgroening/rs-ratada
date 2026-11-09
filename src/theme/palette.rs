@@ -117,6 +117,10 @@ define_palette! {
     input_bg,
     /// Active (editing) text-input fill, derived from `surface`.
     input_bg_active,
+    /// Selected characters in a text field, `selection` by default. Its own
+    /// colour, so a host that tints the active field like a selected row
+    /// still sees what is selected.
+    text_selection,
     /// Border/line color.
     border,
     /// Border color of a focused box, lifted above `border` so the frame keeps
@@ -168,6 +172,9 @@ impl Palette {
             border.lighten(BORDER_FOCUS_LIGHTEN)
         };
 
+        let selection =
+            get(overrides.selection, surface.mix(accent, SELECTION_MIX));
+
         Self {
             accent,
             accent_dim: get(overrides.accent_dim, accent.darken(ACCENT_DIM)),
@@ -189,16 +196,14 @@ impl Palette {
             footer: get(overrides.footer, base.footer),
             panel: get(overrides.panel, base.panel),
             surface,
-            selection: get(
-                overrides.selection,
-                surface.mix(accent, SELECTION_MIX),
-            ),
+            selection,
             cursor: get(overrides.cursor, accent),
             input_bg: get(overrides.input_bg, surface.lighten(INPUT_BG)),
             input_bg_active: get(
                 overrides.input_bg_active,
                 surface.lighten(INPUT_BG_ACTIVE),
             ),
+            text_selection: get(overrides.text_selection, selection),
             border,
             border_focus: get(overrides.border_focus, base_border_focus),
             success: get(overrides.success, base.success),
@@ -289,6 +294,37 @@ mod tests {
         let palette = Palette::resolve(base(), &ColorOverrides::default());
         assert_ne!(palette.selection, palette.background);
         assert_ne!(palette.selection, palette.accent);
+    }
+
+    #[test]
+    fn a_text_selection_follows_the_selection_unless_overridden() {
+        let palette = Palette::resolve(base(), &ColorOverrides::default());
+        assert_eq!(palette.text_selection, palette.selection);
+        let overrides = ColorOverrides {
+            selection: "#010203",
+            text_selection: "#040506",
+            ..ColorOverrides::default()
+        };
+        let own = Palette::resolve(base(), &overrides);
+        assert_eq!(own.selection, Color::Rgb(1, 2, 3));
+        assert_eq!(own.text_selection, Color::Rgb(4, 5, 6));
+    }
+
+    /// Selected text stays visible while a field is typed into, in every
+    /// built-in theme.
+    #[test]
+    fn every_theme_shows_a_text_selection_on_an_active_field() {
+        let registry = ThemeRegistry::builtin();
+        for name in registry.names() {
+            let palette = Palette::resolve(
+                registry.resolve(name),
+                &ColorOverrides::default(),
+            );
+            assert_ne!(
+                palette.text_selection, palette.input_bg_active,
+                "{name}: the selection vanishes in an active field"
+            );
+        }
     }
 
     #[test]
