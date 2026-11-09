@@ -102,6 +102,35 @@ impl TextArea {
             .len()
     }
 
+    /// The height the area needs at `width` columns to show its whole text,
+    /// the box of [`Self::boxed`] included. A host that grows the area with
+    /// its text gives it this height, capped at the room it has; a longer
+    /// text then scrolls inside.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ratada::chrome::BoxDecor;
+    /// use ratada::textarea::TextArea;
+    ///
+    /// let plain = TextArea::new("one\ntwo\nthree");
+    /// assert_eq!(plain.fitted_height(40), 3);
+    /// let boxed = TextArea::new("one\ntwo\nthree").boxed(BoxDecor::new());
+    /// assert_eq!(boxed.fitted_height(40), 5);
+    /// ```
+    #[must_use]
+    pub fn fitted_height(&self, width: u16) -> u16 {
+        let (chrome_width, chrome_height) = match self.decor {
+            Some(_) => (chrome::BOX_CHROME_WIDTH, chrome::BOX_CHROME_HEIGHT),
+            None => (0, 0),
+        };
+        let text_width = width.saturating_sub(chrome_width).max(1);
+        let rows = self.rows(usize::from(text_width));
+        u16::try_from(rows)
+            .unwrap_or(u16::MAX)
+            .saturating_add(chrome_height)
+    }
+
     /// Applies one editing key; returns whether it was consumed.
     ///
     /// The whole behaviour lives in [`input::apply_edit_key`], driven with the
@@ -410,5 +439,44 @@ mod tests {
         let caret = style::to_ratatui(skin.palette.cursor);
         assert_ne!(buffer[(4, 0)].bg, caret, "nothing past the field");
         assert_eq!(buffer[(0, 1)].bg, caret, "the caret opens a row");
+    }
+
+    /// A boxed area at its fitted height shows every line of its text, so a
+    /// host growing the box with the text never leaves the last line hidden.
+    #[test]
+    fn a_boxed_area_at_its_fitted_height_shows_every_line() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        use crate::theme::{
+            ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+        };
+        let skin = Skin::new(
+            Palette::resolve(
+                ThemeRegistry::builtin().resolve("default"),
+                &ColorOverrides::default(),
+            ),
+            Glyphs::new(GlyphVariant::Unicode),
+        );
+        let width = 20;
+        // Three lines, the last one wrapping inside the box.
+        let area = TextArea::new("one\ntwo\nthree four five six")
+            .boxed(chrome::BoxDecor::new());
+        let height = area.fitted_height(width);
+        assert_eq!(height, 4 + chrome::BOX_CHROME_HEIGHT);
+        let mut terminal = Terminal::new(TestBackend::new(width, height))
+            .expect("a test terminal");
+        terminal
+            .draw(|frame| {
+                area.render(frame, Rect::new(0, 0, width, height), &skin, true);
+            })
+            .expect("the frame draws");
+        let buffer = terminal.backend().buffer();
+        let rows: Vec<String> = (0..height)
+            .map(|y| (0..width).map(|x| buffer[(x, y)].symbol()).collect())
+            .collect();
+        let screen = rows.join("\n");
+        for word in ["one", "two", "three", "six"] {
+            assert!(screen.contains(word), "{word} hidden:\n{screen}");
+        }
     }
 }

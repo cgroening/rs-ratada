@@ -232,6 +232,19 @@ impl BoxDecor {
     }
 }
 
+/// Blank columns between a [`framed_decor`] box's border and its content, per
+/// side.
+pub const BOX_PADDING_X: u16 = 1;
+
+/// Columns a [`framed_decor`] box spends around its content: two border
+/// columns plus the side padding. A box sized to its content is
+/// `content + BOX_CHROME_WIDTH` wide.
+pub const BOX_CHROME_WIDTH: u16 = 2 + 2 * BOX_PADDING_X;
+
+/// Rows a [`framed_decor`] box spends around its content: the two border
+/// rows. A box sized to its content is `content + BOX_CHROME_HEIGHT` high.
+pub const BOX_CHROME_HEIGHT: u16 = 2;
+
 /// Renders a rounded accent box with `decor`'s caption inset in the top border
 /// and its badge in the bottom-right border, then returns the inner content
 /// area. The single framing seam for boxable widgets; `auto_badge` is the
@@ -247,7 +260,7 @@ pub fn framed_decor(
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(style::border(&skin.palette))
-        .padding(Padding::horizontal(1));
+        .padding(Padding::horizontal(BOX_PADDING_X));
     if let Some(caption) = &decor.caption {
         // Box captions are bold to set them apart from plain modal titles.
         let label = style::accent(&skin.palette).add_modifier(Modifier::BOLD);
