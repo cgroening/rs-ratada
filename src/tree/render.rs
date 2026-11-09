@@ -1,12 +1,12 @@
 //! Drawing a [`TreeView`]: one row per visible node - indentation, fold
 //! glyph and label, then an optional dimmed suffix and the node's cells in
-//! right-aligned columns, lined up across the whole tree under an optional
-//! header row.
+//! right-aligned columns, lined up across the visible rows under an optional
+//! underlined header row.
 
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Style,
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -28,17 +28,15 @@ impl TreeView {
     /// headers set, their row takes the top line of `area`.
     pub fn render(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
         let (header_area, rows_area) = self.split_header(area);
+        let flat = self.flatten();
         let columns =
-            Columns::measure(self, skin, self.content_width(rows_area));
+            Columns::measure(self, &flat, skin, self.content_width(rows_area));
         if let Some(header_area) = header_area {
-            let header = columns.header(&self.headers);
+            let header = columns.header(self, skin);
             frame.render_widget(Paragraph::new(header), header_area);
         }
-        let lines: Vec<Line<'static>> = self
-            .flatten()
-            .iter()
-            .map(|node| columns.row(node, skin))
-            .collect();
+        let lines: Vec<Line<'static>> =
+            flat.iter().map(|node| columns.row(node, skin)).collect();
         let view = list::ListView {
             rows: lines,
             selected: self.cursor,
@@ -105,47 +103,54 @@ fn has_cells(item: &TreeItem) -> bool {
     !item.columns.is_empty() || item.children.iter().any(has_cells)
 }
 
-/// The column geometry of a tree, measured over all its nodes - folded ones
-/// too, so opening a node never shifts the columns.
+/// The column geometry of a tree, measured over its visible rows, so the
+/// table is no wider than what is on screen needs.
 struct Columns {
     /// The width of each cell column.
     widths: Vec<usize>,
-    /// The width of the label column on a row with cells: the widest label
-    /// with its indentation and suffix among those rows, or less when the
-    /// row is too narrow.
+    /// The width of the label column on a row with cells: the widest visible
+    /// label with its indentation and suffix among those rows, or less when
+    /// the row is too narrow.
     label_width: usize,
     /// The width a row's text may take in all.
     content_width: usize,
 }
 
 impl Columns {
-    /// Measures `view`'s columns for rows `content_width` columns wide.
-    fn measure(view: &TreeView, skin: &Skin, content_width: usize) -> Self {
+    /// Measures the columns of `view`'s visible rows `flat` for rows
+    /// `content_width` columns wide. The headings count like a top-level
+    /// row, so the header always fits.
+    fn measure(
+        view: &TreeView,
+        flat: &[Flat],
+        skin: &Skin,
+        content_width: usize,
+    ) -> Self {
         let mut widths: Vec<usize> =
             view.headers.iter().map(|header| header.width()).collect();
-        let mut widest_label = 0;
-        for root in &view.roots {
-            visit(root, 0, &mut |item, depth| {
-                // A row without cells has the whole width to itself, so it
-                // does not push the columns out.
-                if item.columns.is_empty() {
-                    return;
-                }
-                let lead =
-                    lead(depth, item.has_children(), false, skin).width();
-                let suffix = item
-                    .suffix
-                    .as_ref()
-                    .map_or(0, |suffix| COLUMN_GAP + suffix.width());
-                widest_label =
-                    widest_label.max(lead + item.label.width() + suffix);
-                for (index, cell) in item.columns.iter().enumerate() {
-                    if index == widths.len() {
-                        widths.push(0);
-                    }
-                    widths[index] = widths[index].max(cell.text.width());
-                }
+        let mut widest_label =
+            view.label_heading.as_ref().map_or(0, |heading| {
+                lead(0, false, false, skin).width() + heading.width()
             });
+        for node in flat {
+            // A row without cells has the whole width to itself, so it does
+            // not push the columns out.
+            if node.columns.is_empty() {
+                continue;
+            }
+            let lead = lead(node.depth, node.has_children, node.expanded, skin);
+            let suffix = node
+                .suffix
+                .as_ref()
+                .map_or(0, |suffix| COLUMN_GAP + suffix.width());
+            widest_label =
+                widest_label.max(lead.width() + node.label.width() + suffix);
+            for (index, cell) in node.columns.iter().enumerate() {
+                if index == widths.len() {
+                    widths.push(0);
+                }
+                widths[index] = widths[index].max(cell.text.width());
+            }
         }
         let cells_width = cells_width(&widths);
         let room = content_width.saturating_sub(cells_width + COLUMN_GAP);
@@ -156,15 +161,26 @@ impl Columns {
         }
     }
 
-    /// The header row: blank over the label column, each heading
-    /// right-aligned over its column, all dimmed.
-    fn header(&self, headers: &[String]) -> Line<'static> {
-        let mut spans = vec![Span::raw(" ".repeat(self.label_width))];
+    /// The header row: the label heading where the top-level labels start,
+    /// each column heading right-aligned over its column; dimmed and
+    /// underlined across the table.
+    fn header(&self, view: &TreeView, skin: &Skin) -> Line<'static> {
+        let lead = lead(0, false, false, skin).width();
+        let heading = view.label_heading.as_deref().unwrap_or("");
+        let heading =
+            text::truncate(heading, self.label_width.saturating_sub(lead));
+        let pad = self.label_width.saturating_sub(lead + heading.width());
+        let mut spans = vec![
+            Span::raw(" ".repeat(lead)),
+            Span::raw(heading),
+            Span::raw(" ".repeat(pad)),
+        ];
         for (index, width) in self.widths.iter().enumerate() {
-            let heading = headers.get(index).map_or("", String::as_str);
+            let heading = view.headers.get(index).map_or("", String::as_str);
             spans.push(Span::raw(" ".repeat(COLUMN_GAP)));
-            push_right_aligned(&mut spans, heading, *width, style::dim());
+            push_right_aligned(&mut spans, heading, *width, Style::default());
         }
+        patch_all(&mut spans, style::dim().add_modifier(Modifier::UNDERLINED));
         Line::from(spans)
     }
 
@@ -180,7 +196,8 @@ impl Columns {
         let label =
             text::truncate(&node.label, room.saturating_sub(lead.width()));
         let mut used = lead.width() + label.width();
-        let mut spans = vec![Span::raw(lead), Span::raw(label)];
+        let mut spans =
+            vec![Span::raw(lead), Span::styled(label, node.label_style)];
         if let Some(suffix) = &node.suffix {
             let free = room.saturating_sub(used + COLUMN_GAP);
             let suffix = text::truncate(suffix, free);
@@ -203,22 +220,20 @@ impl Columns {
                 push_right_aligned(&mut spans, cell, *width, cell_style);
             }
         }
+        // Row styles ride on the spans, so the cursor tint still lays over
+        // the row as a whole.
+        patch_all(&mut spans, node.row_style);
         if node.is_dimmed {
-            // The dim rides on the spans, so the cursor tint still lays over
-            // the row as a whole.
-            for span in &mut spans {
-                span.style = span.style.patch(style::dim());
-            }
+            patch_all(&mut spans, style::dim());
         }
         Line::from(spans)
     }
 }
 
-/// Calls `visit` on `item` at `depth` and on every node below it.
-fn visit(item: &TreeItem, depth: usize, on: &mut impl FnMut(&TreeItem, usize)) {
-    on(item, depth);
-    for child in &item.children {
-        visit(child, depth + 1, on);
+/// Patches `style` over every span of a row.
+fn patch_all(spans: &mut [Span<'static>], style: Style) {
+    for span in spans {
+        span.style = span.style.patch(style);
     }
 }
 

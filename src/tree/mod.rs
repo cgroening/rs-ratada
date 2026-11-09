@@ -2,9 +2,10 @@
 //!
 //! The caller builds an owned tree of [`TreeItem`]s; [`TreeView`] holds the
 //! expand/collapse and cursor state and renders the currently visible nodes.
-//! A row may carry a dimmed suffix and right-aligned [`TreeCell`]s, which the
-//! view lines up into columns across the whole tree, under an optional
-//! header row (see [`TreeView::with_column_headers`]).
+//! A row may carry a dimmed suffix, styles of its own and right-aligned
+//! [`TreeCell`]s, which the view lines up into columns across the visible
+//! rows, under an optional underlined header row (see
+//! [`TreeView::with_column_headers`] and [`TreeView::with_label_heading`]).
 
 mod render;
 #[cfg(test)]
@@ -30,6 +31,8 @@ pub struct TreeItem {
     is_dimmed: bool,
     suffix: Option<String>,
     columns: Vec<TreeCell>,
+    label_style: Style,
+    row_style: Style,
     children: Vec<TreeItem>,
 }
 
@@ -105,13 +108,32 @@ impl TreeItem {
     }
 
     /// Adds right-aligned `cells` after the label. The view lines each
-    /// column up across all rows, the columns starting after the widest
-    /// label and suffix among the rows with cells; a row with fewer cells
-    /// leaves the rest blank, and a row without any may use the whole width
-    /// for its label and suffix.
+    /// column up across the visible rows, the columns starting after the
+    /// widest label and suffix among the visible rows with cells, so the
+    /// table is no wider than what is on screen needs (opening a node with a
+    /// longer label moves the columns out). A row with fewer cells leaves the
+    /// rest blank, and a row without any may use the whole width for its
+    /// label and suffix.
     #[must_use]
     pub fn with_columns(mut self, cells: Vec<TreeCell>) -> Self {
         self.columns = cells;
+        self
+    }
+
+    /// Draws the label in `style` (patched over the row's own): a bold
+    /// group, a quieter detail row.
+    #[must_use]
+    pub fn with_label_style(mut self, style: Style) -> Self {
+        self.label_style = style;
+        self
+    }
+
+    /// Draws the whole row - label, suffix, the padding and the cells - in
+    /// `style` (patched over each part's own). An underline then runs to the
+    /// end of the last cell, which sets off a summary row.
+    #[must_use]
+    pub fn with_row_style(mut self, style: Style) -> Self {
+        self.row_style = style;
         self
     }
 
@@ -126,6 +148,8 @@ impl TreeItem {
             is_dimmed: false,
             suffix: None,
             columns: Vec::new(),
+            label_style: Style::default(),
+            row_style: Style::default(),
             children,
         }
     }
@@ -144,6 +168,8 @@ struct Flat {
     is_dimmed: bool,
     suffix: Option<String>,
     columns: Vec<TreeCell>,
+    label_style: Style,
+    row_style: Style,
     has_children: bool,
     expanded: bool,
 }
@@ -166,6 +192,8 @@ pub struct TreeView {
     decor: Option<chrome::BoxDecor>,
     /// The column headings drawn above the rows; empty draws no header.
     headers: Vec<String>,
+    /// The heading over the label column, if any.
+    label_heading: Option<String>,
 }
 
 impl TreeView {
@@ -179,6 +207,7 @@ impl TreeView {
             viewport: Cell::new(1),
             decor: None,
             headers: Vec::new(),
+            label_heading: None,
         }
     }
 
@@ -192,11 +221,22 @@ impl TreeView {
     }
 
     /// Draws `headers` in a row above the tree, each right-aligned over its
-    /// column of [`TreeCell`]s (see [`TreeItem::with_columns`]). The row stays
-    /// in place while the tree scrolls.
+    /// column of [`TreeCell`]s (see [`TreeItem::with_columns`]). The row is
+    /// dimmed and underlined across the table, and stays in place while the
+    /// tree scrolls.
     #[must_use]
     pub fn with_column_headers(mut self, headers: Vec<String>) -> Self {
         self.headers = headers;
+        self
+    }
+
+    /// Heads the label column of the header row with `heading`, set where
+    /// the top-level labels start (see [`with_column_headers`]).
+    ///
+    /// [`with_column_headers`]: Self::with_column_headers
+    #[must_use]
+    pub fn with_label_heading(mut self, heading: impl Into<String>) -> Self {
+        self.label_heading = Some(heading.into());
         self
     }
 
@@ -436,6 +476,8 @@ impl TreeView {
                 is_dimmed: item.is_dimmed,
                 suffix: item.suffix.clone(),
                 columns: item.columns.clone(),
+                label_style: item.label_style,
+                row_style: item.row_style,
                 has_children: item.has_children(),
                 expanded,
             });

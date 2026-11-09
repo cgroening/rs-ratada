@@ -334,3 +334,104 @@ fn a_suffix_on_a_row_with_cells_widens_the_label_column() {
     assert_eq!(rows[0], "  Go  2 notes  1");
     assert_eq!(rows[1], "  Rust         3");
 }
+
+/// The modifiers of every cell of row `y` that `view` draws `width` wide.
+fn row_modifiers(
+    view: &TreeView,
+    width: u16,
+    y: u16,
+) -> Vec<(String, ratatui::style::Modifier)> {
+    use ratatui::{Terminal, backend::TestBackend};
+
+    let mut terminal =
+        Terminal::new(TestBackend::new(width, 6)).expect("terminal");
+    terminal
+        .draw(|frame| view.render(frame, frame.area(), &skin()))
+        .expect("draw");
+    let buffer = terminal.backend().buffer();
+    (0..width)
+        .map(|x| {
+            let cell = &buffer[(x, y)];
+            (cell.symbol().to_string(), cell.modifier)
+        })
+        .collect()
+}
+
+/// A folder whose only child has a long name, folded.
+fn folded_long_child() -> TreeView {
+    TreeView::new(vec![
+        TreeItem::node(
+            "Lang",
+            vec![
+                TreeItem::leaf("A very long section name")
+                    .with_columns(vec![TreeCell::new("1")]),
+            ],
+        )
+        .with_columns(vec![TreeCell::new("1")]),
+    ])
+}
+
+#[test]
+fn a_folded_long_name_does_not_widen_the_label_column() {
+    let mut view = folded_long_child();
+    let folded = rendered(&view, 60, 4);
+    assert_eq!(folded[0], "\u{25b8} Lang  1", "{folded:#?}");
+    view.expand_selected();
+    let open = rendered(&view, 60, 4);
+    assert!(
+        open[0].chars().count() > folded[0].chars().count(),
+        "{open:#?}"
+    );
+}
+
+#[test]
+fn the_label_heading_sits_over_the_labels_and_the_header_is_underlined() {
+    use ratatui::style::Modifier;
+
+    let view = TreeView::new(vec![
+        TreeItem::leaf("Rust").with_columns(vec![TreeCell::new("3")]),
+    ])
+    .with_column_headers(vec!["Due".to_string()])
+    .with_label_heading("Deck");
+    let rows = rendered(&view, 30, 4);
+    assert_eq!(rows[0], "  Deck  Due", "{rows:#?}");
+    assert_eq!(rows[1], "  Rust    3", "{rows:#?}");
+    let header = row_modifiers(&view, 30, 0);
+    let table_width = rows[0].chars().count();
+    assert!(
+        header[..table_width]
+            .iter()
+            .all(|(_, modifier)| modifier.contains(Modifier::UNDERLINED)),
+        "the underline runs across the table: {header:?}"
+    );
+    assert!(!header[table_width].1.contains(Modifier::UNDERLINED));
+}
+
+#[test]
+fn a_row_style_runs_to_the_last_cell_and_a_label_style_stays_on_the_label() {
+    use ratatui::style::{Modifier, Style};
+
+    let underlined = Style::default().add_modifier(Modifier::UNDERLINED);
+    let bold = Style::default().add_modifier(Modifier::BOLD);
+    let view = TreeView::new(vec![
+        TreeItem::leaf("All")
+            .with_row_style(underlined)
+            .with_columns(vec![TreeCell::new("12")]),
+        TreeItem::leaf("Group")
+            .with_label_style(bold)
+            .with_columns(vec![TreeCell::new("3")]),
+    ]);
+    let summary = row_modifiers(&view, 30, 0);
+    // "  All    12": every cell up to the last digit is underlined.
+    assert!(
+        summary[..11]
+            .iter()
+            .all(|(_, m)| m.contains(Modifier::UNDERLINED))
+    );
+    let group = row_modifiers(&view, 30, 1);
+    let label: Vec<_> = group
+        .iter()
+        .filter(|(_, m)| m.contains(Modifier::BOLD))
+        .collect();
+    assert_eq!(label.len(), "Group".len(), "{group:?}");
+}
