@@ -72,6 +72,7 @@
 pub mod theme;
 
 pub mod autocomplete;
+pub mod chips;
 pub mod chrome;
 pub mod clipboard;
 pub mod color_picker;
