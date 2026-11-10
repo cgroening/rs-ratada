@@ -8,7 +8,9 @@
 //!
 //! Two renderings share this state: [`Autocomplete::render_popup`] draws a
 //! floating menu over the view (`popup`), and [`Autocomplete::lines`] returns
-//! rows a host appends to its own text (`inline`).
+//! rows a host appends to its own text (`inline`). How many rows show at
+//! once is [`Autocomplete::max_visible`], where the menu opens
+//! [`Autocomplete::placement`].
 
 mod inline;
 mod matching;
@@ -22,8 +24,19 @@ pub use popup::PopupStyle;
 
 use super::nav::{self, ScrollView};
 
-/// Most suggestion rows visible at once; further matches scroll.
+/// Most suggestion rows visible at once unless a host sets
+/// [`Autocomplete::max_visible`]; further matches scroll.
 pub const MAX_VISIBLE: usize = 8;
+
+/// Where the floating menu opens relative to its field.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Placement {
+    /// Below the field, flipped above it when there is more room there.
+    #[default]
+    Auto,
+    /// Always below the field; short of room it shrinks and scrolls.
+    Below,
+}
 
 /// What a key press means while the suggestions may be open.
 pub enum AcOutcome {
@@ -46,8 +59,12 @@ pub struct Autocomplete {
     /// The highlighted row (an index into `matches`), `None` until the user
     /// navigates.
     selected: Option<usize>,
-    /// The first visible row for a menu of [`MAX_VISIBLE`] rows.
+    /// The first visible row for a menu of `max_visible` rows.
     scroll: usize,
+    /// Most rows visible at once ([`MAX_VISIBLE`] unless set).
+    max_visible: usize,
+    /// Where the floating menu opens.
+    placement: Placement,
     dismissed: bool,
     /// When set, an empty query lists every candidate instead of hiding the
     /// suggestions (a "type the trigger to see all options" affordance).
@@ -84,6 +101,8 @@ impl Autocomplete {
             matches: Vec::new(),
             selected: None,
             scroll: 0,
+            max_visible: MAX_VISIBLE,
+            placement: Placement::Auto,
             dismissed: true,
             open_on_empty: false,
         }
@@ -94,6 +113,23 @@ impl Autocomplete {
     #[must_use]
     pub fn open_on_empty(mut self) -> Self {
         self.open_on_empty = true;
+        self
+    }
+
+    /// Shows up to `rows` suggestions at once instead of [`MAX_VISIBLE`]
+    /// (at least one); further matches scroll. Chainable on
+    /// [`new`](Self::new).
+    #[must_use]
+    pub fn max_visible(mut self, rows: usize) -> Self {
+        self.max_visible = rows.max(1);
+        self
+    }
+
+    /// Opens the floating menu as `placement` says instead of
+    /// [`Placement::Auto`]. Chainable on [`new`](Self::new).
+    #[must_use]
+    pub fn placement(mut self, placement: Placement) -> Self {
+        self.placement = placement;
         self
     }
 
@@ -218,12 +254,12 @@ impl Autocomplete {
         ScrollView {
             total: self.matches.len(),
             offset: self.scroll,
-            viewport: MAX_VISIBLE,
+            viewport: self.max_visible,
         }
     }
 
     /// The first visible row for a window of `viewport` rows, keeping the
-    /// highlight in view. A host may grant fewer than [`MAX_VISIBLE`] rows, so
+    /// highlight in view. A host may grant fewer than `max_visible` rows, so
     /// the window is fitted at render time rather than stored.
     fn window_offset(&self, viewport: usize) -> usize {
         let view = ScrollView {
@@ -515,6 +551,19 @@ mod tests {
         assert_eq!(ac.scroll, 12 - MAX_VISIBLE);
         ac.on_key(key(KeyCode::Down)); // wraps to the top
         assert_eq!(ac.scroll, 0);
+    }
+
+    #[test]
+    fn a_longer_menu_scrolls_only_past_its_own_rows() {
+        let mut ac = numbered(20).max_visible(15);
+        ac.refresh("store");
+        for _ in 0..15 {
+            ac.on_key(key(KeyCode::Down));
+        }
+        assert_eq!(ac.selected, Some(14));
+        assert_eq!(ac.scroll, 0);
+        ac.on_key(key(KeyCode::Down));
+        assert_eq!(ac.scroll, 1);
     }
 
     #[test]

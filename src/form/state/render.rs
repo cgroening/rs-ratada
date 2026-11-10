@@ -34,6 +34,17 @@ const MIN_VALUE_WIDTH: usize = 28;
 /// What a mixed value shows.
 const MIXED: &str = "(mixed)";
 
+/// Where the field being typed into sits on screen.
+#[derive(Debug, Clone, Copy)]
+struct EditSpot {
+    /// The column its value starts in.
+    column: u16,
+    /// Its first row.
+    y: u16,
+    /// The rows it takes.
+    rows: usize,
+}
+
 /// What every row shares in one draw.
 struct RowCtx<'a> {
     skin: &'a Skin,
@@ -46,7 +57,8 @@ impl FormState {
     /// Draws the form as a modal box centred in `area`, as big as its rows
     /// and keys: the frame with its title and the focus badge, the rows
     /// (scrolling with a scrollbar on a short screen), the hint rows and,
-    /// while a field is typed into, its suggestions.
+    /// while a field is typed into, its suggestions - drawn last, over
+    /// everything else, and free to run past the box to the screen's edge.
     pub fn render(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
         let width = u16::try_from(self.content_width())
             .unwrap_or(u16::MAX)
@@ -77,11 +89,12 @@ impl FormState {
             height: inner.height.min(hint_rows),
             ..inner
         };
-        self.render_rows(frame, rows_area, skin);
+        self.draw_rows(frame, rows_area, skin, MODAL_PADDING_X);
         frame.render_widget(
             Paragraph::new(self.hint_lines(usize::from(inner.width), skin)),
             hints_area,
         );
+        self.render_suggestions(frame, rows_area, skin, frame.area());
     }
 
     /// Draws the form inline in a host's content area instead of as a
@@ -89,7 +102,7 @@ impl FormState {
     /// with the labels), a blank row, then the fields, the focused row's
     /// tint inside `area`. The keys belong in the host's footer
     /// ([`FormState::hint_groups`]), the question or notice in its status
-    /// band ([`FormState::prompt`]).
+    /// band ([`FormState::prompt`]). The suggestions stay inside `area`.
     pub fn render_inline(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
         if area.height == 0 {
             return;
@@ -107,18 +120,22 @@ impl FormState {
             ..area
         };
         self.draw_rows(frame, rows, skin, 0);
+        self.render_suggestions(frame, rows, skin, area);
     }
 
     /// Draws the rows into `area` (a host layout or the modal's inside):
     /// scrolled so the focused field shows, its row tinted through the
     /// modal padding, a scrollbar while they overflow, the live editor of a
-    /// multi-line field and the suggestions of the field being typed into.
+    /// multi-line field and the suggestions of the field being typed into,
+    /// which may run past `area` down to the screen's edge.
     pub fn render_rows(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
         self.draw_rows(frame, area, skin, MODAL_PADDING_X);
+        self.render_suggestions(frame, area, skin, frame.area());
     }
 
-    /// [`FormState::render_rows`] with the focus tint reaching `bleed`
-    /// columns past `area` on each side (the modal padding, or none).
+    /// [`FormState::render_rows`] without the suggestions, with the focus
+    /// tint reaching `bleed` columns past `area` on each side (the modal
+    /// padding, or none).
     fn draw_rows(
         &self,
         frame: &mut Frame,
@@ -131,14 +148,7 @@ impl FormState {
         let viewport = usize::from(area.height);
         let focus_row = self.row_of(self.focus, width);
         let focus_rows = self.field_rows(self.focus, width);
-        let offset = nav::keep_visible(
-            nav::ScrollView {
-                total: lines.len(),
-                offset: 0,
-                viewport,
-            },
-            focus_row,
-        );
+        let offset = self.scroll_offset(area);
         if let Some(row) = focus_row.checked_sub(offset)
             && row < viewport
         {
@@ -169,7 +179,21 @@ impl FormState {
                 viewport,
             },
         );
-        self.render_editor(frame, area, skin, offset);
+        self.render_editor(frame, area, skin);
+    }
+
+    /// The first row shown in `area`: scrolled just far enough that the
+    /// focused field shows.
+    fn scroll_offset(&self, area: Rect) -> usize {
+        let width = usize::from(area.width);
+        nav::keep_visible(
+            nav::ScrollView {
+                total: self.rows_at(width),
+                offset: 0,
+                viewport: usize::from(area.height),
+            },
+            self.row_of(self.focus, width),
+        )
     }
 
     /// The rows of the fields for `width` columns, for a host that lays the
@@ -527,53 +551,79 @@ impl FormState {
         }
     }
 
-    /// Draws the live editor of a multi-line field over its text rows, and
-    /// the suggestions of the field being typed into below it, when they
-    /// are on screen.
-    fn render_editor(
+    /// Draws the live editor of a multi-line field over its text rows, when
+    /// they are on screen.
+    fn render_editor(&self, frame: &mut Frame, area: Rect, skin: &Skin) {
+        let Some(editing) = &self.editing else {
+            return;
+        };
+        let Editor::Area(text_area) = &editing.editor else {
+            return;
+        };
+        let (Some(field), Some(spot)) =
+            (self.fields.get(editing.index), self.edit_spot(area))
+        else {
+            return;
+        };
+        let rect = Rect::new(
+            spot.column,
+            spot.y,
+            u16::try_from(self.wrap_width(field, usize::from(area.width)))
+                .unwrap_or(1),
+            u16::try_from(spot.rows).unwrap_or(1),
+        )
+        .intersection(area);
+        if rect.height == 0 {
+            return;
+        }
+        frame.render_widget(Clear, rect);
+        text_area.render(frame, rect, skin, true);
+    }
+
+    /// Draws the suggestions of the field being typed into (its rows laid
+    /// out in `area`) under its last row, inside `menu_bounds`. Called after
+    /// everything else of the form, so nothing paints over the menu.
+    fn render_suggestions(
         &self,
         frame: &mut Frame,
         area: Rect,
         skin: &Skin,
-        offset: usize,
+        menu_bounds: Rect,
     ) {
-        let Some(editing) = &self.editing else {
+        let (Some(editing), Some(spot)) = (&self.editing, self.edit_spot(area))
+        else {
             return;
         };
-        let Some(field) = self.fields.get(editing.index) else {
-            return;
-        };
-        let width = usize::from(area.width);
-        let start = self.row_of(editing.index, width);
-        let rows = self.field_rows(editing.index, width);
-        let indent = field::value_column(self.label_width());
-        let column = area.x + u16::try_from(indent).unwrap_or(u16::MAX);
-        let Some(row) = start.checked_sub(offset) else {
-            return;
-        };
-        let y = area.y + u16::try_from(row).unwrap_or(u16::MAX);
-        if let Editor::Area(text_area) = &editing.editor {
-            let rect = Rect::new(
-                column,
-                y,
-                u16::try_from(self.wrap_width(field, width)).unwrap_or(1),
-                u16::try_from(rows).unwrap_or(1),
-            )
-            .intersection(area);
-            if rect.height == 0 {
-                return;
-            }
-            frame.render_widget(Clear, rect);
-            text_area.render(frame, rect, skin, true);
+        let rows = u16::try_from(spot.rows.saturating_sub(1)).unwrap_or(0);
+        let last = spot.y.saturating_add(rows);
+        if last >= area.bottom() {
+            return; // the field's last row is scrolled out of `area`
         }
-        // The suggestions open under the field's last row.
-        let last = y.saturating_add(u16::try_from(rows - 1).unwrap_or(0));
         editing.complete.render_popup(
             frame,
-            Position::new(column, last),
-            area,
+            Position::new(spot.column, last),
+            menu_bounds,
             &PopupStyle::from_palette(&skin.palette),
         );
+    }
+
+    /// Where the field being typed into sits in `area`, or `None` while no
+    /// field is typed into or it is scrolled off above `area`.
+    fn edit_spot(&self, area: Rect) -> Option<EditSpot> {
+        let editing = self.editing.as_ref()?;
+        let width = usize::from(area.width);
+        let start = self.row_of(editing.index, width);
+        let row = start.checked_sub(self.scroll_offset(area))?;
+        let indent = field::value_column(self.label_width());
+        Some(EditSpot {
+            column: area
+                .x
+                .saturating_add(u16::try_from(indent).unwrap_or(u16::MAX)),
+            y: area
+                .y
+                .saturating_add(u16::try_from(row).unwrap_or(u16::MAX)),
+            rows: self.field_rows(editing.index, width),
+        })
     }
 }
 

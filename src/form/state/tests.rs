@@ -421,3 +421,40 @@ fn the_footer_gets_field_and_form_keys_and_the_question_alone() {
     assert_eq!(groups.len(), 1);
     assert!(groups[0].1.iter().any(|(key, _)| *key == "n"));
 }
+
+#[test]
+fn the_suggestions_run_below_the_field_past_the_modal() {
+    let stores = (0..20).map(|n| format!("Store {n:02}")).collect();
+    let field = FormField::text("store", "Store", "").with_suggestions(stores);
+    let mut form = FormState::new("Entry", vec![field]);
+    press(&mut form, &[KeyCode::Enter]);
+    let rows = drawn(&form, 80, 30);
+    let row_of =
+        |needle: &str| rows.iter().position(|row| row.contains(needle));
+    let field_row = row_of("Store  ").expect("the field row");
+    let modal_bottom = row_of("\u{2570}").expect("the modal's bottom border");
+    // The menu opens right under the field and runs past the modal's
+    // bottom border, showing 15 rows instead of the default 8.
+    assert_eq!(row_of("Store 00"), Some(field_row + 1));
+    let last = row_of("Store 14").expect("the 15th suggestion");
+    assert!(
+        last > modal_bottom,
+        "menu ends inside the modal:\n{rows:#?}"
+    );
+    assert_eq!(row_of("Store 15"), None);
+    // Nothing of the form paints over the menu, not even its hint rows or
+    // the bottom border: every menu row shows its label and its blank fill
+    // (the menu is 12 wide, the label column 10 of it).
+    let first = &rows[field_row + 1];
+    let byte = first.find("Store 00").expect("the first suggestion");
+    let column = first[..byte].chars().count();
+    for (n, row) in rows[field_row + 1..=last].iter().enumerate() {
+        let menu: String = row.chars().skip(column).take(11).collect();
+        // `drawn` trims the blanks at a row's end; pad them back.
+        assert_eq!(
+            format!("{menu:<11}"),
+            format!("Store {n:02}   "),
+            "menu row {n} is painted over:\n{rows:#?}"
+        );
+    }
+}

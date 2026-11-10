@@ -10,7 +10,7 @@ use super::{
     Editing, Editor, FieldKind, FormEvent, FormState, Mode, is_yes, yes_no,
 };
 use crate::{
-    autocomplete::{AcOutcome, Autocomplete},
+    autocomplete::{AcOutcome, Autocomplete, Placement},
     clipboard,
     form::field,
     input::{self, InputField},
@@ -20,6 +20,11 @@ use crate::{
     textarea::TextArea,
     theme::Skin,
 };
+
+/// Most suggestion rows a form field shows at once. The menu may run past
+/// the modal down to the screen's edge, so it can be longer than the
+/// toolkit's default.
+const SUGGESTION_ROWS: usize = 15;
 
 impl FormState {
     /// Handles one key and says what the host has to do.
@@ -275,8 +280,10 @@ impl FormState {
             }
             (false, None) => Editor::Line(InputField::new(&field.value)),
         };
-        let mut complete =
-            Autocomplete::new(field.suggestions.clone()).open_on_empty();
+        let mut complete = Autocomplete::new(field.suggestions.clone())
+            .open_on_empty()
+            .max_visible(SUGGESTION_ROWS)
+            .placement(Placement::Below);
         complete.refresh(&field.value);
         self.editing = Some(Editing {
             index: self.focus,

@@ -9,14 +9,14 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use super::{Autocomplete, MAX_VISIBLE};
+use super::Autocomplete;
 use crate::style;
 use crate::theme::Palette;
 
 impl Autocomplete {
     /// The visible suggestion rows, each indented by `indent` columns, with the
     /// highlighted row in the selection style and a closing `+N more` row for
-    /// the matches outside the [`MAX_VISIBLE`] window. Empty when closed.
+    /// the matches outside the `max_visible` window. Empty when closed.
     pub fn lines(
         &self,
         palette: &Palette,
@@ -27,13 +27,13 @@ impl Autocomplete {
             return Vec::new();
         }
         let pad = " ".repeat(indent);
-        let offset = self.window_offset(MAX_VISIBLE);
+        let offset = self.window_offset(self.max_visible);
         let shown = self
             .matches
             .iter()
             .enumerate()
             .skip(offset)
-            .take(MAX_VISIBLE);
+            .take(self.max_visible);
         let mut lines: Vec<Line<'static>> = shown
             .map(|(row, hit)| {
                 let row_style = if Some(row) == self.selected {
@@ -47,7 +47,7 @@ impl Autocomplete {
                 ])
             })
             .collect();
-        let hidden = self.matches.len().saturating_sub(MAX_VISIBLE);
+        let hidden = self.matches.len().saturating_sub(self.max_visible);
         if hidden > 0 {
             lines.push(Line::from(vec![
                 Span::raw(pad),
@@ -66,6 +66,7 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use super::*;
+    use crate::autocomplete::MAX_VISIBLE;
     use crate::theme::{ColorOverrides, ThemeRegistry};
 
     fn palette() -> Palette {

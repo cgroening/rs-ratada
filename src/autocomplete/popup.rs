@@ -1,12 +1,13 @@
 //! The floating rendering: a borderless menu drawn over the view.
 //!
-//! The menu sits under the field (or above it when the room below runs out),
-//! its labels starting in the column where the value starts, so the typed text
+//! The menu sits under the field (or, with [`Placement::Auto`], above it when
+//! the room below runs out), its labels starting in the column where the value
+//! starts, so the typed text
 //! and the suggestions line up. Nothing around it moves: it overdraws the rows
 //! below instead of pushing them down. The look follows blink.cmp's compact
 //! menu - a flat fill with one blank column on either side, the labels bold
 //! with the matched part plain, and a solid-cell scrollbar in the right-hand
-//! column once the matches outgrow [`MAX_VISIBLE`].
+//! column once the matches outgrow the visible rows.
 
 use std::ops::Range;
 
@@ -19,7 +20,7 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use super::{Autocomplete, MAX_VISIBLE, Match};
+use super::{Autocomplete, Match, Placement};
 use crate::nav::ScrollView;
 use crate::scroll::{self, CellColors};
 use crate::style;
@@ -77,8 +78,8 @@ impl Autocomplete {
     ///
     /// `anchor` is the screen cell where the field's value starts: the menu
     /// opens on the row below with its labels in that column (its padding one
-    /// column further left), and flips above the field when there is more room
-    /// there than below. The menu never leaves
+    /// column further left), and with [`Placement::Auto`] flips above the
+    /// field when there is more room there than below. The menu never leaves
     /// `bounds` (the host's panel or modal), so it shrinks - scrolling the rest
     /// - or is skipped when even one row does not fit.
     pub fn render_popup(
@@ -91,9 +92,13 @@ impl Autocomplete {
         if !self.is_open() {
             return;
         }
-        let rows = self.matches.len().min(MAX_VISIBLE) as u16;
-        let width = self.label_width().saturating_add(2 * PADDING);
-        let Some(area) = popup_area(anchor, bounds, width, rows) else {
+        let rows = self.matches.len().min(self.max_visible);
+        let menu = MenuSize {
+            width: self.label_width().saturating_add(2 * PADDING),
+            rows: u16::try_from(rows).unwrap_or(u16::MAX),
+        };
+        let Some(area) = popup_area(anchor, bounds, menu, self.placement)
+        else {
             return;
         };
         let viewport = usize::from(area.height);
@@ -170,11 +175,19 @@ impl Autocomplete {
     }
 }
 
-/// Places a menu of `width` x `rows` cells for a field whose value starts at
-/// `anchor`, inside `bounds`.
+/// The cells a menu asks for, before it is fitted into its bounds.
+#[derive(Debug, Clone, Copy)]
+struct MenuSize {
+    width: u16,
+    rows: u16,
+}
+
+/// Places a menu of `menu` cells for a field whose value starts at `anchor`,
+/// inside `bounds`.
 ///
-/// The menu goes on the row below `anchor` while it fits there, flips above
-/// when the room above is larger, and otherwise shrinks to the room below. It
+/// The menu goes on the row below `anchor` while it fits there; with
+/// [`Placement::Auto`] it flips above when the room above is larger, and
+/// otherwise (always, with [`Placement::Below`]) shrinks to the room below. It
 /// starts [`PADDING`] columns left of `anchor`, so its labels line up with the
 /// value; it is at least [`MIN_WIDTH`] wide, never wider than `bounds`, and
 /// shifted left when it would cross the right edge. `None` when `anchor` lies
@@ -182,9 +195,10 @@ impl Autocomplete {
 fn popup_area(
     anchor: Position,
     bounds: Rect,
-    width: u16,
-    rows: u16,
+    menu: MenuSize,
+    placement: Placement,
 ) -> Option<Rect> {
+    let MenuSize { width, rows } = menu;
     let inside = anchor.y >= bounds.y && anchor.y < bounds.bottom();
     if rows == 0 || !inside {
         return None;
@@ -195,7 +209,8 @@ fn popup_area(
     }
     let below = bounds.bottom() - anchor.y - 1;
     let above = anchor.y - bounds.y;
-    let (y, height) = if rows <= below || below >= above {
+    let stays_below = placement == Placement::Below;
+    let (y, height) = if stays_below || rows <= below || below >= above {
         (anchor.y + 1, rows.min(below))
     } else {
         let height = rows.min(above);
@@ -326,60 +341,82 @@ mod tests {
         rect(0, 0, 40, 20)
     }
 
+    /// Places a `width` x `rows` menu the default way, flipping above.
+    fn place(
+        anchor: Position,
+        bounds: Rect,
+        width: u16,
+        rows: u16,
+    ) -> Option<Rect> {
+        popup_area(anchor, bounds, MenuSize { width, rows }, Placement::Auto)
+    }
+
+    /// Places a `width` x `rows` menu that always opens below.
+    fn place_below(
+        anchor: Position,
+        bounds: Rect,
+        width: u16,
+        rows: u16,
+    ) -> Option<Rect> {
+        popup_area(anchor, bounds, MenuSize { width, rows }, Placement::Below)
+    }
+
     #[test]
     fn area_opens_below_the_anchor() {
-        let area = popup_area(at(5, 2), screen(), 14, 3);
+        let area = place(at(5, 2), screen(), 14, 3);
         assert_eq!(area, Some(rect(4, 3, 14, 3)));
     }
 
     #[test]
     fn area_flips_above_when_the_room_below_runs_out() {
-        let area = popup_area(at(5, 18), screen(), 14, 3);
+        let area = place(at(5, 18), screen(), 14, 3);
         assert_eq!(area, Some(rect(4, 15, 14, 3)));
     }
 
     #[test]
     fn area_shrinks_below_when_there_is_less_room_above() {
-        let area = popup_area(at(5, 8), screen(), 14, 12);
+        let area = place(at(5, 8), screen(), 14, 12);
         assert_eq!(area, Some(rect(4, 9, 14, 11)));
     }
 
     #[test]
+    fn area_below_shrinks_instead_of_flipping() {
+        // Where the default flips above (see the test before), it stays.
+        let area = place_below(at(5, 16), screen(), 14, 8);
+        assert_eq!(area, Some(rect(4, 17, 14, 3)));
+        assert_eq!(place_below(at(5, 19), screen(), 14, 3), None);
+    }
+
+    #[test]
     fn area_shifts_left_at_the_right_edge() {
-        let area = popup_area(at(35, 2), screen(), 14, 3);
+        let area = place(at(35, 2), screen(), 14, 3);
         assert_eq!(area, Some(rect(26, 3, 14, 3)));
     }
 
     #[test]
     fn area_has_a_minimum_and_a_maximum_width() {
-        assert_eq!(
-            popup_area(at(0, 0), screen(), 5, 1).map(|a| a.width),
-            Some(12)
-        );
+        assert_eq!(place(at(0, 0), screen(), 5, 1).map(|a| a.width), Some(12));
         let narrow = rect(0, 0, 8, 20);
-        assert_eq!(
-            popup_area(at(0, 0), narrow, 30, 1).map(|a| a.width),
-            Some(8)
-        );
+        assert_eq!(place(at(0, 0), narrow, 30, 1).map(|a| a.width), Some(8));
     }
 
     #[test]
     fn area_stays_inside_offset_bounds() {
         let bounds = rect(10, 5, 20, 6);
-        let area = popup_area(at(12, 6), bounds, 14, 8);
+        let area = place(at(12, 6), bounds, 14, 8);
         assert_eq!(area, Some(rect(11, 7, 14, 4)));
         // Even at the bounds' left edge the padding never leaves them.
-        let area = popup_area(at(10, 6), bounds, 14, 8);
+        let area = place(at(10, 6), bounds, 14, 8);
         assert_eq!(area.map(|a| a.x), Some(10));
     }
 
     #[test]
     fn area_is_none_without_usable_room() {
-        assert_eq!(popup_area(at(5, 2), screen(), 14, 0), None);
-        assert_eq!(popup_area(at(5, 25), screen(), 14, 3), None);
-        assert_eq!(popup_area(at(0, 0), rect(0, 0, 2, 20), 14, 3), None);
-        assert_eq!(popup_area(at(0, 0), rect(0, 0, 40, 1), 14, 3), None);
-        assert_eq!(popup_area(at(0, 0), Rect::default(), 14, 3), None);
+        assert_eq!(place(at(5, 2), screen(), 14, 0), None);
+        assert_eq!(place(at(5, 25), screen(), 14, 3), None);
+        assert_eq!(place(at(0, 0), rect(0, 0, 2, 20), 14, 3), None);
+        assert_eq!(place(at(0, 0), rect(0, 0, 40, 1), 14, 3), None);
+        assert_eq!(place(at(0, 0), Rect::default(), 14, 3), None);
     }
 
     #[test]
@@ -441,6 +478,18 @@ mod tests {
         assert!(column.contains(&THUMB));
         assert!(column.contains(&TRACK));
         assert_eq!(row_text(&buffer, 9, 0, 12), ".".repeat(12));
+    }
+
+    #[test]
+    fn a_longer_menu_shows_its_rows_without_a_scrollbar() {
+        let names: Vec<String> =
+            (0..12).map(|n| format!("Store {n:02}")).collect();
+        let mut ac = Autocomplete::new(names).max_visible(12);
+        ac.refresh("store");
+        let buffer = render(&ac, at(1, 0), screen());
+        assert_eq!(row_text(&buffer, 12, 0, 12), " Store 11   ");
+        assert_eq!(row_text(&buffer, 13, 0, 12), ".".repeat(12));
+        assert_eq!(buffer[(11, 1)].bg, BG);
     }
 
     #[test]
