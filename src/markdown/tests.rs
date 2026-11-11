@@ -656,3 +656,31 @@ fn an_item_holding_only_a_list_renders_as_before() {
     let lines = render_block("- - b", 40, &sheet());
     assert_eq!(texts(&lines), vec!["  \u{25cb} b".to_string()]);
 }
+
+#[test]
+fn a_tight_item_stands_above_the_code_in_it() {
+    let src = "- a\n\n      x = 1\n- b\n  ```\n  y\n  ```";
+    let shown = texts(&render_block(src, 40, &sheet()));
+    let a = shown.iter().position(|line| line.ends_with(" a"));
+    let b = shown.iter().position(|line| line.ends_with(" b"));
+    let y = shown.iter().position(|line| line.trim() == "y");
+    assert!(b.is_some() && y.is_some() && b < y, "{shown:?}");
+    assert!(a.is_some(), "{shown:?}");
+}
+
+#[test]
+fn an_empty_heading_keeps_a_line() {
+    let lines = render_block("text\n\n##\n\nmore", 40, &sheet());
+    assert_eq!(
+        texts(&lines),
+        vec![
+            "text".to_string(),
+            String::new(),
+            String::new(),
+            String::new(),
+            "more".to_string()
+        ]
+    );
+    let mapped = render_block_mapped("text\n\n##\n\nmore", 40, &sheet());
+    assert_eq!(mapped[2].source, Some(6), "the heading's own line");
+}

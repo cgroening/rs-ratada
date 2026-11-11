@@ -12,6 +12,7 @@ mod block_code;
 mod block_list;
 mod block_quote;
 mod block_table;
+mod decor;
 mod inline;
 mod overlay;
 mod source;
@@ -296,6 +297,9 @@ impl<'s> BlockState<'s> {
     }
 
     fn handle(&mut self, event: &Event) {
+        if is_block_start(event) {
+            self.flush_item_text();
+        }
         match event {
             Event::Start(Tag::Paragraph) => self.separate(),
             Event::End(TagEnd::Paragraph) => self.flush_inline(),
@@ -304,7 +308,11 @@ impl<'s> BlockState<'s> {
                 self.heading = Some(*level);
             }
             Event::End(TagEnd::Heading(_)) => {
-                self.flush_inline();
+                if self.inline.is_empty() && self.pending_marker.is_none() {
+                    self.emit_empty_heading();
+                } else {
+                    self.flush_inline();
+                }
                 self.heading = None;
             }
             Event::Start(Tag::BlockQuote(kind)) => {
@@ -322,13 +330,6 @@ impl<'s> BlockState<'s> {
                 }
             }
             Event::Start(Tag::List(start)) => {
-                // A tight item's text is still buffered when its nested
-                // list opens; it is the item's own line, above the list. An
-                // item holding nothing but the list keeps its marker for
-                // the list's first line, as before.
-                if !self.inline.is_empty() {
-                    self.flush_inline();
-                }
                 self.separate();
                 self.lists.push(ListLevel { ordered: *start });
             }
@@ -399,6 +400,29 @@ impl<'s> BlockState<'s> {
         }
     }
 
+    /// Draws a tight list item's text before a block that follows it inside
+    /// the item (a nested list, code, a quote, a heading, a table, HTML, a
+    /// rule): the text is the item's own first line, above that block. An
+    /// item holding nothing but the block keeps its marker for the block's
+    /// first line.
+    fn flush_item_text(&mut self) {
+        if !self.lists.is_empty() && !self.inline.is_empty() {
+            self.flush_inline();
+        }
+    }
+
+    /// Draws a heading without text as an empty line in the heading's look,
+    /// so it keeps its place.
+    fn emit_empty_heading(&mut self) {
+        let (prefix, _) = self.prefixes();
+        let fill_bg = self.fill_bg();
+        let source = Some(self.at);
+        self.push_decorated(&prefix, &[], fill_bg, source);
+        if self.at_top_level() {
+            self.produced = true;
+        }
+    }
+
     /// Buffers an inline event, or appends to the open code block's raw text.
     fn inline_event(&mut self, event: &Event) {
         if let Some(code) = self.code.as_mut() {
@@ -445,68 +469,6 @@ impl<'s> BlockState<'s> {
         if self.at_top_level() {
             self.produced = true;
         }
-    }
-
-    /// The base text style for the current container (heading / callout / quote
-    /// / body).
-    fn text_base(&self) -> Style {
-        let sheet = self.sheet;
-        if let Some(level) = self.heading {
-            return sheet.heading_style(level);
-        }
-        if let Some(kind) = self.callout_kind() {
-            let mut style = sheet.base;
-            if let Some(fg) = sheet.callout.get(kind).fg {
-                style = style.fg(fg);
-            }
-            return style;
-        }
-        if !self.quotes.is_empty() {
-            let mut style = sheet.base;
-            if let Some(fg) = sheet.quote.fg {
-                style = style.fg(fg);
-            }
-            return style;
-        }
-        sheet.base
-    }
-
-    /// The full-width band colour for the current container, if any.
-    fn fill_bg(&self) -> Option<Color> {
-        let sheet = self.sheet;
-        if let Some(level) = self.heading {
-            return sheet.heading_bg(level);
-        }
-        if let Some(kind) = self.callout_kind() {
-            return sheet.callout.get(kind).bg;
-        }
-        if !self.quotes.is_empty() {
-            return sheet.quote.bg;
-        }
-        None
-    }
-
-    /// The first-line and continuation-line prefixes (quote bars, list indent,
-    /// item marker) padded to a common width for alignment.
-    fn prefixes(&mut self) -> (Vec<Cell>, Vec<Cell>) {
-        let mut first: Vec<Cell> = Vec::new();
-        for _ in 0..self.quotes.len() {
-            first.extend(self.quote_bar());
-        }
-        let indent = self.lists.len().saturating_sub(1) * 2;
-        let indent_style = self.text_base();
-        for _ in 0..indent {
-            first.push((' ', indent_style));
-        }
-        let mut cont = first.clone();
-        if let Some(marker) = self.pending_marker.take() {
-            let marker_w = cells_width(&marker);
-            first.extend(marker);
-            for _ in 0..marker_w {
-                cont.push((' ', indent_style));
-            }
-        }
-        (first, cont)
     }
 
     /// Wraps `content` to the available width and pushes the decorated lines.
@@ -581,6 +543,22 @@ impl<'s> BlockState<'s> {
             self.produced = true;
         }
     }
+}
+
+/// Whether `event` opens a block that a tight list item's text must stand
+/// above.
+fn is_block_start(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::Start(
+            Tag::List(_)
+                | Tag::CodeBlock(_)
+                | Tag::BlockQuote(_)
+                | Tag::Heading { .. }
+                | Tag::Table(_)
+                | Tag::HtmlBlock
+        ) | Event::Rule
+    )
 }
 
 // --- cell helpers -------------------------------------------------------

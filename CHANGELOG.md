@@ -30,6 +30,8 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 ### Fixed
 
 - **A tight list item keeps its own line above its nested list.** `render_block` drew `- a` with `  - b` below it as one line `○ ab` under the nested bullet; the item's text now goes out when the nested list opens, so it reads `● a` and then `  ○ b`. An item holding nothing but a nested list (`- - b`) renders as before.
+- **A tight list item's text stands above every block inside it.** Not only a nested list: a code block, a quote, a heading, a table, HTML or a rule inside a tight item used to be drawn before the item's own text (`- a` with an indented fence drew the code, then `● a`); the text now comes first.
+- **An empty heading (`##`) keeps a line.** It drew nothing, so the text around it closed up; it now draws an empty line in the heading's look.
 - **`render_block_mapped` keeps each line's position inside its block.** A shown character the source holds otherwise (an entity such as `&lt;`, smart punctuation) was matched further on in the whole text, so a line and the lines after it could map into a later paragraph; the search now stays within the block's source, and a list after a table no longer takes a table cell's position.
 
 ## [0.8.0] - 2026-11-08
