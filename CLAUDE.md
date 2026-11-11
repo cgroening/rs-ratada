@@ -87,6 +87,7 @@ Applies to ratatui-based terminal apps. **This crate implements the following co
 - **Navigate cyclically:** Selection lists wrap at both ends via a shared helper (`nav::cycle` or `rem_euclid`), not via `saturating_add/sub`. An empty list yields index 0.
 - **Page-wise navigation:** `PageUp`/`PageDown` move by one screen page (visible rows, at least 1); clamped at the edge (not cyclic).
 - **Jumps to start/end:** `Home`/`End` jump to the start/end of the list and clamp there. Optionally additionally vim (`g`/`G`, `j`/`k`).
+- **Scroll without the cursor:** `Alt+J`/`Alt+K` scroll a list one row (`nav::scroll_key`, `nav::scroll_by`, `nav::scroll_with_cursor`); the cursor stays on its row while visible and moves along to the nearest visible row at the edge, so it never leaves the screen. Footer hint `nav::SCROLL_HINT`.
 - **Direct jump to a value (optional):** small picker, jumps to the next existing row.
 - **Multi-selection (optional):** `Space` toggles; `Shift`+arrow/`PageUp/Down` extend a range from an anchor.
 
