@@ -20,6 +20,8 @@ use super::{
 pub(super) struct TableState {
     pub(super) aligns: Vec<Alignment>,
     pub(super) rows: Vec<Vec<Vec<Cell>>>,
+    /// The byte offset in the source where each row starts.
+    pub(super) row_sources: Vec<usize>,
     pub(super) head_rows: usize,
     pub(super) in_head: bool,
 }
@@ -63,6 +65,7 @@ impl BlockState<'_> {
         if let Some(table) = self.table.as_mut() {
             table.in_head = head;
             table.rows.push(Vec::new());
+            table.row_sources.push(self.at);
             if head {
                 table.head_rows += 1;
             }
@@ -116,10 +119,10 @@ impl BlockState<'_> {
             None => Style::default(),
         };
         for (index, row) in table.rows.iter().enumerate() {
-            self.out
-                .push(table_row_line(row, &widths, &table.aligns, border));
+            let line = table_row_line(row, &widths, &table.aligns, border);
+            self.push_line(line, table.row_sources.get(index).copied());
             if table.head_rows > 0 && index + 1 == table.head_rows {
-                self.out.push(table_separator(&widths, border));
+                self.push_line(table_separator(&widths, border), None);
             }
         }
         if self.at_top_level() {

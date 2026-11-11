@@ -8,20 +8,21 @@
 //! the available width and decorates each line for its container (heading
 //! style, list marker, quote bar, code band).
 
+mod block_code;
 mod block_list;
+mod block_quote;
 mod block_table;
 mod inline;
 mod overlay;
+mod source;
 mod wrap;
 
 pub(super) use overlay::style_overlay;
 
 use block_list::ListLevel;
 use block_table::TableState;
-use inline::{
-    inline_to_cells, literal_cells, single_paragraph_cells, styled_cells,
-};
-use wrap::{cells_to_spans, clip_cells, hard_wrap, wrap_cells};
+use inline::{inline_to_cells, literal_cells, single_paragraph_cells};
+use wrap::{cells_to_spans, clip_cells, wrap_indices};
 
 use pulldown_cmark::BlockQuoteKind;
 use pulldown_cmark::CodeBlockKind;
@@ -32,18 +33,26 @@ use pulldown_cmark::Parser;
 use pulldown_cmark::Tag;
 use pulldown_cmark::TagEnd;
 use ratatui::style::Color;
-use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 use unicode_width::UnicodeWidthChar;
 
 use super::Link;
+use super::MappedLine;
 use super::StyleSheet;
-use super::callout_label;
 
 /// A single character paired with the style it renders in.
 type Cell = (char, Style);
+
+/// A block's cells with the byte offset in the source each came from.
+struct Sourced {
+    cells: Vec<Cell>,
+    /// One offset per cell.
+    sources: Vec<usize>,
+    /// Where the block starts, for a block without cells.
+    from: usize,
+}
 
 /// The enabled CommonMark extensions: strikethrough (`~~`), GFM task lists
 /// (`- [ ]`), GFM callouts (`> [!NOTE]`) and tables; smart punctuation
@@ -76,15 +85,27 @@ pub(super) fn render_block(
     width: usize,
     sheet: &StyleSheet,
 ) -> Vec<Line<'static>> {
-    let events: Vec<Event> =
-        Parser::new_ext(src, options(sheet.smart_punctuation)).collect();
-    let mut state = BlockState::new(width, sheet);
-    let mut i = 0;
-    while i < events.len() {
-        state.handle(&events[i]);
-        i += 1;
+    render_block_mapped(src, width, sheet)
+        .into_iter()
+        .map(|mapped| mapped.line)
+        .collect()
+}
+
+/// [`render_block`] with the source position of each line: the char index
+/// in `src` where the line's text starts, `None` for a line the renderer
+/// adds (a block separator, a callout title, a code label, a table rule).
+pub(super) fn render_block_mapped(
+    src: &str,
+    width: usize,
+    sheet: &StyleSheet,
+) -> Vec<MappedLine> {
+    let parser = Parser::new_ext(src, options(sheet.smart_punctuation));
+    let mut state = BlockState::new(src, width, sheet);
+    for (event, range) in parser.into_offset_iter() {
+        state.at = range.start;
+        state.handle(&event);
     }
-    state.into_lines()
+    state.into_mapped()
 }
 
 /// Renders a Markdown source string as inline-only spans for a single-line
@@ -181,8 +202,18 @@ fn span_width(span: &Span) -> usize {
 /// Mutable state threaded through the block walk.
 struct BlockState<'s> {
     sheet: &'s StyleSheet,
+    /// The Markdown source, for the lines' source positions.
+    src: &'s str,
+    /// The byte offset where the event being handled starts.
+    at: usize,
     width: usize,
     out: Vec<Line<'static>>,
+    /// The byte offset in `src` each line of `out` starts at, if any.
+    sources: Vec<Option<usize>>,
+    /// Where the buffered inline events start in `src`.
+    inline_from: Option<usize>,
+    /// Where the open code block's text starts in `src`.
+    code_from: Option<usize>,
     /// Buffered inline events of the current leaf block.
     inline: Vec<Event<'static>>,
     heading: Option<HeadingLevel>,
@@ -203,11 +234,16 @@ struct BlockState<'s> {
 }
 
 impl<'s> BlockState<'s> {
-    fn new(width: usize, sheet: &'s StyleSheet) -> Self {
+    fn new(src: &'s str, width: usize, sheet: &'s StyleSheet) -> Self {
         BlockState {
             sheet,
+            src,
+            at: 0,
             width: width.max(1),
             out: Vec::new(),
+            sources: Vec::new(),
+            inline_from: None,
+            code_from: None,
             inline: Vec::new(),
             heading: None,
             quotes: Vec::new(),
@@ -220,8 +256,19 @@ impl<'s> BlockState<'s> {
         }
     }
 
-    fn into_lines(self) -> Vec<Line<'static>> {
+    fn into_mapped(self) -> Vec<MappedLine> {
+        let sources = source::char_indices_of(self.src, &self.sources);
         self.out
+            .into_iter()
+            .zip(sources)
+            .map(|(line, source)| MappedLine { line, source })
+            .collect()
+    }
+
+    /// Adds a line that starts at byte `source` of the source, if any.
+    fn push_line(&mut self, line: Line<'static>, source: Option<usize>) {
+        self.out.push(line);
+        self.sources.push(source);
     }
 
     fn at_top_level(&self) -> bool {
@@ -236,7 +283,7 @@ impl<'s> BlockState<'s> {
     /// Inserts a blank separator before a new top-level block.
     fn separate(&mut self) {
         if self.at_top_level() && self.produced {
-            self.out.push(Line::from(String::new()));
+            self.push_line(Line::from(String::new()), None);
         }
     }
 
@@ -267,6 +314,9 @@ impl<'s> BlockState<'s> {
                 }
             }
             Event::Start(Tag::List(start)) => {
+                // A tight item's text is still buffered when its nested
+                // list opens; it is the item's own line, above the list.
+                self.flush_inline();
                 self.separate();
                 self.lists.push(ListLevel { ordered: *start });
             }
@@ -282,6 +332,7 @@ impl<'s> BlockState<'s> {
             Event::Start(Tag::CodeBlock(kind)) => {
                 self.separate();
                 self.code = Some(String::new());
+                self.code_from = None;
                 self.code_lang = match kind {
                     CodeBlockKind::Fenced(lang) if !lang.is_empty() => {
                         Some(lang.to_string())
@@ -296,6 +347,7 @@ impl<'s> BlockState<'s> {
                 self.table = Some(TableState {
                     aligns: aligns.clone(),
                     rows: Vec::new(),
+                    row_sources: Vec::new(),
                     head_rows: 0,
                     in_head: false,
                 });
@@ -340,8 +392,12 @@ impl<'s> BlockState<'s> {
         if let Some(code) = self.code.as_mut() {
             if let Event::Text(text) = event {
                 code.push_str(text);
+                self.code_from.get_or_insert(self.at);
             }
             return;
+        }
+        if self.inline.is_empty() {
+            self.inline_from = Some(self.at);
         }
         self.inline.push(event.clone().into_static());
     }
@@ -353,8 +409,19 @@ impl<'s> BlockState<'s> {
         }
         let events: Vec<&Event> = self.inline.iter().collect();
         let base = self.text_base();
-        let content = inline_to_cells(&events, self.sheet, base);
+        let cells = inline_to_cells(&events, self.sheet, base);
         self.inline.clear();
+        let from = self.inline_from.take().unwrap_or(self.at);
+        let sources = source::byte_offsets(
+            cells.iter().map(|&(ch, _)| ch),
+            self.src,
+            from,
+        );
+        let content = Sourced {
+            cells,
+            sources,
+            from,
+        };
 
         let (first_prefix, cont_prefix) = self.prefixes();
         let fill_bg = self.fill_bg();
@@ -426,63 +493,37 @@ impl<'s> BlockState<'s> {
         (first, cont)
     }
 
-    /// One quote-bar prefix cell pair (`▎ `): in a callout it uses the callout
-    /// colour, else the configured quote bar colour.
-    fn quote_bar(&self) -> Vec<Cell> {
-        let sheet = self.sheet;
-        let mut style = Style::default();
-        let fg = match self.callout_kind() {
-            Some(kind) => sheet.callout.get(kind).fg,
-            None => sheet.quote.bar_fg,
-        };
-        if let Some(fg) = fg {
-            style = style.fg(fg);
-        }
-        let mut cells = styled_cells(&sheet.quote.bar, style);
-        cells.push((' ', style));
-        cells
-    }
-
-    /// Emits a callout's coloured title line (e.g. `NOTE`) above its body.
-    fn emit_callout_title(&mut self, kind: BlockQuoteKind) {
-        let sheet = self.sheet;
-        let callout = sheet.callout.get(kind);
-        let bg = callout.bg;
-        let mut style = Style::default().add_modifier(Modifier::BOLD);
-        if let Some(fg) = callout.fg {
-            style = style.fg(fg);
-        }
-        let content = styled_cells(callout_label(kind), style);
-        let mut prefix: Vec<Cell> = Vec::new();
-        for _ in 0..self.quotes.len() {
-            prefix.extend(self.quote_bar());
-        }
-        self.push_decorated(&prefix, &content, bg);
-    }
-
     /// Wraps `content` to the available width and pushes the decorated lines.
     fn emit_wrapped(
         &mut self,
-        content: Vec<Cell>,
+        content: Sourced,
         first_prefix: Vec<Cell>,
         cont_prefix: Vec<Cell>,
         fill_bg: Option<Color>,
     ) {
         let prefix_w = cells_width(&first_prefix);
         let avail = self.width.saturating_sub(prefix_w).max(1);
-        let wrapped = wrap_cells(&content, avail);
+        let wrapped = wrap_indices(&content.cells, avail);
         let lines = if wrapped.is_empty() {
             vec![Vec::new()]
         } else {
             wrapped
         };
+        // A line without cells (an empty item, a blank hard break) starts
+        // where the line before it did.
+        let mut source = content.from;
         for (index, line) in lines.into_iter().enumerate() {
             let prefix = if index == 0 {
                 &first_prefix
             } else {
                 &cont_prefix
             };
-            self.push_decorated(prefix, &line, fill_bg);
+            if let Some(&first) = line.first() {
+                source = content.sources[first];
+            }
+            let cells: Vec<Cell> =
+                line.iter().map(|&at| content.cells[at]).collect();
+            self.push_decorated(prefix, &cells, fill_bg, Some(source));
         }
     }
 
@@ -492,6 +533,7 @@ impl<'s> BlockState<'s> {
         prefix: &[Cell],
         content: &[Cell],
         fill_bg: Option<Color>,
+        source: Option<usize>,
     ) {
         let mut cells: Vec<Cell> = prefix.to_vec();
         cells.extend_from_slice(content);
@@ -506,35 +548,7 @@ impl<'s> BlockState<'s> {
                 filled += 1;
             }
         }
-        self.out.push(Line::from(cells_to_spans(&cells)));
-    }
-
-    /// Flushes the collected code block as a banded set of hard-wrapped lines,
-    /// prefixed by the fenced language label when present.
-    fn flush_code(&mut self) {
-        let Some(code) = self.code.take() else {
-            return;
-        };
-        let style = self.sheet.code_block.text_style();
-        let bg = self.sheet.code_block.bg;
-        if let Some(lang) = self.code_lang.take() {
-            let mut title = Style::default();
-            if let Some(fg) = self.sheet.code_block.title_fg {
-                title = title.fg(fg);
-            }
-            let cells = styled_cells(&lang, title);
-            self.push_decorated(&[], &cells, bg);
-        }
-        let body = code.strip_suffix('\n').unwrap_or(&code);
-        for raw in body.split('\n') {
-            let cells: Vec<Cell> = raw.chars().map(|ch| (ch, style)).collect();
-            for chunk in hard_wrap(&cells, self.width) {
-                self.push_decorated(&[], &chunk, bg);
-            }
-        }
-        if self.at_top_level() {
-            self.produced = true;
-        }
+        self.push_line(Line::from(cells_to_spans(&cells)), source);
     }
 
     /// Emits a full-width horizontal rule.
@@ -546,7 +560,7 @@ impl<'s> BlockState<'s> {
         }
         let glyph = self.sheet.rule.glyph.chars().next().unwrap_or('\u{2500}');
         let line: Vec<Cell> = (0..self.width).map(|_| (glyph, style)).collect();
-        self.out.push(Line::from(cells_to_spans(&line)));
+        self.push_line(Line::from(cells_to_spans(&line)), Some(self.at));
         if self.at_top_level() {
             self.produced = true;
         }

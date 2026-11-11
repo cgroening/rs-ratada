@@ -170,6 +170,19 @@ fn bullets_render_with_glyph_by_depth() {
 }
 
 #[test]
+fn a_tight_item_keeps_its_line_above_its_nested_list() {
+    let lines = render_block("- a\n  - b\n- c", 40, &sheet());
+    assert_eq!(
+        texts(&lines),
+        vec![
+            "\u{25cf} a".to_string(),
+            "  \u{25cb} b".to_string(),
+            "\u{25cf} c".to_string(),
+        ]
+    );
+}
+
+#[test]
 fn ordered_list_numbers_items() {
     let lines = render_block("1. a\n2. b", 40, &sheet());
     assert_eq!(texts(&lines), vec!["1. a".to_string(), "2. b".to_string()]);
@@ -499,4 +512,95 @@ fn clip_spans_truncates_to_budget() {
     let clipped = clip_spans(spans, 4, Style::default());
     let joined: String = clipped.iter().map(|s| s.content.as_ref()).collect();
     assert_eq!(joined, "hel\u{2026}");
+}
+
+/// The char index of `needle` in `src`, plus `skip` chars.
+fn char_at(src: &str, needle: &str, skip: usize) -> usize {
+    let byte = src.find(needle).expect("the needle is in the source");
+    src[..byte].chars().count() + skip
+}
+
+/// The shown text of a line without its decoration (bullets, bars, the
+/// table's borders), so its first char is the first char of its text.
+fn shown_text(line: &Line<'static>) -> String {
+    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    text.trim_start_matches(|ch: char| !ch.is_alphanumeric())
+        .to_string()
+}
+
+#[test]
+fn mapped_lines_start_where_their_text_starts() {
+    let src = "Intro **bold** text\n\n### Head\n\n- a\n  - b\n- c\n\n\
+               ```\nfn x\nlet y\n```\n\nA long paragraph that wraps \
+               over several lines in a narrow box.";
+    let mapped = render_block_mapped(src, 20, &sheet());
+    let chars: Vec<char> = src.chars().collect();
+    for line in &mapped {
+        let Some(source) = line.source else {
+            continue;
+        };
+        let shown = shown_text(&line.line);
+        let first = shown.chars().next().expect("a mapped line shows text");
+        assert_eq!(chars[source], first, "line {shown:?} maps to {source}");
+    }
+    let sources: Vec<Option<usize>> =
+        mapped.iter().map(|line| line.source).collect();
+    for (needle, skip) in [
+        ("Intro", 0),
+        ("Head", 0),
+        ("- a", 2),
+        ("- b", 2),
+        ("- c", 2),
+        ("fn x", 0),
+        ("let y", 0),
+        ("A long", 0),
+        ("that wraps", 0),
+        ("several", 0),
+        ("narrow", 0),
+    ] {
+        let expected = Some(char_at(src, needle, skip));
+        assert!(sources.contains(&expected), "{needle} has a line");
+    }
+}
+
+#[test]
+fn mapped_blank_lines_and_rules_are_told_apart() {
+    let src = "One\n\n---\n\nTwo";
+    let mapped = render_block_mapped(src, 10, &sheet());
+    let sources: Vec<Option<usize>> =
+        mapped.iter().map(|line| line.source).collect();
+    assert_eq!(
+        sources,
+        vec![Some(0), None, Some(5), None, Some(10)],
+        "text, separator, the rule's own line, separator, text"
+    );
+}
+
+#[test]
+fn mapped_table_rows_start_at_their_row() {
+    let src = "| x | y |\n|---|---|\n| 1 | 2 |";
+    let mapped = render_block_mapped(src, 30, &sheet());
+    let sources: Vec<Option<usize>> =
+        mapped.iter().map(|line| line.source).collect();
+    assert_eq!(sources, vec![Some(0), None, Some(20)]);
+}
+
+#[test]
+fn mapped_lines_match_render_block() {
+    let src = "# T\n\n> [!NOTE]\n> quoted\n\n- [ ] task\n\n```rust\nx\n```";
+    let plain = render_block(src, 30, &sheet());
+    let mapped: Vec<Line<'static>> = render_block_mapped(src, 30, &sheet())
+        .into_iter()
+        .map(|line| line.line)
+        .collect();
+    assert_eq!(plain, mapped);
+}
+
+#[test]
+fn mapped_offsets_count_chars_not_bytes() {
+    let src = "Über\n\nÄpfel";
+    let mapped = render_block_mapped(src, 10, &sheet());
+    let sources: Vec<Option<usize>> =
+        mapped.iter().map(|line| line.source).collect();
+    assert_eq!(sources, vec![Some(0), None, Some(6)]);
 }

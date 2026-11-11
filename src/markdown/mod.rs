@@ -13,6 +13,8 @@
 //!
 //! - [`render_block`] lays out a multi-line value (headings, lists, code,
 //!   quotes, ...) wrapped to a width.
+//! - [`render_block_mapped`] does the same and names where each shown line
+//!   starts in the source, for a host that puts a caret on a shown line.
 //! - [`render_inline`] renders a single-line value as inline-only markup,
 //!   clipped to a width; block syntax stays literal.
 //! - [`measure_block`] reports the line count [`render_block`] would produce.
@@ -313,6 +315,45 @@ pub fn render_block(
     sheet: &StyleSheet,
 ) -> Vec<Line<'static>> {
     render::render_block(src, width, sheet)
+}
+
+/// A line of [`render_block_mapped`] with where its text starts in the
+/// source.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MappedLine {
+    /// The rendered line, as [`render_block`] draws it.
+    pub line: Line<'static>,
+    /// The char index in the source where the line's text starts; `None`
+    /// for a line the renderer adds (the blank line between blocks, a
+    /// callout's title, a code block's language label, a table's rule).
+    pub source: Option<usize>,
+}
+
+/// Renders `src` like [`render_block`] and names, for every line, the char
+/// index in `src` where its text starts.
+///
+/// The positions let a host turn a shown line into a caret in the raw text
+/// and back: a wrapped paragraph's lines each map into the paragraph, a list
+/// item to its text after the marker, a code line and a table row to where
+/// they begin, a rule to its own line.
+///
+/// # Examples
+///
+/// ```
+/// use ratada::markdown::{StyleSheet, render_block_mapped};
+///
+/// let src = "# Title\n\nSome text.";
+/// let lines = render_block_mapped(src, 40, &StyleSheet::default());
+/// let starts: Vec<_> = lines.iter().map(|mapped| mapped.source).collect();
+/// assert_eq!(starts, vec![Some(2), None, Some(9)]);
+/// ```
+#[must_use]
+pub fn render_block_mapped(
+    src: &str,
+    width: usize,
+    sheet: &StyleSheet,
+) -> Vec<MappedLine> {
+    render::render_block_mapped(src, width, sheet)
 }
 
 /// Renders `src` as inline-only Markdown spans clipped to `width` columns.

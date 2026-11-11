@@ -20,11 +20,16 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 - **`images::ImageCache` draws images in the terminal** (feature `images`, off by default). `detect` asks the terminal for its protocol - Kitty, iTerm2, Sixel - and falls back to half blocks; `half_blocks` skips the query. `render(frame, area, path)` decodes a file once, keeps it and draws it scaled to fit; a file that cannot be read draws nothing. Built on `ratatui-image` and `image`, which only the feature pulls in; with it, the toolkit needs Rust 1.90 (without it, 1.88 as before).
 - **`autocomplete::Autocomplete` takes its row limit and placement.** `max_visible(rows)` shows up to `rows` suggestions at once instead of `MAX_VISIBLE` (8), in the popup and in `lines`; `placement(Placement::Below)` keeps the floating menu under its field, shrinking and scrolling when the room runs out, instead of flipping above (`Placement::Auto`, the default). Without them nothing changes.
 - **`editor::open_file_at` opens an existing file at a line.** The terminal is handed over while the editor runs. `editor::line_args` gives the form each editor understands: `+N file` for vi, vim, nvim, nano, helix, kakoune, emacs and micro, `-g file:N` for VS Code and its forks, `file:N` for Sublime and Zed, just the file otherwise.
+- **`markdown::render_block_mapped` names where each shown line starts in the source.** It renders like `render_block` and pairs every line with the char index in the source where its text starts (`MappedLine { line, source }`), `None` for a line the renderer adds (the blank line between blocks, a callout's title, a code block's language label, a table's rule). A wrapped paragraph's lines each map into the paragraph, a list item to its text after the marker, a code line and a table row to where they begin, a rule to its own line. A host that shows rendered Markdown can turn a shown line into a caret in the raw text and back. `render_block` is unchanged.
 
 ### Changed
 
 - **A form's suggestions are longer and always open below their field.** `FormState` shows up to 15 suggestions, never flips them above the field, and in the modal (`render`, `render_rows`) lets them run past the box down to the screen's edge instead of clipping them to its rows, drawn last so neither the hint rows nor the border paint over them; `render_inline` keeps them inside its area.
 - **A stepper whose value is none of its options steps to the ends.** When the host set a value outside the options (a form showing "Custom", say), `→` (and `Enter`) now steps to the first option and `←` to the last; before, the value counted as the first option, so `→` skipped it.
+
+### Fixed
+
+- **A tight list item keeps its own line above its nested list.** `render_block` drew `- a` with `  - b` below it as one line `○ ab` under the nested bullet; the item's text now goes out when the nested list opens, so it reads `● a` and then `  ○ b`.
 
 ## [0.8.0] - 2026-11-08
 

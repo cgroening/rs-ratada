@@ -36,14 +36,19 @@ pub(super) fn align_cell(
 
 /// Greedy word-wrap over styled cells: breaks at the last space, hard-splits an
 /// over-long word, and treats an embedded `\n` (a hard break) as a forced
-/// break. Each output line is a cell run with its styles preserved.
-pub(super) fn wrap_cells(cells: &[Cell], width: usize) -> Vec<Vec<Cell>> {
+/// break. Each output line lists the indices of its cells, so a caller keeps
+/// both the styles and where each cell came from; the space at a wrap and a
+/// `\n` belong to no line.
+pub(super) fn wrap_indices(cells: &[Cell], width: usize) -> Vec<Vec<usize>> {
     let width = width.max(1);
-    let mut lines: Vec<Vec<Cell>> = Vec::new();
-    let mut cur: Vec<Cell> = Vec::new();
+    let width_of = |line: &[usize]| -> usize {
+        line.iter().map(|&index| ch_width(cells[index].0)).sum()
+    };
+    let mut lines: Vec<Vec<usize>> = Vec::new();
+    let mut cur: Vec<usize> = Vec::new();
     let mut cur_w = 0usize;
     let mut last_space: Option<usize> = None;
-    for &(ch, style) in cells {
+    for (index, &(ch, _)) in cells.iter().enumerate() {
         if ch == '\n' {
             lines.push(std::mem::take(&mut cur));
             cur_w = 0;
@@ -57,7 +62,7 @@ pub(super) fn wrap_cells(cells: &[Cell], width: usize) -> Vec<Vec<Cell>> {
                     let tail = cur.split_off(sp);
                     lines.push(std::mem::take(&mut cur));
                     cur = tail.into_iter().skip(1).collect();
-                    cur_w = cells_width(&cur);
+                    cur_w = width_of(&cur);
                 }
                 None => {
                     lines.push(std::mem::take(&mut cur));
@@ -69,7 +74,7 @@ pub(super) fn wrap_cells(cells: &[Cell], width: usize) -> Vec<Vec<Cell>> {
         if ch == ' ' {
             last_space = Some(cur.len());
         }
-        cur.push((ch, style));
+        cur.push(index);
         cur_w += cw;
     }
     lines.push(cur);
