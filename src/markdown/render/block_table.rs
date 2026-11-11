@@ -79,6 +79,10 @@ impl BlockState<'_> {
             inline_to_cells(&events, self.sheet, self.sheet.base)
         };
         self.inline.clear();
+        // A cell's text is no paragraph: its start must not carry over to
+        // the block after the table.
+        self.inline_from = None;
+        self.inline_end = 0;
         if let Some(table) = self.table.as_mut()
             && let Some(row) = table.rows.last_mut()
         {

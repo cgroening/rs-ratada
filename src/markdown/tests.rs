@@ -604,3 +604,55 @@ fn mapped_offsets_count_chars_not_bytes() {
         mapped.iter().map(|line| line.source).collect();
     assert_eq!(sources, vec![Some(0), None, Some(6)]);
 }
+
+#[test]
+fn an_entity_never_pulls_the_mapping_into_a_later_block() {
+    let src = "a &lt; b\n\nc < d";
+    let mapped = render_block_mapped(src, 3, &sheet());
+    // At width 3 the second line is `< b`; its `<` is the entity.
+    let b_line = mapped
+        .iter()
+        .find(|line| shown_text(&line.line).starts_with('b'))
+        .expect("`< b` has its own line at width 3");
+    assert_eq!(b_line.source, Some(char_at(src, "&lt;", 0)));
+    let sources: Vec<usize> =
+        mapped.iter().filter_map(|line| line.source).collect();
+    assert!(
+        sources.windows(2).all(|pair| pair[0] <= pair[1]),
+        "{sources:?}"
+    );
+}
+
+#[test]
+fn a_smart_quote_never_pulls_the_mapping_into_a_later_block() {
+    let mut smart = sheet();
+    smart.smart_punctuation = true;
+    let src = "\"Zitat\" here\n\nlater \u{201c}echt\u{201d}";
+    let mapped = render_block_mapped(src, 40, &smart);
+    assert_eq!(mapped[0].source, Some(0));
+    assert_eq!(mapped[2].source, Some(char_at(src, "later", 0)));
+}
+
+#[test]
+fn a_list_after_a_table_maps_to_itself() {
+    let src = "| a | b |\n|---|---|\n| c | d |\n\n-\n- x";
+    let mapped = render_block_mapped(src, 30, &sheet());
+    let x_line = mapped
+        .iter()
+        .find(|line| shown_text(&line.line).starts_with('x'))
+        .expect("the x item");
+    assert_eq!(x_line.source, Some(char_at(src, "- x", 2)));
+    let table_end = char_at(src, "| c | d |", 9);
+    for line in &mapped {
+        let is_after_table = shown_text(&line.line).is_empty()
+            && !line.line.spans.is_empty()
+            && line.source.is_some_and(|start| start < table_end);
+        assert!(!is_after_table, "an empty item maps into the table");
+    }
+}
+
+#[test]
+fn an_item_holding_only_a_list_renders_as_before() {
+    let lines = render_block("- - b", 40, &sheet());
+    assert_eq!(texts(&lines), vec!["  \u{25cb} b".to_string()]);
+}

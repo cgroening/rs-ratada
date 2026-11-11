@@ -5,29 +5,33 @@
 //! place in the source. The positions are found by walking the source forward
 //! once per block and matching each shown character in order.
 
-/// The byte offset in `src` of each shown character, matched in order from
-/// `from` onwards.
+/// The byte offset in `src` of each shown character, matched in order
+/// within the block's source `from..to`.
 ///
 /// A character matches the same character, and any whitespace matches any
-/// whitespace (a soft break shows as a space). A character the source does
-/// not hold from the current position on (smart punctuation, a decoded
-/// entity's glyph) takes the current position without moving it, so one
-/// such character never pulls the rest of the block out of place.
+/// whitespace (a soft break shows as a space). A character the block's
+/// source does not hold from the current position on (smart punctuation, a
+/// decoded entity's glyph) takes the current position without moving it,
+/// so one such character never pulls the rest of the block out of place;
+/// the search never leaves the block.
 pub(super) fn byte_offsets(
     shown: impl IntoIterator<Item = char>,
     src: &str,
     from: usize,
+    to: usize,
 ) -> Vec<usize> {
-    let mut at = floor_char_boundary(src, from.min(src.len()));
+    let to = floor_char_boundary(src, to.min(src.len()));
+    let block = &src[..to];
+    let mut at = floor_char_boundary(src, from.min(to));
     let mut offsets = Vec::new();
     for ch in shown {
-        match find_from(src, at, ch) {
+        match find_from(block, at, ch) {
             Some(found) => {
                 offsets.push(found);
                 at = found
                     + src[found..].chars().next().map_or(0, char::len_utf8);
             }
-            None => offsets.push(at.min(src.len())),
+            None => offsets.push(at.min(to)),
         }
     }
     offsets
@@ -81,14 +85,14 @@ mod tests {
     #[test]
     fn markers_are_skipped_and_soft_breaks_match_a_space() {
         let src = "a **bold**\nnext";
-        let offsets = byte_offsets("a bold next".chars(), src, 0);
+        let offsets = byte_offsets("a bold next".chars(), src, 0, src.len());
         assert_eq!(offsets, vec![0, 1, 4, 5, 6, 7, 10, 11, 12, 13, 14]);
     }
 
     #[test]
     fn a_character_the_source_lacks_keeps_the_position() {
         let src = "a -- b";
-        let offsets = byte_offsets("a \u{2013} b".chars(), src, 0);
+        let offsets = byte_offsets("a \u{2013} b".chars(), src, 0, src.len());
         assert_eq!(offsets[2], 2, "the dash stands where the source is");
         assert_eq!(offsets[4], 5, "the rest still matches");
     }

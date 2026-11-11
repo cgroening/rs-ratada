@@ -103,6 +103,7 @@ pub(super) fn render_block_mapped(
     let mut state = BlockState::new(src, width, sheet);
     for (event, range) in parser.into_offset_iter() {
         state.at = range.start;
+        state.end = range.end;
         state.handle(&event);
     }
     state.into_mapped()
@@ -212,6 +213,11 @@ struct BlockState<'s> {
     sources: Vec<Option<usize>>,
     /// Where the buffered inline events start in `src`.
     inline_from: Option<usize>,
+    /// Where the buffered inline events end in `src`: the search for a shown
+    /// character stays before it.
+    inline_end: usize,
+    /// The byte offset where the event being handled ends.
+    end: usize,
     /// Where the open code block's text starts in `src`.
     code_from: Option<usize>,
     /// Buffered inline events of the current leaf block.
@@ -243,6 +249,8 @@ impl<'s> BlockState<'s> {
             out: Vec::new(),
             sources: Vec::new(),
             inline_from: None,
+            inline_end: 0,
+            end: 0,
             code_from: None,
             inline: Vec::new(),
             heading: None,
@@ -315,8 +323,12 @@ impl<'s> BlockState<'s> {
             }
             Event::Start(Tag::List(start)) => {
                 // A tight item's text is still buffered when its nested
-                // list opens; it is the item's own line, above the list.
-                self.flush_inline();
+                // list opens; it is the item's own line, above the list. An
+                // item holding nothing but the list keeps its marker for
+                // the list's first line, as before.
+                if !self.inline.is_empty() {
+                    self.flush_inline();
+                }
                 self.separate();
                 self.lists.push(ListLevel { ordered: *start });
             }
@@ -393,12 +405,14 @@ impl<'s> BlockState<'s> {
             if let Event::Text(text) = event {
                 code.push_str(text);
                 self.code_from.get_or_insert(self.at);
+                self.inline_end = self.inline_end.max(self.end);
             }
             return;
         }
         if self.inline.is_empty() {
             self.inline_from = Some(self.at);
         }
+        self.inline_end = self.inline_end.max(self.end);
         self.inline.push(event.clone().into_static());
     }
 
@@ -412,10 +426,12 @@ impl<'s> BlockState<'s> {
         let cells = inline_to_cells(&events, self.sheet, base);
         self.inline.clear();
         let from = self.inline_from.take().unwrap_or(self.at);
+        let to = std::mem::take(&mut self.inline_end).max(from);
         let sources = source::byte_offsets(
             cells.iter().map(|&(ch, _)| ch),
             self.src,
             from,
+            to,
         );
         let content = Sourced {
             cells,

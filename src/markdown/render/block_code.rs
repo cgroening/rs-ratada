@@ -14,6 +14,7 @@ impl BlockState<'_> {
             return;
         };
         let from = self.code_from.take().unwrap_or(self.at);
+        let to = std::mem::take(&mut self.inline_end).max(from);
         let style = self.sheet.code_block.text_style();
         let bg = self.sheet.code_block.bg;
         if let Some(lang) = self.code_lang.take() {
@@ -25,7 +26,7 @@ impl BlockState<'_> {
             self.push_decorated(&[], &cells, bg, None);
         }
         let body = code.strip_suffix('\n').unwrap_or(&code);
-        let sources = source::byte_offsets(body.chars(), self.src, from);
+        let sources = source::byte_offsets(body.chars(), self.src, from, to);
         let source_of = |index: usize| {
             sources
                 .get(index)
