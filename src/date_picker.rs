@@ -20,8 +20,10 @@
 //!
 //! [`date_picker_with`] adds keys of the caller's own (an [`ExtraKey`], such as
 //! "E inbox"): they appear in the hint footer and close the picker with
-//! [`DatePick::Extra`]. [`date_picker`] offers none, so it looks and behaves as
-//! it always did.
+//! [`DatePick::Extra`]. It also takes a note above the calendar, lines the
+//! caller styles that say what the date is for ("Recreate on", the task and
+//! the dates taken already), for which the box widens. [`date_picker`] offers
+//! neither, so it looks and behaves as it always did.
 
 use std::io;
 
@@ -34,7 +36,7 @@ use ratatui::{
 };
 
 use super::{
-    chrome::{MODAL_CHROME_HEIGHT, MODAL_PADDING_WIDTH},
+    chrome::MODAL_CHROME_HEIGHT,
     date_entry::{self, DateEntry, EntryAction, OPEN_KEY, Validity},
     date_text, input,
     layout::centered_rect,
@@ -52,9 +54,12 @@ pub use crate::week_column::{WeekColumn, set_week_column, week_column};
 
 mod extra;
 
-pub use extra::{DatePick, DatePickerOptions, ExtraKey, date_picker_with};
+pub use extra::{
+    DatePick, DatePickerOptions, ExtraKey, NOTE_MAX_WIDTH, NoteFn,
+    date_picker_with,
+};
 
-const BOX_WIDTH: u16 = 24;
+/// The columns of the calendar grid: seven three-column days and a lead.
 const INNER_WIDTH: usize = 22;
 /// The format the header prints and the typed entry opens with, shared with
 /// the range picker so both spell a day the same way.
@@ -94,6 +99,7 @@ pub fn date_picker(
         current,
         allow_clear,
         extra: &[],
+        note: None,
     };
     Ok(match date_picker_with(tui, skin, &options, render_bg)? {
         ModalSignal::Value(DatePick::Date(date)) => ModalSignal::Value(date),
@@ -296,26 +302,63 @@ pub(super) fn month_cells(cursor: NaiveDate) -> Vec<Option<NaiveDate>> {
     cells
 }
 
+/// The picker's body without a note, at the calendar's own width.
+#[cfg(test)]
 fn body_lines(
     skin: &Skin,
     state: &Picker,
     allow_clear: bool,
 ) -> Vec<Line<'static>> {
+    picker_lines(skin, state, allow_clear, Vec::new(), calendar_width(state))
+}
+
+/// The columns the calendar takes: the grid and, when shown, the week
+/// column.
+fn calendar_width(state: &Picker) -> usize {
+    INNER_WIDTH + usize::from(state.week_column.extra_width())
+}
+
+/// The picker's body for a box `width` columns wide: the caller's `note`
+/// and a blank line under it (when there is a note), the calendar centred
+/// in the width, and the hints wrapped to it.
+fn picker_lines(
+    skin: &Skin,
+    state: &Picker,
+    allow_clear: bool,
+    note: Vec<Line<'static>>,
+    width: usize,
+) -> Vec<Line<'static>> {
     let palette = &skin.palette;
     let today = today();
-    let width = INNER_WIDTH + usize::from(state.week_column.extra_width());
+    let calendar = calendar_width(state);
+    let width = width.max(calendar);
     let gutter = state.week_column.gutter(skin, today);
-    let mut lines = vec![
-        header_line(palette, state, width),
+    let mut grid = vec![
+        header_line(palette, state, calendar),
         weekday_header(palette, gutter.as_ref()),
     ];
-
-    lines.extend(day_grid(state.cursor, gutter.as_ref(), |day| {
+    grid.extend(day_grid(state.cursor, gutter.as_ref(), |day| {
         day_style(palette, day, state.cursor, today)
     }));
 
+    let mut lines = note;
+    if !lines.is_empty() {
+        lines.push(Line::default());
+    }
+    let pad = (width - calendar) / 2;
+    lines.extend(grid.into_iter().map(|line| indented(line, pad)));
     lines.extend(hint_lines(palette, state, allow_clear, width));
     lines
+}
+
+/// `line` moved `pad` columns to the right.
+fn indented(line: Line<'static>, pad: usize) -> Line<'static> {
+    if pad == 0 {
+        return line;
+    }
+    let mut spans = vec![Span::raw(" ".repeat(pad))];
+    spans.extend(line.spans);
+    Line::from(spans)
 }
 
 /// The ISO date centred in `width`, or the entry field drawn in its place.
