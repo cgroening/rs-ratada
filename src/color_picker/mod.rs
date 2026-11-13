@@ -33,6 +33,8 @@ enum Model {
 
 impl Model {
     const ALL: [Model; 3] = [Model::Rgb, Model::Hsl, Model::Oklch];
+    /// The model the picker opens on.
+    const DEFAULT: Model = Model::Hsl;
 
     fn label(self) -> &'static str {
         match self {
@@ -264,9 +266,9 @@ pub(crate) enum PickerResult {
 /// Lets the user compose a color. `↑`/`↓` (or `Tab`) move focus across the three
 /// channels, the hex field and the presets; `←`/`→` adjust the focused channel
 /// (hold `Shift` for fine steps), edit the hex field or pick a preset. `m` cycles
-/// the color model (RGB/HSL/OKLCH), `y` copies the hex code, `s` switches to the
-/// swatch view. `Enter` confirms the color; `Esc` steps back (see [`ColorExit`]).
-/// `initial` seeds the color (falling back to the accent).
+/// the color model (RGB/HSL/OKLCH, opening on HSL), `y` copies the hex code, `s`
+/// switches to the swatch view. `Enter` confirms the color; `Esc` steps back
+/// (see [`ColorExit`]). `initial` seeds the color (falling back to the accent).
 pub fn color_picker(
     tui: &mut Tui,
     skin: &Skin,
@@ -306,8 +308,8 @@ pub(crate) fn run_picker(
         })
         .unwrap_or(Color::Rgb(128, 128, 128));
     let mut state = State {
-        model: Model::Rgb,
-        channels: Model::Rgb.channels_of(color),
+        model: Model::DEFAULT,
+        channels: Model::DEFAULT.channels_of(color),
         focus: Focus::Channel(0),
         hex: InputField::new(&color.to_hex()),
         presets: preset_colors(&skin.palette),

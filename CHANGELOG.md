@@ -25,6 +25,7 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ### Changed
 
+- **The colour picker opens on the HSL model.** `color_picker` and the swatch chooser's custom picker start on HSL instead of RGB; `m` still cycles RGB, HSL and OKLCH, and the tab line keeps that order.
 - **A form's suggestions are longer and always open below their field.** `FormState` shows up to 15 suggestions, never flips them above the field, and in the modal (`render`, `render_rows`) lets them run past the box down to the screen's edge instead of clipping them to its rows, drawn last so neither the hint rows nor the border paint over them; `render_inline` keeps them inside its area.
 - **A stepper whose value is none of its options steps to the ends.** When the host set a value outside the options (a form showing "Custom", say), `→` (and `Enter`) now steps to the first option and `←` to the last; before, the value counted as the first option, so `→` skipped it.
 
