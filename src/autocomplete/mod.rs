@@ -217,7 +217,8 @@ impl Autocomplete {
             .map(|hit| hit.index)
     }
 
-    /// Moves the highlight by `delta`, wrapping around both ends. With nothing
+    /// Moves the highlight by `delta`, wrapping around both ends (stopping
+    /// there for the mouse wheel, see [`nav::step`]). With nothing
     /// highlighted yet, a step down enters at the top and a step up at the
     /// bottom.
     fn move_selection(&mut self, delta: isize) {
@@ -225,7 +226,7 @@ impl Autocomplete {
         let row = match self.selected {
             None if delta > 0 => 0,
             None => len.saturating_sub(1),
-            Some(row) => nav::cycle(row, len, delta.signum()),
+            Some(row) => nav::step(row, len, delta.signum()),
         };
         self.selected = Some(row);
         self.scroll = nav::keep_visible(self.menu_view(), row);

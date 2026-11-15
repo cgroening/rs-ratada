@@ -74,10 +74,10 @@ pub(super) fn handle_filter(
         }
         KeyCode::Enter => return pick(state),
         KeyCode::Up => {
-            state.cursor = nav::cycle(state.cursor, state.cells.len(), -1);
+            state.cursor = nav::step(state.cursor, state.cells.len(), -1);
         }
         KeyCode::Down => {
-            state.cursor = nav::cycle(state.cursor, state.cells.len(), 1);
+            state.cursor = nav::step(state.cursor, state.cells.len(), 1);
         }
         KeyCode::Backspace => {
             state.filter.pop();
@@ -120,14 +120,15 @@ pub(super) fn edit(state: &State) -> PopupFlow<Choice> {
     }
 }
 
-/// Moves the cursor a row up/down: list modes wrap, grid modes clamp.
+/// Moves the cursor a row up/down: list modes wrap (and stop at the ends
+/// for the mouse wheel), grid modes clamp.
 pub(super) fn move_vertical(state: &mut State, direction: isize) {
     let len = state.cells.len();
     if len == 0 {
         return;
     }
     if state.mode.is_list() {
-        state.cursor = nav::cycle(state.cursor, len, direction);
+        state.cursor = nav::step(state.cursor, len, direction);
         return;
     }
     let step = direction * state.cols as isize;

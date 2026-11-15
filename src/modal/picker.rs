@@ -56,8 +56,8 @@ pub(super) fn navigate_list_without_vim(
     }
     let page = page.max(1) as isize;
     match key.code {
-        KeyCode::Up => *cursor = nav::cycle(*cursor, len, -1),
-        KeyCode::Down => *cursor = nav::cycle(*cursor, len, 1),
+        KeyCode::Up => *cursor = nav::step(*cursor, len, -1),
+        KeyCode::Down => *cursor = nav::step(*cursor, len, 1),
         KeyCode::PageUp => *cursor = nav::step_clamped(*cursor, len, -page),
         KeyCode::PageDown => *cursor = nav::step_clamped(*cursor, len, page),
         KeyCode::Home => *cursor = 0,

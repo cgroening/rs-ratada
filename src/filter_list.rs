@@ -66,8 +66,8 @@ impl FilterList {
         }
         let page = self.viewport.get().max(1) as isize;
         match key.code {
-            KeyCode::Up => self.cursor = nav::cycle(self.cursor, count, -1),
-            KeyCode::Down => self.cursor = nav::cycle(self.cursor, count, 1),
+            KeyCode::Up => self.cursor = nav::step(self.cursor, count, -1),
+            KeyCode::Down => self.cursor = nav::step(self.cursor, count, 1),
             KeyCode::PageUp => {
                 self.cursor = nav::step_clamped(self.cursor, count, -page);
             }
@@ -134,6 +134,49 @@ mod tests {
         // Past the first entry wraps to the last.
         press(&mut list, KeyCode::Up, 3);
         assert_eq!(list.cursor, 2);
+    }
+
+    /// Reads `event` through the input seam, as the terminal delivers it,
+    /// and hands its key to `list`.
+    fn deliver(list: &mut FilterList, event: crossterm::event::Event) {
+        crate::terminal::script_events([event]);
+        let read = crate::terminal::read_raw_event().expect("a scripted event");
+        crate::terminal::clear_scripted_input();
+        let crossterm::event::Event::Key(key) = read else {
+            panic!("the seam must turn a wheel scroll into a key: {read:?}");
+        };
+        list.handle_key(key, 3, &[]);
+    }
+
+    fn scroll(
+        kind: crossterm::event::MouseEventKind,
+    ) -> crossterm::event::Event {
+        crossterm::event::Event::Mouse(crossterm::event::MouseEvent {
+            kind,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        })
+    }
+
+    /// The bug this guards against: the wheel arrives as arrow keys, so a
+    /// list that wraps on them jumped back to the top at its end.
+    #[test]
+    fn the_wheel_stops_at_the_ends_where_the_arrows_wrap() {
+        use crossterm::event::{Event, MouseEventKind};
+
+        let mut list = FilterList::new();
+        for _ in 0..5 {
+            deliver(&mut list, scroll(MouseEventKind::ScrollDown));
+        }
+        assert_eq!(list.cursor, 2, "the wheel stops on the last row");
+        deliver(
+            &mut list,
+            Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
+        );
+        assert_eq!(list.cursor, 0, "the key still wraps");
+        deliver(&mut list, scroll(MouseEventKind::ScrollUp));
+        assert_eq!(list.cursor, 0, "the wheel stops on the first row");
     }
 
     #[test]

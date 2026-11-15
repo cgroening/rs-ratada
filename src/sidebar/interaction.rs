@@ -29,10 +29,10 @@ impl Sidebar {
         let scroll = self.overflow == Overflow::Scroll;
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
-                self.selected = nav::cycle(self.selected, len, -1);
+                self.selected = nav::step(self.selected, len, -1);
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                self.selected = nav::cycle(self.selected, len, 1);
+                self.selected = nav::step(self.selected, len, 1);
             }
             KeyCode::PageUp => {
                 self.selected = nav::step_clamped(self.selected, len, -page);

@@ -89,6 +89,51 @@ fn the_focus_skips_section_bars_and_wraps() {
     assert_eq!(form.focus_key(), "fav");
 }
 
+/// Hands `form` a wheel scroll the way the terminal delivers it: through
+/// the input seam, which turns it into an arrow key flagged as a wheel step.
+fn wheel(form: &mut FormState, kind: crossterm::event::MouseEventKind) {
+    use crossterm::event::{Event, MouseEvent};
+
+    crate::terminal::script_events([Event::Mouse(MouseEvent {
+        kind,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    })]);
+    let read = crate::terminal::read_raw_event().expect("a scripted event");
+    crate::terminal::clear_scripted_input();
+    let Event::Key(key) = read else {
+        panic!("the seam must turn a wheel scroll into a key: {read:?}");
+    };
+    form.handle_key(key);
+}
+
+/// The wheel walks the focus like the arrows but stops at the ends - also
+/// when a section bar sits at the end, which the focus must never rest on.
+#[test]
+fn the_wheel_stops_the_focus_at_the_first_and_last_field() {
+    use crossterm::event::MouseEventKind;
+
+    let mut form = FormState::new(
+        "Entry",
+        vec![
+            FormField::section("Details"),
+            FormField::text("title", "Title", "hop"),
+            FormField::text("note", "Note", ""),
+        ],
+    );
+    assert_eq!(form.focus_key(), "title");
+    wheel(&mut form, MouseEventKind::ScrollUp);
+    assert_eq!(form.focus_key(), "title", "the section bar is not a stop");
+    wheel(&mut form, MouseEventKind::ScrollDown);
+    wheel(&mut form, MouseEventKind::ScrollDown);
+    assert_eq!(
+        form.focus_key(),
+        "note",
+        "the wheel stops at the last field"
+    );
+}
+
 #[test]
 fn a_picker_asks_the_host_and_del_clears_it() {
     let mut form = form();

@@ -21,6 +21,7 @@ src/
 
   # driver / infrastructure
   terminal.rs       Tui RAII guard (raw mode + alt screen) + TuiEvent + hooks
+  terminal/wheel.rs mouse reporting + the wheel scroll -> arrow key seam
   driver.rs         Screen trait + Flow + generic run() loop (idle tick)
   overlay.rs        popup() driver, dimmed scrim, framed() modal helper
                     (frame + padding, returns the content rect)
@@ -94,7 +95,7 @@ tests/
 
 This crate is the single source of truth for the TUI conventions in CLAUDE.md. When building a widget, reuse the shared building blocks rather than reinventing them:
 
-- **Navigation:** `nav::cycle` (wrapping), `nav::keep_visible` (scroll offset). Never open-code `(i + 1) % len`.
+- **Navigation:** `nav::step` for an arrow-key step (wraps for a key, stops at the ends for the mouse wheel), `nav::cycle` for keys the wheel never sends (`Tab`, `←`/`→`), `nav::keep_visible` (scroll offset). Never open-code `(i + 1) % len`.
 - **Filtered overlays:** `finder`, `help` and `command_palette` share `filter_list::FilterList` - the query buffer, the cursor and the whole navigation/typing dispatch (including the `Ctrl` guard and the `Tab` section jump). A new overlay of that shape delegates to it and keeps only its own keys (`Esc`, a confirming `Enter`).
 - **Calendar pickers:** `date_picker`, `date_range_picker` and `month_picker` share the month grid helpers (`day_grid`, `weekday_header`, the cell styles) and `date_entry::DateEntry` - the typed-entry field `e` opens over their header, its `Esc` snapshot and its rendering. `date_entry` is value-agnostic; a picker adds only its prefill format, its parse and what a parsed value does to its state. The parse itself delegates to the crate-internal `date_text`, the one place the typed forms (ISO and German, two-digit years, a day without a year, range year borrowing) are defined; it is hand-written because chrono's `%Y` would take `1.2.026` as the year 26. The `input::is_command` guard belongs on the calendar branch alone: it exists to keep `Ctrl+H` from walking the day cursor, and in front of the field it would kill `Ctrl+U`/`Ctrl+V` instead.
 - **Fuzzy ranking:** `fuzzy::rank_by` is the shared score-filter-sort pass behind every filter picker; a caller supplies only how to derive each item's haystack.

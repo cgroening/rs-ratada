@@ -33,6 +33,23 @@ pub fn cycle(cursor: usize, len: usize, delta: isize) -> usize {
     (cursor as isize + delta).rem_euclid(len as isize) as usize
 }
 
+/// Moves `cursor` by `delta` for an `↑`/`↓` step: wrapping like [`cycle`]
+/// for a key, clamped like [`step_clamped`] when the step came from the
+/// mouse wheel, so scrolling stops at the ends instead of jumping around.
+///
+/// The wheel arrives as an `↑`/`↓` key through
+/// [`crate::terminal::read_raw_event`], which notes where it came from; this
+/// asks about the event read last. Use it wherever an arrow key moves a
+/// cursor or a focus, and [`cycle`] where only other keys step (`Tab`, `←`/
+/// `→`, `n`/`N`), which the wheel never sends.
+pub fn step(cursor: usize, len: usize, delta: isize) -> usize {
+    if crate::terminal::is_from_wheel() {
+        step_clamped(cursor, len, delta)
+    } else {
+        cycle(cursor, len, delta)
+    }
+}
+
 /// Moves `cursor` by `delta`, clamping at the ends (used for page jumps and
 /// Home/End, which are not cyclic).
 pub fn step_clamped(cursor: usize, len: usize, delta: isize) -> usize {
@@ -134,6 +151,47 @@ mod tests {
         assert_eq!(cycle(0, 3, -1), 2);
         assert_eq!(cycle(2, 3, 1), 0);
         assert_eq!(cycle(0, 0, 1), 0);
+    }
+
+    /// Reads one scripted event through the input seam, so the wheel flag
+    /// reflects it.
+    fn read_scripted(event: crossterm::event::Event) {
+        crate::terminal::script_events([event]);
+        let _ = crate::terminal::read_raw_event().expect("a scripted event");
+        crate::terminal::clear_scripted_input();
+    }
+
+    fn wheel(
+        kind: crossterm::event::MouseEventKind,
+    ) -> crossterm::event::Event {
+        crossterm::event::Event::Mouse(crossterm::event::MouseEvent {
+            kind,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        })
+    }
+
+    #[test]
+    fn step_wraps_after_a_key() {
+        read_scripted(crossterm::event::Event::Key(KeyEvent::new(
+            KeyCode::Down,
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(step(2, 3, 1), 0);
+        assert_eq!(step(0, 3, -1), 2);
+    }
+
+    #[test]
+    fn step_stops_at_the_ends_after_a_wheel_scroll() {
+        use crossterm::event::MouseEventKind;
+
+        read_scripted(wheel(MouseEventKind::ScrollDown));
+        assert_eq!(step(2, 3, 1), 2);
+        read_scripted(wheel(MouseEventKind::ScrollUp));
+        assert_eq!(step(0, 3, -1), 0);
+        assert_eq!(step(1, 3, -1), 0);
+        assert_eq!(step(0, 0, 1), 0);
     }
 
     #[test]

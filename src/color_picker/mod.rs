@@ -219,16 +219,16 @@ impl State {
         self.channels = self.model.channels_of(color);
     }
 
-    /// Advances the focus by `delta` (wrapping); syncs the hex field unless the
-    /// new focus is the hex field itself.
+    /// Advances the focus by `delta` (wrapping for a key, stopping at the ends
+    /// for the mouse wheel, see [`crate::nav::step`]); syncs the hex field
+    /// unless the new focus is the hex field itself.
     fn cycle_focus(&mut self, delta: isize) {
         let position = FOCUS_ORDER
             .iter()
             .position(|focus| *focus == self.focus)
             .unwrap_or(0);
-        let count = FOCUS_ORDER.len();
-        let next = (position as isize + delta).rem_euclid(count as isize);
-        self.focus = FOCUS_ORDER[next as usize];
+        let next = crate::nav::step(position, FOCUS_ORDER.len(), delta);
+        self.focus = FOCUS_ORDER[next];
         if self.focus != Focus::Hex {
             self.sync_hex();
         }

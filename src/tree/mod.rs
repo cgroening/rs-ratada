@@ -301,10 +301,11 @@ impl TreeView {
         }
     }
 
-    /// Moves the cursor `delta` rows, wrapping at both ends.
+    /// Moves the cursor `delta` rows, wrapping at both ends for a key and
+    /// stopping there for the mouse wheel ([`nav::step`]).
     pub fn step(&mut self, delta: isize) {
         let len = self.flatten().len();
-        self.cursor = nav::cycle(self.cursor, len, delta);
+        self.cursor = nav::step(self.cursor, len, delta);
     }
 
     /// Moves the cursor by `pages` viewports, clamped at the ends.

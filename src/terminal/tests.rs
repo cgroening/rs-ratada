@@ -196,3 +196,110 @@ fn classify_turns_ctrl_q_into_a_quit_event() {
         Event::Key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
     assert!(matches!(classify(&event), Some(TuiEvent::Quit)));
 }
+
+/// A wheel scroll as the terminal reports it.
+fn wheel_event(kind: crossterm::event::MouseEventKind) -> Event {
+    Event::Mouse(crossterm::event::MouseEvent {
+        kind,
+        column: 3,
+        row: 4,
+        modifiers: KeyModifiers::NONE,
+    })
+}
+
+/// The seam hands a vertical scroll on as the arrow key every list already
+/// handles, and flags it as a wheel step.
+#[test]
+fn a_wheel_scroll_is_read_as_an_arrow_key_from_the_wheel() {
+    use crossterm::event::MouseEventKind;
+
+    script_events([
+        wheel_event(MouseEventKind::ScrollDown),
+        wheel_event(MouseEventKind::ScrollUp),
+    ]);
+
+    let down = read_raw_event().expect("a scripted event");
+    assert!(is_from_wheel());
+    let up = poll_raw_event(Duration::from_secs(0))
+        .expect("a scripted event")
+        .expect("not a timeout");
+    assert!(is_from_wheel());
+
+    assert_eq!(
+        down,
+        Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
+    );
+    assert_eq!(
+        up,
+        Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+    );
+    clear_scripted_input();
+}
+
+/// The flag describes the event read last: a key after a scroll is a key,
+/// and other mouse events pass the seam unchanged and unflagged.
+#[test]
+fn a_key_or_other_mouse_event_clears_the_wheel_flag() {
+    use crossterm::event::{MouseButton, MouseEventKind};
+
+    let click = wheel_event(MouseEventKind::Down(MouseButton::Left));
+    let sideways = wheel_event(MouseEventKind::ScrollRight);
+    script_events([
+        wheel_event(MouseEventKind::ScrollDown),
+        Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)),
+        wheel_event(MouseEventKind::ScrollDown),
+        click.clone(),
+        sideways.clone(),
+    ]);
+
+    let _ = read_raw_event().expect("a scripted event");
+    let _ = read_raw_event().expect("a scripted event");
+    assert!(!is_from_wheel(), "a key after a scroll");
+    let _ = read_raw_event().expect("a scripted event");
+    assert_eq!(read_raw_event().expect("a scripted event"), click);
+    assert!(!is_from_wheel(), "a click");
+    assert_eq!(read_raw_event().expect("a scripted event"), sideways);
+    assert!(!is_from_wheel(), "a horizontal scroll");
+    clear_scripted_input();
+}
+
+/// A classified wheel scroll is an ordinary key event, so `Tui::read_event`
+/// and every loop over it see the arrow.
+#[test]
+fn classify_passes_a_translated_wheel_scroll_as_a_key() {
+    use crossterm::event::MouseEventKind;
+
+    script_events([wheel_event(MouseEventKind::ScrollDown)]);
+    let event = read_raw_event().expect("a scripted event");
+    clear_scripted_input();
+
+    assert!(matches!(
+        classify(&event),
+        Some(TuiEvent::Key(key)) if key.code == KeyCode::Down,
+    ));
+}
+
+/// Entering the screen asks for button and wheel reports only - no motion
+/// tracking - and leaving turns off exactly that. One test owns the
+/// thread-local setting. Windows goes through the console API instead.
+#[cfg(not(windows))]
+#[test]
+fn reporting_follows_the_setting_and_is_undone_on_leave() {
+    let run = |step: fn(&mut Vec<u8>) -> io::Result<()>| {
+        let mut out = Vec::new();
+        step(&mut out).expect("writing to a buffer");
+        String::from_utf8(out).expect("escape sequences are ASCII")
+    };
+    let start = |out: &mut Vec<u8>| wheel::start_reporting(out);
+    let stop = |out: &mut Vec<u8>| wheel::stop_reporting(out);
+
+    assert_eq!(mouse_wheel(), MouseWheel::Reported, "the default");
+    assert_eq!(run(start), "\x1b[?1000h\x1b[?1006h");
+    assert_eq!(run(stop), "\x1b[?1006l\x1b[?1000l");
+    assert_eq!(run(stop), "", "nothing left to turn off");
+
+    set_mouse_wheel(MouseWheel::Terminal);
+    assert_eq!(run(start), "", "the terminal keeps the mouse");
+    assert_eq!(run(stop), "");
+    set_mouse_wheel(MouseWheel::Reported);
+}

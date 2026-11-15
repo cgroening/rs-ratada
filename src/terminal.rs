@@ -31,6 +31,10 @@ use ratatui::{
 
 use crate::input;
 
+mod wheel;
+
+pub use wheel::{MouseWheel, is_from_wheel, mouse_wheel, set_mouse_wheel};
+
 /// What a [`Tui`] renders into: the real terminal, or an in-memory buffer.
 ///
 /// An enum rather than a type parameter on [`Tui`]: every consuming app takes
@@ -176,7 +180,10 @@ pub enum TuiEvent {
 /// `Drop`, so the terminal is always left clean, even on panic. A panic hook
 /// (installed with the first guard) gives the terminal back before the panic
 /// message is printed, so the message lands on the normal screen instead of
-/// vanishing with the alternate one. The `on_enter`
+/// vanishing with the alternate one. While it holds the screen the terminal
+/// reports the mouse wheel and buttons, unless the host chose otherwise with
+/// [`set_mouse_wheel`]; a scroll then arrives as an `↑`/`↓` key that stops
+/// at the ends of a list (see [`crate::nav::step`]). The `on_enter`
 /// and `on_leave` hooks fire whenever the TUI takes or releases the screen,
 /// letting the host mute side effects (e.g. stderr logging) without coupling
 /// this guard to the application.
@@ -260,9 +267,11 @@ impl Tui {
         Ok(())
     }
 
-    /// Blocks for the next key or resize event, skipping key releases.
+    /// Blocks for the next key or resize event, skipping key releases and
+    /// mouse events other than the wheel.
     ///
-    /// Reads through [`read_raw_event`], so a scripted queue drives it.
+    /// Reads through [`read_raw_event`], so a scripted queue drives it and a
+    /// wheel scroll arrives as an `↑`/`↓` key.
     pub fn read_event(&self) -> io::Result<TuiEvent> {
         loop {
             let event = read_raw_event()?;
@@ -428,15 +437,22 @@ fn next_scripted_event() -> io::Result<Option<Event>> {
 /// loops cannot be driven from a test - and, because the queue is shared, its
 /// keys would fall out of order against this crate's modals.
 ///
+/// A vertical wheel scroll (`Event::Mouse` with `ScrollUp`/`ScrollDown`, from
+/// the terminal or a script) comes back as an `↑`/`↓` key press, flagged as
+/// a wheel step so [`crate::nav::step`] stops at the ends instead of
+/// wrapping. Every other event, other mouse events included, passes
+/// unchanged.
+///
 /// # Errors
 ///
 /// Returns an I/O error when the terminal cannot be read, or `UnexpectedEof`
 /// when a scripted queue is exhausted.
 pub fn read_raw_event() -> io::Result<Event> {
-    match next_scripted_event()? {
-        Some(event) => Ok(event),
-        None => event::read(),
-    }
+    let event = match next_scripted_event()? {
+        Some(event) => event,
+        None => event::read()?,
+    };
+    Ok(wheel::admit(event))
 }
 
 /// Like [`read_raw_event`], but gives up after `timeout`.
@@ -449,16 +465,17 @@ pub fn read_raw_event() -> io::Result<Event> {
 /// As [`read_raw_event`].
 pub fn poll_raw_event(timeout: Duration) -> io::Result<Option<Event>> {
     if let Some(event) = next_scripted_event()? {
-        return Ok(Some(event));
+        return Ok(Some(wheel::admit(event)));
     }
     if event::poll(timeout)? {
-        return event::read().map(Some);
+        return Ok(Some(wheel::admit(event::read()?)));
     }
+    wheel::admit_timeout();
     Ok(None)
 }
 
 /// Maps a crossterm event to a [`TuiEvent`], or `None` for events the app
-/// ignores (key releases, mouse, focus).
+/// ignores (key releases, mouse events the seam left as they were, focus).
 fn classify(event: &Event) -> Option<TuiEvent> {
     match event {
         Event::Resize(_, _) => Some(TuiEvent::Resize),
@@ -493,7 +510,8 @@ fn is_global_quit(key: &KeyEvent) -> bool {
 }
 
 /// Enters the alternate screen, additionally enabling bracketed paste where
-/// crossterm can deliver it.
+/// crossterm can deliver it and mouse reporting unless the host left the
+/// mouse to the terminal ([`set_mouse_wheel`]).
 ///
 /// crossterm's Windows event source reads console key records and never emits
 /// an `Event::Paste`, so enabling bracketed paste there would only make the
@@ -504,12 +522,13 @@ fn enter_screen(out: &mut Stdout) -> io::Result<()> {
     execute!(out, EnterAlternateScreen)?;
     #[cfg(not(windows))]
     execute!(out, EnableBracketedPaste)?;
-    Ok(())
+    wheel::start_reporting(out)
 }
 
 /// Leaves the alternate screen, mirroring [`enter_screen`] by disabling
-/// bracketed paste only where it was enabled.
+/// bracketed paste and mouse reporting only where they were enabled.
 fn leave_screen(out: &mut Stdout) -> io::Result<()> {
+    wheel::stop_reporting(out)?;
     #[cfg(not(windows))]
     execute!(out, DisableBracketedPaste)?;
     execute!(out, LeaveAlternateScreen)?;

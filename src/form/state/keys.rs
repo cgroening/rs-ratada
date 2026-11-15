@@ -212,12 +212,20 @@ impl FormState {
         }
     }
 
-    /// Moves the focus by `delta` focusable fields, wrapping.
+    /// Moves the focus by `delta` focusable fields, wrapping for a key. The
+    /// mouse wheel stops at the first or last focusable field instead
+    /// ([`nav::step`]).
     fn step_focus(&mut self, delta: isize) -> FormEvent {
         let len = self.fields.len();
         let mut index = self.focus;
         for _ in 0..len {
-            index = nav::cycle(index, len, delta);
+            let next = nav::step(index, len, delta);
+            // Clamped at an end with no focusable field beyond: stay put
+            // rather than land on the unfocusable row there.
+            if next == index {
+                return FormEvent::Pending;
+            }
+            index = next;
             if self.fields[index].is_focusable() {
                 break;
             }

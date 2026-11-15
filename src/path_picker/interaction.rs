@@ -21,11 +21,11 @@ pub(super) fn handle_key(
     match key.code {
         KeyCode::Esc => PopupFlow::Cancelled,
         KeyCode::Up => {
-            state.cursor = nav::cycle(state.cursor, state.visible.len(), -1);
+            state.cursor = nav::step(state.cursor, state.visible.len(), -1);
             PopupFlow::Continue
         }
         KeyCode::Down => {
-            state.cursor = nav::cycle(state.cursor, state.visible.len(), 1);
+            state.cursor = nav::step(state.cursor, state.visible.len(), 1);
             PopupFlow::Continue
         }
         KeyCode::PageUp => {
