@@ -536,8 +536,17 @@ impl<'s> BlockState<'s> {
         if let Some(fg) = self.sheet.rule.fg {
             style = style.fg(fg);
         }
-        let glyph = self.sheet.rule.glyph.chars().next().unwrap_or('\u{2500}');
-        let line: Vec<Cell> = (0..self.width).map(|_| (glyph, style)).collect();
+        let glyph = if self.sheet.rule.glyph.is_empty() {
+            "\u{2500}"
+        } else {
+            self.sheet.rule.glyph.as_str()
+        };
+        let line: Vec<Cell> = glyph
+            .chars()
+            .cycle()
+            .take(self.width)
+            .map(|glyph| (glyph, style))
+            .collect();
         self.push_line(Line::from(cells_to_spans(&line)), Some(self.at));
         if self.at_top_level() {
             self.produced = true;

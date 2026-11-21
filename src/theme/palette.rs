@@ -28,6 +28,9 @@ const SELECTION_MIX: f32 = 0.35;
 /// so a text field stands out from the content it sits on (more so when active).
 const INPUT_BG: f32 = 0.10;
 const INPUT_BG_ACTIVE: f32 = 0.22;
+/// `OKLab` lightness rise from `background` for the modal fill, so a box reads
+/// as an elevated surface against the dimmed backdrop behind it.
+const MODAL_LIFT: f32 = 0.06;
 
 /// Declares the full palette color set once and generates the [`Palette`] and
 /// [`ColorOverrides`] structs plus [`Palette::entries`]/[`Palette::KEYS`]. The
@@ -101,6 +104,8 @@ define_palette! {
     foreground_muted,
     /// Full-screen background.
     background,
+    /// Fill of every modal box, derived from `background` (lifted slightly).
+    modal,
     /// Header bar background.
     header,
     /// Footer bar background.
@@ -192,6 +197,7 @@ impl Palette {
                 foreground.darken(FOREGROUND_MUTED),
             ),
             background,
+            modal: get(overrides.modal, background.lighten(MODAL_LIFT)),
             header: get(overrides.header, base.header),
             footer: get(overrides.footer, base.footer),
             panel: get(overrides.panel, base.panel),
@@ -278,6 +284,30 @@ mod tests {
         );
         assert_eq!(palette.cursor, base().accent);
         assert_ne!(palette.accent_dim, palette.accent);
+    }
+
+    #[test]
+    fn the_modal_fill_lifts_the_resolved_background() {
+        let palette = Palette::resolve(base(), &ColorOverrides::default());
+        assert_eq!(palette.modal, base().background.lighten(MODAL_LIFT));
+
+        let overrides = ColorOverrides {
+            background: "#101010",
+            ..ColorOverrides::default()
+        };
+        let palette = Palette::resolve(base(), &overrides);
+        assert_eq!(palette.modal, Color::Rgb(16, 16, 16).lighten(MODAL_LIFT));
+    }
+
+    #[test]
+    fn a_modal_override_sets_the_fill_exactly() {
+        let overrides = ColorOverrides {
+            modal: "#010203",
+            ..ColorOverrides::default()
+        };
+        let palette = Palette::resolve(base(), &overrides);
+        assert_eq!(palette.modal, Color::Rgb(1, 2, 3));
+        assert_eq!(palette.background, base().background);
     }
 
     #[test]

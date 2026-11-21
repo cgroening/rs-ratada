@@ -6,6 +6,8 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ### Changed (breaking)
 
+- **Modal boxes take their fill from the new palette colour `modal`.** `chrome::modal_fill` (and with it `modal_block`, `overlay::framed` and every toolkit dialog) returns `palette.modal` instead of lifting `background` on the spot. It defaults to `background` lifted by the same 6 %, so nothing changes until a host sets it; a host that themes its dialogs sets the fill exactly. `Palette` has the new field (a struct literal needs it), `ColorOverrides` takes `modal`, and `Palette::KEYS` lists it.
+- **`markdown::HeadingStyle` has the new field `modifiers`.** Further text modifiers of a heading level on top of `bold` (italic, underlined, crossed out, dim); `Modifier::empty()` keeps the previous look. A struct literal needs the field.
 - **Selected text has its own palette colour, `text_selection`.** Text fields (`InputField`, `TextArea`, `input::line_spans`, `scrolled_line_spans`, `query_spans_at`, so every modal input, the typed entry of the pickers and the filter lines) paint a selection in `text_selection` instead of `selection`, which keeps the highlighted list row, the form's focus tint and the calendar range. It defaults to `selection`, so nothing changes until a host sets it; a host that tints the active field like a selected row (`input_bg_active` = `selection`) sets it to keep a selection visible. `Palette` has the new field (a struct literal needs it), `ColorOverrides` takes `text_selection`, and `Palette::KEYS` lists it.
 - **`date_picker::DatePickerOptions` has the new field `note`.** A struct literal needs `note: None` to keep the previous look. The struct no longer derives `Debug` but implements it by hand (the note is a function).
 
@@ -29,6 +31,7 @@ All notable changes to `ratada` are documented here. The format is based on [Kee
 
 ### Changed
 
+- **A Markdown rule repeats its whole glyph.** `RuleStyle::glyph` of several characters repeats as a pattern cut at the width (`-=` gives `-=-=-`), instead of only its first character; a glyph of one character draws as before, an empty one as `─`.
 - **The terminal reports the mouse while a `Tui` holds the screen.** Selecting text with the mouse then needs the terminal's modifier key (Option in iTerm2, Shift in most others); a host that wants plain selection back calls `terminal::set_mouse_wheel(MouseWheel::Terminal)` before creating its `Tui`. Clicks reach the event stream as `Event::Mouse` and are ignored by `Tui::read_event` as before.
 - **The colour picker opens on the HSL model.** `color_picker` and the swatch chooser's custom picker start on HSL instead of RGB; `m` still cycles RGB, HSL and OKLCH, and the tab line keeps that order.
 - **A form's suggestions are longer and always open below their field.** `FormState` shows up to 15 suggestions, never flips them above the field, and in the modal (`render`, `render_rows`) lets them run past the box down to the screen's edge instead of clipping them to its rows, drawn last so neither the hint rows nor the border paint over them; `render_inline` keeps them inside its area.

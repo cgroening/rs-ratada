@@ -17,10 +17,6 @@ use ratatui::{
 use super::style;
 use crate::theme::{Color, Skin};
 
-/// How far a modal's fill is lifted above the full-screen `background`, so the
-/// box reads as an elevated surface against the dimmed backdrop behind it.
-const MODAL_BG_LIFT: f32 = 0.06;
-
 /// The container block for a view section: a borderless block that insets its
 /// content by one cell all around, so a filled column (see [`menu_panel`]) keeps
 /// its content off the panel edges.
@@ -82,12 +78,12 @@ pub fn modal_content(inner: Rect) -> Rect {
         .inner(inner)
 }
 
-/// The fill of every modal box: `background` lifted by `MODAL_BG_LIFT`, so the
-/// box stands out from the dimmed view behind it. [`modal_block`] paints it;
-/// a host box that frames itself (its own border colour, say) takes it from
-/// here to match.
+/// The fill of every modal box: the palette's `modal`, by default `background`
+/// lifted slightly, so the box stands out from the dimmed view behind it.
+/// [`modal_block`] paints it; a host box that frames itself (its own border
+/// colour, say) takes it from here to match.
 pub fn modal_fill(skin: &Skin) -> Color {
-    skin.palette.background.lighten(MODAL_BG_LIFT)
+    skin.palette.modal
 }
 
 /// The shared modal frame: a rounded, bordered box with a filled background

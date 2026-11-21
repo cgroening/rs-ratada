@@ -39,6 +39,7 @@ fn heading(fg: Color) -> HeadingStyle {
         fg: Some(to_ratatui(fg)),
         bg: None,
         bold: true,
+        modifiers: Modifier::empty(),
     }
 }
 

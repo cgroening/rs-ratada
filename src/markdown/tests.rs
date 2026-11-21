@@ -7,6 +7,7 @@ fn sheet() -> StyleSheet {
         fg: Some(fg),
         bg: None,
         bold: true,
+        modifiers: Modifier::empty(),
     };
     StyleSheet {
         base: Style::default(),
@@ -98,6 +99,24 @@ fn heading_drops_markers_and_styles_text() {
     let style = lines[0].spans[0].style;
     assert_eq!(style.fg, Some(Color::Rgb(1, 1, 1)));
     assert!(style.add_modifier.contains(Modifier::BOLD));
+}
+
+#[test]
+fn heading_modifiers_add_to_bold() {
+    let mut sheet = sheet();
+    sheet.headings[1].modifiers = Modifier::ITALIC | Modifier::UNDERLINED;
+    let lines = render_block("## Title", 40, &sheet);
+    let style = lines[0].spans[0].style;
+    assert!(style.add_modifier.contains(Modifier::BOLD));
+    assert!(style.add_modifier.contains(Modifier::ITALIC));
+    assert!(style.add_modifier.contains(Modifier::UNDERLINED));
+    let plain = render_block("# Title", 40, &sheet);
+    assert!(
+        !plain[0].spans[0]
+            .style
+            .add_modifier
+            .contains(Modifier::ITALIC)
+    );
 }
 
 #[test]
@@ -212,6 +231,14 @@ fn rule_fills_width_with_glyph() {
         texts(&lines),
         vec!["\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}".to_string()]
     );
+}
+
+#[test]
+fn a_rule_glyph_of_several_characters_repeats_as_a_pattern() {
+    let mut sheet = sheet();
+    sheet.rule.glyph = "-=".to_string();
+    let lines = render_block("---", 5, &sheet);
+    assert_eq!(texts(&lines), vec!["-=-=-".to_string()]);
 }
 
 #[test]

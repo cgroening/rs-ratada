@@ -45,8 +45,8 @@ use ratatui::{
 
 pub use view::{MarkdownView, viewer};
 
-/// Style of one heading level: foreground, bold, and an optional full-width
-/// background band (`None` = no band).
+/// Style of one heading level: foreground, bold, further modifiers and an
+/// optional full-width background band (`None` = no band).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeadingStyle {
     /// Text color (`None` inherits the base).
@@ -55,6 +55,9 @@ pub struct HeadingStyle {
     pub bg: Option<Color>,
     /// Whether the heading text is bold.
     pub bold: bool,
+    /// Further text modifiers on top of `bold` (italic, underlined, crossed
+    /// out, dim); [`Modifier::empty`] for none.
+    pub modifiers: Modifier,
 }
 
 /// Style of fenced/indented code blocks: a full-width band.
@@ -140,7 +143,8 @@ impl CheckboxStyle {
 pub struct RuleStyle {
     /// Rule color (`None` inherits the base).
     pub fg: Option<Color>,
-    /// The glyph repeated across the full width.
+    /// The glyph repeated across the full width; a glyph of several
+    /// characters repeats as a pattern, cut at the width.
     pub glyph: String,
 }
 
@@ -256,10 +260,11 @@ pub struct StyleSheet {
 }
 
 impl StyleSheet {
-    /// The base text style for a heading of the given `level` (fg + bold).
+    /// The base text style for a heading of the given `level` (fg, bold and
+    /// the further modifiers).
     fn heading_style(&self, level: pulldown_cmark::HeadingLevel) -> Style {
         let head = &self.headings[heading_index(level)];
-        let mut style = self.base;
+        let mut style = self.base.add_modifier(head.modifiers);
         if let Some(fg) = head.fg {
             style = style.fg(fg);
         }
