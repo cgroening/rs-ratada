@@ -65,12 +65,14 @@ pub struct HintStyle {
 
 impl HintStyle {
     /// The main-app footer: keys in the accent and bold, labels and
-    /// descriptions dim, one blank row above and no background, so the hints
-    /// sit on the terminal's own colour. Every app's hint band uses this one
-    /// style.
+    /// descriptions dim, one blank row above, on the palette's `hints` fill
+    /// (none while it is `Default`, so the hints sit on the terminal's own
+    /// colour). Every app's hint band uses this one style.
     pub fn footer(skin: &Skin) -> Self {
+        let hints = skin.palette.hints;
         Self {
             key: style::fg(skin.palette.accent).add_modifier(Modifier::BOLD),
+            background: (hints != Color::Default).then_some(hints),
             ..Self::default()
         }
     }
@@ -118,6 +120,48 @@ mod tests {
         assert_eq!(footer.description, style::dim());
         assert_eq!(footer.top_margin, 1);
         assert!(footer.background.is_none());
+    }
+
+    #[test]
+    fn the_footer_style_fills_the_band_with_the_hints_colour() {
+        use crate::theme::{
+            ColorOverrides, GlyphVariant, Glyphs, Palette, ThemeRegistry,
+        };
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let base = ThemeRegistry::builtin().resolve("default");
+        let overrides = ColorOverrides {
+            hints: "#010203",
+            ..ColorOverrides::default()
+        };
+        let skin = crate::theme::Skin::new(
+            Palette::resolve(base, &overrides),
+            Glyphs::new(GlyphVariant::Unicode),
+        );
+        let footer = HintStyle::footer(&skin);
+        assert_eq!(footer.background, Some(Color::Rgb(1, 2, 3)));
+
+        set_visible(true);
+        let groups = [HintGroup {
+            label: "Global",
+            hints: ITEMS,
+        }];
+        let mut terminal =
+            Terminal::new(TestBackend::new(30, 3)).expect("test terminal");
+        terminal
+            .draw(|frame| render(frame, frame.area(), &groups, &footer))
+            .expect("draw");
+        let buffer = terminal.backend().buffer();
+        let fill = Some(ratatui::style::Color::Rgb(1, 2, 3));
+        for y in 0..3 {
+            for x in [0, 29] {
+                assert_eq!(
+                    Some(buffer[(x, y)].bg),
+                    fill,
+                    "cell ({x}, {y}), the margin row included"
+                );
+            }
+        }
     }
 
     #[test]

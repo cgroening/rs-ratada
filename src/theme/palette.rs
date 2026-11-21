@@ -108,8 +108,10 @@ define_palette! {
     modal,
     /// Header bar background.
     header,
-    /// Footer bar background.
+    /// Background of the status band above the key hints.
     footer,
+    /// Fill of the key-hint band; `Default` leaves it unfilled.
+    hints,
     /// Elevated panel background (e.g. table headers).
     panel,
     /// Content surface for tables and lists.
@@ -200,6 +202,7 @@ impl Palette {
             modal: get(overrides.modal, background.lighten(MODAL_LIFT)),
             header: get(overrides.header, base.header),
             footer: get(overrides.footer, base.footer),
+            hints: get(overrides.hints, Color::Default),
             panel: get(overrides.panel, base.panel),
             surface,
             selection,
@@ -297,6 +300,19 @@ mod tests {
         };
         let palette = Palette::resolve(base(), &overrides);
         assert_eq!(palette.modal, Color::Rgb(16, 16, 16).lighten(MODAL_LIFT));
+    }
+
+    #[test]
+    fn the_hint_band_is_unfilled_until_set() {
+        let palette = Palette::resolve(base(), &ColorOverrides::default());
+        assert_eq!(palette.hints, Color::Default);
+
+        let overrides = ColorOverrides {
+            hints: "#010203",
+            ..ColorOverrides::default()
+        };
+        let palette = Palette::resolve(base(), &overrides);
+        assert_eq!(palette.hints, Color::Rgb(1, 2, 3));
     }
 
     #[test]

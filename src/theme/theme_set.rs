@@ -52,7 +52,8 @@ pub struct ThemeColors {
     pub background: Color,
     /// The header bar background (a darkened `background`).
     pub header: Color,
-    /// The footer bar background (a darkened `background`).
+    /// The status band above the key hints (a darkened `background`); the
+    /// hint band itself takes the palette's `hints`.
     pub footer: Color,
     /// The panel background, one step lighter than `background`.
     pub panel: Color,

@@ -9,7 +9,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Block, Paragraph},
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -109,7 +109,8 @@ pub fn height<S: AsRef<str>>(
 }
 
 /// Renders the grouped hints into `area`: `opts.top_margin` blank rows, then
-/// the aligned hint lines over `opts.background` (if any). Draws nothing at all
+/// the aligned hint lines. `opts.background` (if any) fills the whole area,
+/// the margin included, so the band reads as one block. Draws nothing at all
 /// while the hints are hidden, margin included.
 pub fn render<S: AsRef<str>>(
     frame: &mut Frame,
@@ -129,11 +130,10 @@ pub fn render<S: AsRef<str>>(
         width: area.width,
         height: area.height.saturating_sub(margin),
     };
-    let mut paragraph = Paragraph::new(lines);
     if let Some(bg) = opts.background {
-        paragraph = paragraph.style(style::bg(bg));
+        frame.render_widget(Block::default().style(style::bg(bg)), area);
     }
-    frame.render_widget(paragraph, hint_area);
+    frame.render_widget(Paragraph::new(lines), hint_area);
 }
 
 /// Wraps `(key, description)` tokens into rows no wider than `width`, never
